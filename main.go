@@ -1,8 +1,8 @@
 package main
 
 import (
-	"fmt"
 	"image"
+	"image/draw"
 
 	"github.com/ipoluianov/nui/nui"
 )
@@ -35,11 +35,20 @@ func main() {
 
 	counter := 0
 
-	wnd.OnPaint = func(width int, height int) *image.RGBA {
+	testPng := nui.GetRGBATestImage()
+
+	wnd.OnPaint = func(rgba *image.RGBA) {
 		counter++
-		fmt.Println("Paint event", counter, "width", width, "height", height)
-		testPng := nui.GetRGBATestImage()
-		return testPng
+
+		_ = testPng
+		// full with black
+		dataSize := rgba.Stride * rgba.Rect.Dy()
+		for i := 0; i < dataSize; i++ {
+			rgba.Pix[i] = 0
+		}
+		draw.Draw(rgba, rgba.Rect, testPng, image.Point{0, 0}, draw.Src)
+		//fmt.Println("Paint event", counter, "width", width, "height", height)
+		//
 	}
 
 	wnd.EventLoop()

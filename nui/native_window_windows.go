@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"image"
-	"image/draw"
 	"image/png"
 	"syscall"
 	"unsafe"
@@ -35,7 +34,7 @@ type NativeWindow struct {
 
 	// Window events
 	OnCreated func()
-	OnPaint   func(width int, height int) *image.RGBA
+	OnPaint   func(rgba *image.RGBA)
 	OnMove    func(x, y int)
 	OnResize  func(width, height int)
 	OnClosing func()
@@ -314,6 +313,9 @@ func drawImageToHDC(img *image.RGBA, hdc uintptr, width, height int32) {
 
 		ptr := uintptr(unsafe.Pointer(&pixBuffer[0]))
 
+		_ = ptr
+		_ = bi
+
 		procSetDIBitsToDevice.Call(
 			hdc,
 			0, uintptr(y), // xDest, yDest
@@ -326,6 +328,8 @@ func drawImageToHDC(img *image.RGBA, hdc uintptr, width, height int32) {
 		)
 	}
 }
+
+var pixData = make([]byte, 1920*1080*4*8)
 
 func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 	//fmt.Println("Message:", native.MessageName(msg))
@@ -340,11 +344,16 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 
 		hdcWidth, hdcHeight := getHDCSize(hdc)
 
-		img := image.NewRGBA(image.Rect(0, 0, int(hdcWidth), int(hdcHeight)))
+		img := &image.RGBA{
+			Pix:    pixData,
+			Stride: int(hdcWidth) * 4,
+			Rect:   image.Rect(0, 0, int(hdcWidth), int(hdcHeight)),
+		}
 
 		if win != nil && win.OnPaint != nil {
-			rgba := win.OnPaint(int(hdcWidth), int(hdcHeight))
-			draw.Draw(img, img.Bounds(), rgba, image.Point{0, 0}, draw.Src)
+			win.OnPaint(img)
+			//_ = img
+			//draw.Draw(img, img.Bounds(), rgba, image.Point{0, 0}, draw.Src)
 		}
 
 		drawImageToHDC(img, hdc, hdcWidth, hdcHeight)
