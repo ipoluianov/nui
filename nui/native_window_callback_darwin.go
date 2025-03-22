@@ -89,3 +89,38 @@ func go_on_modifier_change(shift, ctrl, alt, cmd C.int) {
 func go_on_char(codepoint C.int) {
 	fmt.Printf("Char typed: '%c' (U+%04X)\n", rune(codepoint), codepoint)
 }
+
+//export go_on_mouse_down
+func go_on_mouse_down(button, x, y C.int) {
+	fmt.Printf("Mouse down: button=%d at (%d,%d)\n", button, x, y)
+}
+
+//export go_on_mouse_up
+func go_on_mouse_up(button, x, y C.int) {
+	fmt.Printf("Mouse up: button=%d at (%d,%d)\n", button, x, y)
+}
+
+//export go_on_mouse_move
+func go_on_mouse_move(x, y C.int) {
+	fmt.Printf("Mouse move: (%d,%d)\n", x, y)
+}
+
+//export go_on_mouse_scroll
+func go_on_mouse_scroll(delta C.int) {
+	fmt.Printf("Scroll: delta=%d\n", delta)
+}
+
+//export go_on_mouse_enter
+func go_on_mouse_enter() {
+	fmt.Println("Mouse entered")
+}
+
+//export go_on_mouse_leave
+func go_on_mouse_leave() {
+	fmt.Println("Mouse left")
+}
+
+//export go_on_mouse_double_click
+func go_on_mouse_double_click(button, x, y C.int) {
+	fmt.Printf("Mouse double click: button=%d at (%d,%d)\n", button, x, y)
+}

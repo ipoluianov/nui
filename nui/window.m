@@ -27,14 +27,6 @@ static NSWindow* window;
     return YES;
 }
 
-/*- (void)keyDown:(NSEvent *)event {
-    NSString *chars = [event characters];
-    if ([chars length] > 0) {
-        unichar c = [chars characterAtIndex:0];
-        go_on_key_down((int)c);
-    }
-}*/
-
 - (void)keyUp:(NSEvent *)event {
     NSString *chars = [event characters];
     if ([chars length] > 0) {
@@ -63,6 +55,84 @@ static NSWindow* window;
 
     go_on_modifier_change(shift, ctrl, alt, cmd);
 }
+
+- (void)mouseDown:(NSEvent *)event {
+    NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
+    if ([event clickCount] == 2) {
+        go_on_mouse_double_click(0, (int)p.x, (int)p.y); // Left
+    } else {
+        go_on_mouse_down(0, (int)p.x, (int)p.y);
+    }
+}
+
+- (void)rightMouseDown:(NSEvent *)event {
+    NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
+    if ([event clickCount] == 2) {
+        go_on_mouse_double_click(1, (int)p.x, (int)p.y); // Right
+    } else {
+        go_on_mouse_down(1, (int)p.x, (int)p.y);
+    }
+}
+
+- (void)otherMouseDown:(NSEvent *)event {
+    NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
+    if ([event clickCount] == 2) {
+        go_on_mouse_double_click(2, (int)p.x, (int)p.y); // Middle/Other
+    } else {
+        go_on_mouse_down(2, (int)p.x, (int)p.y);
+    }
+}
+
+- (void)mouseUp:(NSEvent *)event {
+    NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
+    go_on_mouse_up(0, (int)p.x, (int)p.y);
+}
+
+- (void)rightMouseUp:(NSEvent *)event {
+    NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
+    go_on_mouse_up(1, (int)p.x, (int)p.y);
+}
+
+- (void)otherMouseUp:(NSEvent *)event {
+    NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
+    go_on_mouse_up(2, (int)p.x, (int)p.y);
+}
+
+- (void)mouseMoved:(NSEvent *)event {
+    NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
+    go_on_mouse_move((int)p.x, (int)p.y);
+}
+
+- (void)mouseDragged:(NSEvent *)event {
+    [self mouseMoved:event]; // тот же вызов
+}
+
+- (void)scrollWheel:(NSEvent *)event {
+    float deltaY = [event deltaY];
+    go_on_mouse_scroll((int)deltaY);
+}
+
+- (void)mouseEntered:(NSEvent *)event {
+    go_on_mouse_enter();
+}
+
+- (void)mouseExited:(NSEvent *)event {
+    go_on_mouse_leave();
+}
+
+- (void)updateTrackingAreas {
+    [super updateTrackingAreas];
+
+    NSTrackingArea *trackingArea = [[NSTrackingArea alloc] initWithRect:self.bounds
+                                                                options:(NSTrackingMouseEnteredAndExited |
+                                                                         NSTrackingMouseMoved |
+                                                                         NSTrackingActiveAlways |
+                                                                         NSTrackingInVisibleRect)
+                                                                  owner:self
+                                                               userInfo:nil];
+    [self addTrackingArea:trackingArea];
+}
+
 
 
 - (BOOL)isFlipped { return NO; }
