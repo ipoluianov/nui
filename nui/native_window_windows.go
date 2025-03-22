@@ -259,20 +259,17 @@ func GetRGBATestImage() *image.RGBA {
 }
 
 func getHDCSize(hdc uintptr) (width int32, height int32) {
-	//w, _, _ := procGetDeviceCaps.Call(uintptr(hdc), HORZRES)
-	//h, _, _ := procGetDeviceCaps.Call(uintptr(hdc), VERTRES)
-	//return int32(w), int32(h)
-
-	// from clipbox
 	var r rect
 	procGetClipBox.Call(hdc, uintptr(unsafe.Pointer(&r)))
 	return r.right - r.left, r.bottom - r.top
 }
 
-var pixBuffer = make([]byte, 1920*1080*4*8)
+const chunkHeight = 100
+const maxWidth = 10000
+
+var pixBuffer = make([]byte, 4*chunkHeight*maxWidth)
 
 func drawImageToHDC(img *image.RGBA, hdc uintptr, width, height int32) {
-	const chunkHeight = 100
 
 	imgStride := img.Stride
 	totalHeight := int(height)
@@ -329,7 +326,10 @@ func drawImageToHDC(img *image.RGBA, hdc uintptr, width, height int32) {
 	}
 }
 
-var pixData = make([]byte, 1920*1080*4*8)
+const maxCanvasWidth = 10000
+const maxCanvasHeight = 5000
+
+var canvasBuffer = make([]byte, maxCanvasWidth*maxCanvasHeight*4)
 
 func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 	//fmt.Println("Message:", native.MessageName(msg))
@@ -343,54 +343,31 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 		hdc, _, _ := procBeginPaint.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&ps)))
 
 		hdcWidth, hdcHeight := getHDCSize(hdc)
+		if hdcWidth > maxCanvasWidth {
+			hdcWidth = maxCanvasWidth
+		}
+
+		if hdcHeight > maxCanvasHeight {
+			hdcHeight = maxCanvasHeight
+		}
 
 		img := &image.RGBA{
-			Pix:    pixData,
+			Pix:    canvasBuffer,
 			Stride: int(hdcWidth) * 4,
 			Rect:   image.Rect(0, 0, int(hdcWidth), int(hdcHeight)),
 		}
 
+		// Clear the canvas
+		canvasDataBufferSize := int(hdcWidth * hdcHeight * 4)
+		for i := range canvasDataBufferSize {
+			canvasBuffer[i] = 0
+		}
+
 		if win != nil && win.OnPaint != nil {
 			win.OnPaint(img)
-			//_ = img
-			//draw.Draw(img, img.Bounds(), rgba, image.Point{0, 0}, draw.Src)
 		}
 
 		drawImageToHDC(img, hdc, hdcWidth, hdcHeight)
-
-		/*bi := BITMAPINFO{
-			Header: BITMAPINFOHEADER{
-				Size:        uint32(unsafe.Sizeof(BITMAPINFOHEADER{})),
-				Width:       hdcWidth,
-				Height:      -hdcHeight,
-				Planes:      1,
-				BitCount:    32,
-				Compression: 0,
-			},
-		}
-
-		if win != nil && win.OnPaint != nil {
-			rgba := win.OnPaint(int(hdcWidth), int(hdcHeight))
-			pixels := convertRGBAToBytes(rgba)
-			copy(pixBuffer, pixels)
-		}
-
-		imageWidthAsUintPtr := uintptr(hdcWidth)
-		imageHeightAsUintPtr := uintptr(hdcHeight)
-
-		pointerToBuffer := uintptr(unsafe.Pointer(&pixBuffer[0]))
-
-		procSetDIBitsToDevice.Call(
-			hdc,
-			0, 0,
-			imageWidthAsUintPtr, imageHeightAsUintPtr,
-			0, 0,
-			0,
-			imageHeightAsUintPtr,
-			pointerToBuffer,
-			uintptr(unsafe.Pointer(&bi)),
-			0,
-		)*/
 
 		procEndPaint.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&ps)))
 
