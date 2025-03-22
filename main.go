@@ -36,6 +36,14 @@ func main() {
 			wnd.SetMouseCursor(nui.MouseCursorPointer)
 		}
 
+		if key == nui.KeyF6 {
+			wnd.MaximizeWindow()
+		}
+
+		if key == nui.KeyF7 {
+			wnd.MinimizeWindow()
+		}
+
 	}
 
 	wnd.OnMouseEnter = func() {

@@ -83,6 +83,12 @@ const (
 	CW_USEDEFAULT       = 0x80000000
 	SW_SHOWDEFAULT      = 10
 
+	SW_HIDE          = 0
+	SW_SHOWNORMAL    = 1
+	SW_SHOWMINIMIZED = 2
+	SW_SHOWMAXIMIZED = 3
+	SW_RESTORE       = 9
+
 	SWP_NOSIZE     = 0x0001
 	SWP_NOMOVE     = 0x0002
 	SWP_NOZORDER   = 0x0004
@@ -613,7 +619,7 @@ func (c *NativeWindow) EventLoop() {
 		ret, _, err := procGetMessageW.Call(uintptr(unsafe.Pointer(&msg)), 0, 0, 0)
 		e := err.(syscall.Errno)
 		if e != 0 {
-			panic(e)
+			fmt.Println("Error:", e)
 		}
 
 		if ret == 0 {
@@ -702,4 +708,16 @@ func (c *NativeWindow) changeMouseCursor(cursor MouseCursor) bool {
 
 	ret, _, _ := procSetCursor.Call(hCursor)
 	return ret != 0
+}
+
+func (c *NativeWindow) MinimizeWindow() {
+	procShowWindow.Call(uintptr(c.hwnd), SW_SHOWMINIMIZED)
+}
+
+func (c *NativeWindow) MaximizeWindow() {
+	procShowWindow.Call(uintptr(c.hwnd), SW_SHOWMAXIMIZED)
+}
+
+func (c *NativeWindow) RestoreWindow() {
+	procShowWindow.Call(uintptr(c.hwnd), SW_RESTORE)
 }
