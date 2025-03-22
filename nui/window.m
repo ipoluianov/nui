@@ -3,12 +3,69 @@
 
 static NSWindow* window;
 
+@interface AppDelegate : NSObject <NSApplicationDelegate>
+@end
+
+@implementation AppDelegate
+
+- (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender {
+    return YES;
+}
+
+@end
+
 @interface GoPaintView : NSView
 @end
 
 @implementation GoPaintView
 
-- (BOOL)isFlipped { return YES; }
+- (BOOL)acceptsFirstResponder {
+    return YES;
+}
+
+- (BOOL)becomeFirstResponder {
+    return YES;
+}
+
+/*- (void)keyDown:(NSEvent *)event {
+    NSString *chars = [event characters];
+    if ([chars length] > 0) {
+        unichar c = [chars characterAtIndex:0];
+        go_on_key_down((int)c);
+    }
+}*/
+
+- (void)keyUp:(NSEvent *)event {
+    NSString *chars = [event characters];
+    if ([chars length] > 0) {
+        unichar c = [chars characterAtIndex:0];
+        go_on_key_up((int)c);
+    }
+}
+
+- (void)keyDown:(NSEvent *)event {
+    NSString *chars = [event characters];
+    if ([chars length] > 0) {
+        unichar ch = [chars characterAtIndex:0];
+        go_on_char((int)ch);
+    }
+
+    go_on_key_down((int)[event keyCode]);
+}
+
+- (void)flagsChanged:(NSEvent *)event {
+    NSEventModifierFlags flags = [event modifierFlags];
+
+    int shift = (flags & NSEventModifierFlagShift) ? 1 : 0;
+    int ctrl  = (flags & NSEventModifierFlagControl) ? 1 : 0;
+    int alt   = (flags & NSEventModifierFlagOption) ? 1 : 0;
+    int cmd   = (flags & NSEventModifierFlagCommand) ? 1 : 0;
+
+    go_on_modifier_change(shift, ctrl, alt, cmd);
+}
+
+
+- (BOOL)isFlipped { return NO; }
 
 static void buffer_release_callback(void* info, const void* data, size_t size) {
     free((void*)data);
@@ -37,8 +94,6 @@ static void buffer_release_callback(void* info, const void* data, size_t size) {
                                      provider, NULL, false, kCGRenderingIntentDefault);
 
     CGContextSaveGState(ctx);
-    CGContextTranslateCTM(ctx, 0, height);
-    CGContextScaleCTM(ctx, 1, -1);
 
     CGContextDrawImage(ctx, CGRectMake(0, 0, width, height), image);
 
@@ -55,6 +110,9 @@ int InitWindow(void) {
     @autoreleasepool {
         NSApplication *app = [NSApplication sharedApplication];
         [app setActivationPolicy:NSApplicationActivationPolicyRegular];
+
+        AppDelegate *delegate = [[AppDelegate alloc] init];
+        [app setDelegate:delegate];
 
         NSRect frame = NSMakeRect(100, 100, 800, 600);
         NSUInteger style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable;

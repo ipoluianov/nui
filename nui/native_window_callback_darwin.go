@@ -69,3 +69,23 @@ func go_on_paint(ptr unsafe.Pointer, width C.int, height C.int, hwnd C.int) {
 		}
 	}*/
 }
+
+//export go_on_key_down
+func go_on_key_down(code C.int) {
+	fmt.Println("Key down:", code)
+}
+
+//export go_on_key_up
+func go_on_key_up(code C.int) {
+	fmt.Println("Key up:", code)
+}
+
+//export go_on_modifier_change
+func go_on_modifier_change(shift, ctrl, alt, cmd C.int) {
+	fmt.Printf("Modifiers: Shift=%v Ctrl=%v Alt=%v Cmd=%v\n", shift != 0, ctrl != 0, alt != 0, cmd != 0)
+}
+
+//export go_on_char
+func go_on_char(codepoint C.int) {
+	fmt.Printf("Char typed: '%c' (U+%04X)\n", rune(codepoint), codepoint)
+}
