@@ -50,6 +50,11 @@ func main() {
 		//fmt.Printf("Mouse move: %d, %d\n", x, y)
 	}
 
+	wnd.OnCloseRequest = func() bool {
+		fmt.Println("Close request")
+		return true
+	}
+
 	counter := 0
 	testPng := nui.GetRGBATestImage()
 	wnd.OnPaint = func(rgba *image.RGBA) {

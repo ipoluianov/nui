@@ -36,11 +36,11 @@ type NativeWindow struct {
 	OnMouseDoubleClickMiddleButton func(x, y int)
 
 	// Window events
-	OnCreated func()
-	OnPaint   func(rgba *image.RGBA)
-	OnMove    func(x, y int)
-	OnResize  func(width, height int)
-	OnClosing func()
+	OnCreated      func()
+	OnPaint        func(rgba *image.RGBA)
+	OnMove         func(x, y int)
+	OnResize       func(width, height int)
+	OnCloseRequest func() bool
 }
 
 var (
@@ -99,6 +99,7 @@ const (
 
 	WM_SIZE = 0x0005
 
+	WM_CLOSE   = 0x0010
 	WM_DESTROY = 0x0002
 
 	WM_KEYDOWN = 0x0100
@@ -533,6 +534,16 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 			win.OnResize(int(width), int(height))
 		}
 		procInvalidateRect.Call(uintptr(hwnd), 0, 0)
+		return 0
+
+	case WM_CLOSE:
+		if win != nil && win.OnCloseRequest != nil {
+			allow := win.OnCloseRequest()
+			if !allow {
+				return 0
+			}
+		}
+		procDefWindowProcW.Call(uintptr(hwnd), uintptr(msg), wParam, lParam)
 		return 0
 
 	default:
