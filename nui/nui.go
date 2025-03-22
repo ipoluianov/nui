@@ -6,7 +6,7 @@ import (
 )
 
 //go:embed test.png
-var testPng []byte
+var TestPng []byte
 
 func Init() {
 	runtime.LockOSThread()

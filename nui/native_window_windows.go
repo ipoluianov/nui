@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"image"
+	"image/draw"
 	"image/png"
 	"syscall"
 	"unsafe"
@@ -11,6 +12,33 @@ import (
 
 type NativeWindow struct {
 	hwnd syscall.Handle
+
+	// Keyboard events
+	OnKeyDown func(keyCode Key)
+	OnKeyUp   func(keyCode Key)
+	OnChar    func(char rune)
+
+	// Mouse events
+	OnMouseEnter                   func()
+	OnMouseLeave                   func()
+	OnMouseMove                    func(x, y int)
+	OnMouseDownLeftButton          func(x, y int)
+	OnMouseUpLeftButton            func(x, y int)
+	OnMouseDownRightButton         func(x, y int)
+	OnMouseUpRightButton           func(x, y int)
+	OnMouseDownMiddleButton        func(x, y int)
+	OnMouseUpMiddleButton          func(x, y int)
+	OnMouseWheel                   func(delta int)
+	OnMouseDoubleClickLeftButton   func(x, y int)
+	OnMouseDoubleClickRightButton  func(x, y int)
+	OnMouseDoubleClickMiddleButton func(x, y int)
+
+	// Window events
+	OnCreated func()
+	OnPaint   func(width int, height int) *image.RGBA
+	OnMove    func(x, y int)
+	OnResize  func(width, height int)
+	OnClosing func()
 }
 
 var (
@@ -38,6 +66,13 @@ var (
 	procTrackMouseEvent = user32.NewProc("TrackMouseEvent")
 
 	procInvalidateRect = user32.NewProc("InvalidateRect")
+
+	procPostMessageW   = user32.NewProc("PostMessageW")
+	procSetWindowTextW = user32.NewProc("SetWindowTextW")
+	procSetWindowPos   = user32.NewProc("SetWindowPos")
+
+	procLoadCursorW = user32.NewProc("LoadCursorW")
+	procSetCursor   = user32.NewProc("SetCursor")
 )
 
 const (
@@ -45,6 +80,17 @@ const (
 	WS_VISIBLE          = 0x10000000
 	CW_USEDEFAULT       = 0x80000000
 	SW_SHOWDEFAULT      = 10
+
+	SWP_NOSIZE     = 0x0001
+	SWP_NOMOVE     = 0x0002
+	SWP_NOZORDER   = 0x0004
+	SWP_NOACTIVATE = 0x0010
+
+	IDC_ARROW  = uintptr(32512)
+	IDC_HAND   = uintptr(32649)
+	IDC_SIZEWE = uintptr(32644)
+	IDC_SIZENS = uintptr(32645)
+	IDC_IBEAM  = uintptr(32513)
 
 	CS_DBLCLKS = 0x0008
 	CS_OWNDC   = 0x0020
@@ -176,39 +222,6 @@ type rect struct {
 	left, top, right, bottom int32
 }
 
-func DiagnoseHDC(hdc uintptr) {
-	fmt.Println("🧪 Diagnosing HDC:", hdc)
-
-	// Device capabilities
-	horz, _, _ := procGetDeviceCaps.Call(hdc, HORZRES)
-	vert, _, _ := procGetDeviceCaps.Call(hdc, VERTRES)
-	bits, _, _ := procGetDeviceCaps.Call(hdc, BITSPIXEL)
-	planes, _, _ := procGetDeviceCaps.Call(hdc, PLANES)
-	fmt.Printf("  DeviceCaps: %dx%d, BPP: %d, Planes: %d\n", horz, vert, bits, planes)
-
-	// Object type
-	objType, _, _ := procGetObjectType.Call(hdc)
-	var objTypeName string
-	switch objType {
-	case OBJ_DC:
-		objTypeName = "OBJ_DC"
-	case OBJ_MEMDC:
-		objTypeName = "OBJ_MEMDC"
-	case OBJ_ENHMETADC:
-		objTypeName = "OBJ_ENHMETADC"
-	case 0:
-		objTypeName = "INVALID"
-	default:
-		objTypeName = fmt.Sprintf("Unknown (%d)", objType)
-	}
-	fmt.Println("  Object Type:", objTypeName)
-
-	// Clip box
-	var r rect
-	clipResult, _, _ := procGetClipBox.Call(hdc, uintptr(unsafe.Pointer(&r)))
-	fmt.Printf("  ClipBox result: %d, Rect: %+v\n", clipResult, r)
-}
-
 func loadPngFromBytes(bs []byte) (*image.RGBA, error) {
 	img, err := png.Decode(bytes.NewReader(bs))
 	if err != nil {
@@ -238,12 +251,24 @@ func convertRGBAToBytes(rgba *image.RGBA) []byte {
 }
 
 var imageBytes []byte
+var hwnds map[syscall.Handle]*NativeWindow
 
-func getImageBytes() (bs []byte, width int32, height int32) {
+func init() {
+	hwnds = make(map[syscall.Handle]*NativeWindow)
+}
+
+func GetNativeWindowByHandle(hwnd syscall.Handle) *NativeWindow {
+	if w, ok := hwnds[hwnd]; ok {
+		return w
+	}
+	return nil
+}
+
+/*func getImageBytes() (bs []byte, width int32, height int32) {
 	if imageBytes != nil {
 		return imageBytes, 800, 600
 	}
-	rgba, err := loadPngFromBytes(testPng)
+	rgba, err := loadPngFromBytes(TestPng)
 	if err != nil {
 		panic(err)
 	}
@@ -252,44 +277,99 @@ func getImageBytes() (bs []byte, width int32, height int32) {
 	width = int32(rgba.Bounds().Max.X)
 	height = int32(rgba.Bounds().Max.Y)
 	return
+}*/
+
+func GetRGBATestImage() *image.RGBA {
+	rgba, err := loadPngFromBytes(TestPng)
+	if err != nil {
+		panic(err)
+	}
+	return rgba
 }
 
-var pixBuffer = make([]byte, 1920*1080*4)
+func getHDCSize(hdc uintptr) (width int32, height int32) {
+	w, _, _ := procGetDeviceCaps.Call(uintptr(hdc), HORZRES)
+	h, _, _ := procGetDeviceCaps.Call(uintptr(hdc), VERTRES)
+	return int32(w), int32(h)
+}
+
+var pixBuffer = make([]byte, 1920*1080*4*8)
+
+func drawImageToHDC(img *image.RGBA, hdc uintptr, width, height int32) {
+	height = 100
+	bi := BITMAPINFO{
+		Header: BITMAPINFOHEADER{
+			Size:        uint32(unsafe.Sizeof(BITMAPINFOHEADER{})),
+			Width:       width,
+			Height:      -height,
+			Planes:      1,
+			BitCount:    32,
+			Compression: 0,
+		},
+	}
+
+	pixels := convertRGBAToBytes(img)
+
+	copy(pixBuffer, pixels)
+
+	pointerToBuffer := uintptr(unsafe.Pointer(&pixBuffer[0]))
+
+	procSetDIBitsToDevice.Call(
+		hdc,
+		0, 0,
+		uintptr(width), uintptr(height),
+		0, 0,
+		0,
+		uintptr(height),
+		pointerToBuffer,
+		uintptr(unsafe.Pointer(&bi)),
+		0,
+	)
+}
 
 func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 	//fmt.Println("Message:", native.MessageName(msg))
+
+	win := GetNativeWindowByHandle(hwnd)
+
 	switch msg {
 	case WM_PAINT:
 
 		var ps PAINTSTRUCT
-		hdc, _, err := procBeginPaint.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&ps)))
-		fmt.Println("BeginPaint:", hdc, hwnd, err)
-		e := err.(syscall.Errno)
-		if e != 0 {
-			panic(e)
+		hdc, _, _ := procBeginPaint.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&ps)))
+
+		hdcWidth, hdcHeight := getHDCSize(hdc)
+
+		img := image.NewRGBA(image.Rect(0, 0, int(hdcWidth), int(hdcHeight)))
+
+		if win != nil && win.OnPaint != nil {
+			rgba := win.OnPaint(int(hdcWidth), int(hdcHeight))
+			draw.Draw(img, img.Bounds(), rgba, image.Point{0, 0}, draw.Src)
 		}
 
-		pixels, imageWidth, imageHeight := getImageBytes()
-		fmt.Println("Buffer address", &pixels[0])
-		bi := BITMAPINFO{
+		drawImageToHDC(img, hdc, hdcWidth, hdcHeight)
+
+		/*bi := BITMAPINFO{
 			Header: BITMAPINFOHEADER{
 				Size:        uint32(unsafe.Sizeof(BITMAPINFOHEADER{})),
-				Width:       imageWidth,
-				Height:      -imageHeight,
+				Width:       hdcWidth,
+				Height:      -hdcHeight,
 				Planes:      1,
 				BitCount:    32,
 				Compression: 0,
 			},
 		}
 
-		copy(pixBuffer, pixels)
+		if win != nil && win.OnPaint != nil {
+			rgba := win.OnPaint(int(hdcWidth), int(hdcHeight))
+			pixels := convertRGBAToBytes(rgba)
+			copy(pixBuffer, pixels)
+		}
 
-		imageWidthAsUintPtr := uintptr(imageWidth)
-		imageHeightAsUintPtr := uintptr(imageHeight)
+		imageWidthAsUintPtr := uintptr(hdcWidth)
+		imageHeightAsUintPtr := uintptr(hdcHeight)
 
 		pointerToBuffer := uintptr(unsafe.Pointer(&pixBuffer[0]))
-		//pointerToBuffer := uintptr(unsafe.Pointer(&pixels[0]))
-		//fmt.Println("Pointer to buffer:", strconv.FormatInt(int64(pointerToBuffer), 16))
 
 		procSetDIBitsToDevice.Call(
 			hdc,
@@ -301,7 +381,7 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 			pointerToBuffer,
 			uintptr(unsafe.Pointer(&bi)),
 			0,
-		)
+		)*/
 
 		procEndPaint.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&ps)))
 
@@ -312,11 +392,17 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 		return 0
 
 	case WM_KEYDOWN:
-		println("Key down:", wParam)
+		scanCode := (lParam >> 16) & 0xFF
+		if win != nil && win.OnKeyDown != nil {
+			win.OnKeyDown(Key(scanCode))
+		}
 		return 0
 
 	case WM_KEYUP:
-		println("Key up:", wParam)
+		scanCode := (lParam >> 16) & 0xFF
+		if win != nil && win.OnKeyUp != nil {
+			win.OnKeyUp(Key(scanCode))
+		}
 		return 0
 
 	case WM_SYSKEYDOWN:
@@ -333,6 +419,9 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 
 	case WM_CHAR:
 		println("Char typed:", rune(wParam), "=", string(rune(wParam)))
+		if win != nil && win.OnChar != nil {
+			win.OnChar(rune(wParam))
+		}
 		return 0
 
 	case WM_MOUSEMOVE:
@@ -450,8 +539,8 @@ func CreateWindow() *NativeWindow {
 		WS_OVERLAPPEDWINDOW|WS_VISIBLE,
 		CW_USEDEFAULT,
 		CW_USEDEFAULT,
-		800,
-		600,
+		640,
+		480,
 		0,
 		0,
 		hInstance,
@@ -459,6 +548,8 @@ func CreateWindow() *NativeWindow {
 	)
 
 	c.hwnd = syscall.Handle(hwnd)
+
+	hwnds[c.hwnd] = &c
 
 	procShowWindow.Call(hwnd, SW_SHOWDEFAULT)
 	procInvalidateRect.Call(uintptr(hwnd), 0, 0)
@@ -483,4 +574,68 @@ func (c *NativeWindow) EventLoop() {
 		procTranslateMessage.Call(uintptr(unsafe.Pointer(&msg)))
 		procDispatchMessageW.Call(uintptr(unsafe.Pointer(&msg)))
 	}
+}
+
+func (c *NativeWindow) Close() {
+	procPostMessageW.Call(uintptr(c.hwnd), WM_DESTROY, 0, 0)
+}
+
+func (c *NativeWindow) SetTitle(title string) {
+	strPtr, _ := syscall.UTF16PtrFromString(title)
+	procSetWindowTextW.Call(
+		uintptr(c.hwnd),
+		uintptr(unsafe.Pointer(strPtr)),
+	)
+}
+
+func (c *NativeWindow) Move(x, y int) {
+	flags := SWP_NOSIZE | SWP_NOZORDER
+
+	procSetWindowPos.Call(
+		uintptr(c.hwnd),
+		0,
+		uintptr(x), uintptr(y),
+		0, 0,
+		uintptr(flags),
+	)
+}
+
+func (c *NativeWindow) Resize(width, height int) {
+	flags := SWP_NOMOVE | SWP_NOZORDER
+
+	procSetWindowPos.Call(
+		uintptr(c.hwnd),
+		0,
+		0, 0,
+		uintptr(width),
+		uintptr(height),
+		uintptr(flags),
+	)
+}
+
+func (c *NativeWindow) SetMouseCursor(cursor MouseCursor) bool {
+	var cursorID uintptr
+
+	switch cursor {
+	case MouseCursorArrow:
+		cursorID = IDC_ARROW
+	case MouseCursorPointer:
+		cursorID = IDC_HAND
+	case MouseCursorResizeHor:
+		cursorID = IDC_SIZEWE
+	case MouseCursorResizeVer:
+		cursorID = IDC_SIZENS
+	case MouseCursorIBeam:
+		cursorID = IDC_IBEAM
+	default:
+		return false
+	}
+
+	hCursor, _, _ := procLoadCursorW.Call(0, cursorID)
+	if hCursor == 0 {
+		return false
+	}
+
+	ret, _, _ := procSetCursor.Call(hCursor)
+	return ret != 0
 }
