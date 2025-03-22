@@ -4,6 +4,8 @@
 int InitWindow(void);
 void RunEventLoop(void);
 
+void CloseWindowById(int windowId);
+
 void go_on_paint(void* buffer, int width, int height, int hwnd);
 void go_on_key_down(int keycode);
 void go_on_key_up(int keycode);
@@ -17,5 +19,6 @@ void go_on_mouse_scroll(int delta);
 void go_on_mouse_enter(void);
 void go_on_mouse_leave(void);
 void go_on_mouse_double_click(int button, int x, int y);
+
 
 #endif

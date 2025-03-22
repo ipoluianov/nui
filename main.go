@@ -21,6 +21,8 @@ func main() {
 	nui.Init()
 	wnd := nui.CreateWindow()
 	wnd.OnKeyDown = func(key nui.Key) {
+		wnd.Close()
+
 		if key == nui.KeyEsc {
 			wnd.Close()
 		}

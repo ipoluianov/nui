@@ -73,6 +73,11 @@ func go_on_paint(ptr unsafe.Pointer, width C.int, height C.int, hwnd C.int) {
 //export go_on_key_down
 func go_on_key_down(code C.int) {
 	fmt.Println("Key down:", code)
+	for _, win := range hwnds {
+		if win.OnKeyDown != nil {
+			win.OnKeyDown(Key(code))
+		}
+	}
 }
 
 //export go_on_key_up

@@ -1,7 +1,14 @@
 #import <Cocoa/Cocoa.h>
 #import "window.h"
 
-static NSWindow* window;
+// static NSWindow* window;
+
+static NSMutableDictionary<NSNumber*, NSWindow*> *windowMap;
+
+__attribute__((constructor))
+static void InitWindowMap() {
+    windowMap = [NSMutableDictionary new];
+}
 
 @interface AppDelegate : NSObject <NSApplicationDelegate>
 @end
@@ -178,6 +185,7 @@ static void buffer_release_callback(void* info, const void* data, size_t size) {
 
 int InitWindow(void) {
     @autoreleasepool {
+        NSWindow* window;
         NSApplication *app = [NSApplication sharedApplication];
         [app setActivationPolicy:NSApplicationActivationPolicyRegular];
 
@@ -198,12 +206,22 @@ int InitWindow(void) {
         [window makeKeyAndOrderFront:nil];
 
         [app activateIgnoringOtherApps:YES];
-        return (int)[window windowNumber];
+        int windowId = (int)[window windowNumber];
+        windowMap[@(windowId)] = window;
+        return windowId;
     }
 }
 
 void RunEventLoop(void) {
     @autoreleasepool {
         [[NSApplication sharedApplication] run];
+    }
+}
+
+void CloseWindowById(int windowId) {
+    NSWindow *w = windowMap[@(windowId)];
+    if (w) {
+        [w performClose:nil];
+        [windowMap removeObjectForKey:@(windowId)];
     }
 }

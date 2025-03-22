@@ -65,6 +65,7 @@ func (c *NativeWindow) EventLoop() {
 }
 
 func (c *NativeWindow) Close() {
+	C.CloseWindowById(C.int(c.hwnd))
 }
 
 func (c *NativeWindow) SetTitle(title string) {
