@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"image"
 	"image/draw"
 
@@ -30,23 +31,30 @@ func main() {
 		if key == nui.KeyF4 {
 			wnd.SetMouseCursor(nui.MouseCursorArrow)
 		}
+
+		if key == nui.KeyF5 {
+			wnd.SetMouseCursor(nui.MouseCursorPointer)
+		}
+
+	}
+
+	wnd.OnMouseEnter = func() {
+		fmt.Println("Mouse enter")
+	}
+
+	wnd.OnMouseLeave = func() {
+		fmt.Println("Mouse leave")
+	}
+
+	wnd.OnMouseMove = func(x, y int) {
+		//fmt.Printf("Mouse move: %d, %d\n", x, y)
 	}
 
 	counter := 0
 	testPng := nui.GetRGBATestImage()
-
 	wnd.OnPaint = func(rgba *image.RGBA) {
 		counter++
-
-		_ = testPng
-		// full with black
-		dataSize := rgba.Stride * rgba.Rect.Dy()
-		for i := 0; i < dataSize; i++ {
-			rgba.Pix[i] = 0
-		}
 		draw.Draw(rgba, rgba.Rect, testPng, image.Point{0, 0}, draw.Src)
-		//fmt.Println("Paint event", counter, "width", width, "height", height)
-		//
 	}
 
 	wnd.Show()

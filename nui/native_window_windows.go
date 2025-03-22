@@ -12,6 +12,9 @@ import (
 type NativeWindow struct {
 	hwnd syscall.Handle
 
+	currentCursor MouseCursor
+	lastSetCursor MouseCursor
+
 	// Keyboard events
 	OnKeyDown func(keyCode Key)
 	OnKeyUp   func(keyCode Key)
@@ -419,6 +422,9 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 
 		if !mouseInside {
 			mouseInside = true
+			if win != nil {
+				win.lastSetCursor = MouseCursorNotDefined
+			}
 			if win != nil && win.OnMouseEnter != nil {
 				win.OnMouseEnter()
 			}
@@ -430,6 +436,8 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 			}
 			procTrackMouseEvent.Call(uintptr(unsafe.Pointer(&tme)))
 		}
+
+		win.changeMouseCursor(win.currentCursor)
 		return 0
 
 	case WM_LBUTTONDOWN:
@@ -540,6 +548,8 @@ func CreateWindow() *NativeWindow {
 	className, _ := syscall.UTF16PtrFromString("MyWindowClass")
 	windowTitle, _ := syscall.UTF16PtrFromString("1234567")
 
+	c.currentCursor = MouseCursorArrow
+
 	hInstance, _, _ := procGetModuleHandleW.Call(0)
 
 	wndClass := WNDCLASSEXW{
@@ -641,8 +651,20 @@ func (c *NativeWindow) Resize(width, height int) {
 	)
 }
 
-func (c *NativeWindow) SetMouseCursor(cursor MouseCursor) bool {
+func (c *NativeWindow) SetMouseCursor(cursor MouseCursor) {
+	if c.currentCursor == cursor {
+		return
+	}
+	c.currentCursor = cursor
+	c.changeMouseCursor(cursor)
+}
+
+func (c *NativeWindow) changeMouseCursor(cursor MouseCursor) bool {
 	var cursorID uintptr
+
+	if c.lastSetCursor == cursor && c.lastSetCursor != MouseCursorNotDefined {
+		return true
+	}
 
 	switch cursor {
 	case MouseCursorArrow:
@@ -663,6 +685,9 @@ func (c *NativeWindow) SetMouseCursor(cursor MouseCursor) bool {
 	if hCursor == 0 {
 		return false
 	}
+
+	c.lastSetCursor = cursor
+	fmt.Println("Setting cursor to:", cursor)
 
 	ret, _, _ := procSetCursor.Call(hCursor)
 	return ret != 0
