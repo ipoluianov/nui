@@ -411,13 +411,17 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 		return 0
 
 	case WM_MOUSEMOVE:
-		//x := int16(lParam & 0xFFFF)
-		//y := int16((lParam >> 16) & 0xFFFF)
-		// println("Mouse move:", x, y)
+		x := int16(lParam & 0xFFFF)
+		y := int16((lParam >> 16) & 0xFFFF)
+		if win != nil && win.OnMouseMove != nil {
+			win.OnMouseMove(int(x), int(y))
+		}
 
 		if !mouseInside {
 			mouseInside = true
-			println("Mouse entered window")
+			if win != nil && win.OnMouseEnter != nil {
+				win.OnMouseEnter()
+			}
 
 			tme := TRACKMOUSEEVENT{
 				cbSize:    uint32(unsafe.Sizeof(TRACKMOUSEEVENT{})),
@@ -431,59 +435,95 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 	case WM_LBUTTONDOWN:
 		x := int16(lParam & 0xFFFF)
 		y := int16((lParam >> 16) & 0xFFFF)
-		println("Left button down at:", x, y)
-		procInvalidateRect.Call(uintptr(hwnd), 0, 0)
+		if win != nil && win.OnMouseDownLeftButton != nil {
+			win.OnMouseDownLeftButton(int(x), int(y))
+		}
 		return 0
 
 	case WM_LBUTTONUP:
-		println("Left button up")
+		if win != nil && win.OnMouseUpLeftButton != nil {
+			x := int16(lParam & 0xFFFF)
+			y := int16((lParam >> 16) & 0xFFFF)
+			win.OnMouseUpLeftButton(int(x), int(y))
+		}
 		return 0
 
 	case WM_RBUTTONDOWN:
 		x := int16(lParam & 0xFFFF)
 		y := int16((lParam >> 16) & 0xFFFF)
-		println("Right button down at:", x, y)
+		if win != nil && win.OnMouseDownRightButton != nil {
+			win.OnMouseDownRightButton(int(x), int(y))
+		}
 		return 0
 
 	case WM_RBUTTONUP:
-		println("Right button up")
+		x := int16(lParam & 0xFFFF)
+		y := int16((lParam >> 16) & 0xFFFF)
+		if win != nil && win.OnMouseUpRightButton != nil {
+			win.OnMouseUpRightButton(int(x), int(y))
+		}
 		return 0
 
 	case WM_MBUTTONDOWN:
 		x := int16(lParam & 0xFFFF)
 		y := int16((lParam >> 16) & 0xFFFF)
-		println("Middle button down at:", x, y)
+		if win != nil && win.OnMouseDownMiddleButton != nil {
+			win.OnMouseDownMiddleButton(int(x), int(y))
+		}
 		return 0
 
 	case WM_MBUTTONUP:
-		println("Middle button up")
+		x := int16(lParam & 0xFFFF)
+		y := int16((lParam >> 16) & 0xFFFF)
+		if win != nil && win.OnMouseUpMiddleButton != nil {
+			win.OnMouseUpMiddleButton(int(x), int(y))
+		}
 		return 0
 
 	case WM_MOUSEWHEEL:
 		delta := int16((wParam >> 16) & 0xFFFF)
-		println("Mouse wheel delta:", delta)
+		if win != nil && win.OnMouseWheel != nil {
+			win.OnMouseWheel(int(delta))
+		}
 		return 0
 
 	case WM_LBUTTONDBLCLK:
 		x := int16(lParam & 0xFFFF)
 		y := int16((lParam >> 16) & 0xFFFF)
-		println("Left double click at:", x, y)
+		if win != nil && win.OnMouseDoubleClickLeftButton != nil {
+			win.OnMouseDoubleClickLeftButton(int(x), int(y))
+		}
 		return 0
 
 	case WM_RBUTTONDBLCLK:
-		println("Right double click")
+		x := int16(lParam & 0xFFFF)
+		y := int16((lParam >> 16) & 0xFFFF)
+		if win != nil && win.OnMouseDoubleClickRightButton != nil {
+			win.OnMouseDoubleClickRightButton(int(x), int(y))
+		}
 		return 0
 
 	case WM_MBUTTONDBLCLK:
-		println("Middle double click")
+		x := int16(lParam & 0xFFFF)
+		y := int16((lParam >> 16) & 0xFFFF)
+		if win != nil && win.OnMouseDoubleClickMiddleButton != nil {
+			win.OnMouseDoubleClickMiddleButton(int(x), int(y))
+		}
 		return 0
 
 	case WM_MOUSELEAVE:
 		mouseInside = false
-		println("Mouse left window")
+		if win != nil && win.OnMouseLeave != nil {
+			win.OnMouseLeave()
+		}
 		return 0
 
 	case WM_SIZE:
+		width := int16(lParam & 0xFFFF)
+		height := int16((lParam >> 16) & 0xFFFF)
+		if win != nil && win.OnResize != nil {
+			win.OnResize(int(width), int(height))
+		}
 		procInvalidateRect.Call(uintptr(hwnd), 0, 0)
 		return 0
 
@@ -522,7 +562,7 @@ func CreateWindow() *NativeWindow {
 		0,
 		uintptr(unsafe.Pointer(className)),
 		uintptr(unsafe.Pointer(windowTitle)),
-		WS_OVERLAPPEDWINDOW|WS_VISIBLE,
+		WS_OVERLAPPEDWINDOW,
 		CW_USEDEFAULT,
 		CW_USEDEFAULT,
 		640,
@@ -534,14 +574,14 @@ func CreateWindow() *NativeWindow {
 	)
 
 	c.hwnd = syscall.Handle(hwnd)
-
 	hwnds[c.hwnd] = &c
-
-	procShowWindow.Call(hwnd, SW_SHOWDEFAULT)
-	procInvalidateRect.Call(uintptr(hwnd), 0, 0)
-	procUpdateWindow.Call(hwnd)
-
 	return &c
+}
+
+func (c *NativeWindow) Show() {
+	procShowWindow.Call(uintptr(c.hwnd), SW_SHOWDEFAULT)
+	procInvalidateRect.Call(uintptr(c.hwnd), 0, 0)
+	procUpdateWindow.Call(uintptr(c.hwnd))
 }
 
 func (c *NativeWindow) EventLoop() {

@@ -10,7 +10,6 @@ import (
 func main() {
 	nui.Init()
 	wnd := nui.CreateWindow()
-
 	wnd.OnKeyDown = func(key nui.Key) {
 		if key == nui.KeyEsc {
 			wnd.Close()
@@ -34,7 +33,6 @@ func main() {
 	}
 
 	counter := 0
-
 	testPng := nui.GetRGBATestImage()
 
 	wnd.OnPaint = func(rgba *image.RGBA) {
@@ -51,5 +49,6 @@ func main() {
 		//
 	}
 
+	wnd.Show()
 	wnd.EventLoop()
 }
