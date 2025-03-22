@@ -202,9 +202,9 @@ const (
 var mouseInside bool = false
 
 var (
-	procGetDeviceCaps = gdi32.NewProc("GetDeviceCaps")
-	procGetObjectType = gdi32.NewProc("GetObjectType")
-	procGetClipBox    = gdi32.NewProc("GetClipBox")
+	//procGetDeviceCaps = gdi32.NewProc("GetDeviceCaps")
+	//procGetObjectType = gdi32.NewProc("GetObjectType")
+	procGetClipBox = gdi32.NewProc("GetClipBox")
 )
 
 const (
@@ -238,19 +238,6 @@ func loadPngFromBytes(bs []byte) (*image.RGBA, error) {
 	return rgba, nil
 }
 
-func convertRGBAToBytes(rgba *image.RGBA) []byte {
-	pixels := make([]byte, 0)
-	for y := rgba.Bounds().Min.Y; y < rgba.Bounds().Max.Y; y++ {
-		for x := rgba.Bounds().Min.X; x < rgba.Bounds().Max.X; x++ {
-			r, g, b, a := rgba.At(x, y).RGBA()
-			pixels = append(pixels, byte(b>>8), byte(g>>8), byte(r>>8), byte(a>>8))
-		}
-	}
-
-	return pixels
-}
-
-var imageBytes []byte
 var hwnds map[syscall.Handle]*NativeWindow
 
 func init() {
@@ -264,21 +251,6 @@ func GetNativeWindowByHandle(hwnd syscall.Handle) *NativeWindow {
 	return nil
 }
 
-/*func getImageBytes() (bs []byte, width int32, height int32) {
-	if imageBytes != nil {
-		return imageBytes, 800, 600
-	}
-	rgba, err := loadPngFromBytes(TestPng)
-	if err != nil {
-		panic(err)
-	}
-	bs = convertRGBAToBytes(rgba)
-	imageBytes = bs
-	width = int32(rgba.Bounds().Max.X)
-	height = int32(rgba.Bounds().Max.Y)
-	return
-}*/
-
 func GetRGBATestImage() *image.RGBA {
 	rgba, err := loadPngFromBytes(TestPng)
 	if err != nil {
@@ -288,43 +260,71 @@ func GetRGBATestImage() *image.RGBA {
 }
 
 func getHDCSize(hdc uintptr) (width int32, height int32) {
-	w, _, _ := procGetDeviceCaps.Call(uintptr(hdc), HORZRES)
-	h, _, _ := procGetDeviceCaps.Call(uintptr(hdc), VERTRES)
-	return int32(w), int32(h)
+	//w, _, _ := procGetDeviceCaps.Call(uintptr(hdc), HORZRES)
+	//h, _, _ := procGetDeviceCaps.Call(uintptr(hdc), VERTRES)
+	//return int32(w), int32(h)
+
+	// from clipbox
+	var r rect
+	procGetClipBox.Call(hdc, uintptr(unsafe.Pointer(&r)))
+	return r.right - r.left, r.bottom - r.top
 }
 
 var pixBuffer = make([]byte, 1920*1080*4*8)
 
 func drawImageToHDC(img *image.RGBA, hdc uintptr, width, height int32) {
-	height = 100
-	bi := BITMAPINFO{
-		Header: BITMAPINFOHEADER{
-			Size:        uint32(unsafe.Sizeof(BITMAPINFOHEADER{})),
-			Width:       width,
-			Height:      -height,
-			Planes:      1,
-			BitCount:    32,
-			Compression: 0,
-		},
+	const chunkHeight = 100
+
+	imgStride := img.Stride
+	totalHeight := int(height)
+
+	for y := 0; y < totalHeight; y += chunkHeight {
+		h := chunkHeight
+		if y+h > totalHeight {
+			h = totalHeight - y
+		}
+
+		bi := BITMAPINFO{
+			Header: BITMAPINFOHEADER{
+				Size:        uint32(unsafe.Sizeof(BITMAPINFOHEADER{})),
+				Width:       width,
+				Height:      -int32(h),
+				Planes:      1,
+				BitCount:    32,
+				Compression: 0,
+			},
+		}
+
+		for row := 0; row < h; row++ {
+			srcOffset := (y + row) * imgStride
+			dstOffset := row * int(width) * 4
+
+			for col := 0; col < int(width); col++ {
+				r := img.Pix[srcOffset+col*4+0]
+				g := img.Pix[srcOffset+col*4+1]
+				b := img.Pix[srcOffset+col*4+2]
+				//a := img.Pix[srcOffset+col*4+3]
+
+				pixBuffer[dstOffset+col*4+0] = b // Blue
+				pixBuffer[dstOffset+col*4+1] = g // Green
+				pixBuffer[dstOffset+col*4+2] = r // Red
+				pixBuffer[dstOffset+col*4+3] = 255
+			}
+		}
+
+		ptr := uintptr(unsafe.Pointer(&pixBuffer[0]))
+
+		procSetDIBitsToDevice.Call(
+			hdc,
+			0, uintptr(y), // xDest, yDest
+			uintptr(width), uintptr(h), // w, h
+			0, 0, // xSrc, ySrc
+			0, uintptr(h), // Start scan line, number of scan lines
+			ptr,
+			uintptr(unsafe.Pointer(&bi)),
+			0,
+		)
 	}
-
-	pixels := convertRGBAToBytes(img)
-
-	copy(pixBuffer, pixels)
-
-	pointerToBuffer := uintptr(unsafe.Pointer(&pixBuffer[0]))
-
-	procSetDIBitsToDevice.Call(
-		hdc,
-		0, 0,
-		uintptr(width), uintptr(height),
-		0, 0,
-		0,
-		uintptr(height),
-		pointerToBuffer,
-		uintptr(unsafe.Pointer(&bi)),
-		0,
-	)
 }
 
 func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
@@ -560,6 +560,8 @@ func CreateWindow() *NativeWindow {
 
 func (c *NativeWindow) EventLoop() {
 	var msg MSG
+
+	procInvalidateRect.Call(uintptr(c.hwnd), 0, 0)
 	for {
 		ret, _, err := procGetMessageW.Call(uintptr(unsafe.Pointer(&msg)), 0, 0, 0)
 		e := err.(syscall.Errno)

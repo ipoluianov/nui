@@ -37,7 +37,7 @@ func main() {
 
 	wnd.OnPaint = func(width int, height int) *image.RGBA {
 		counter++
-		fmt.Println("Paint event", counter)
+		fmt.Println("Paint event", counter, "width", width, "height", height)
 		testPng := nui.GetRGBATestImage()
 		return testPng
 	}
