@@ -23,9 +23,10 @@ static void buffer_release_callback(void* info, const void* data, size_t size) {
     uint8_t* buffer = (uint8_t*)malloc(dataSize);
     if (!buffer) return;
 
-    memset(buffer, 255, dataSize); // белый фон
+    memset(buffer, 255, dataSize); 
 
-    go_on_paint(buffer, width, height);
+    int windowId = (int)[self.window windowNumber];
+    go_on_paint(buffer, width, height, windowId);
 
     CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
     CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
@@ -50,7 +51,7 @@ static void buffer_release_callback(void* info, const void* data, size_t size) {
 
 @end
 
-void InitWindow(void) {
+int InitWindow(void) {
     @autoreleasepool {
         NSApplication *app = [NSApplication sharedApplication];
         [app setActivationPolicy:NSApplicationActivationPolicyRegular];
@@ -69,6 +70,7 @@ void InitWindow(void) {
         [window makeKeyAndOrderFront:nil];
 
         [app activateIgnoringOtherApps:YES];
+        return (int)[window windowNumber];
     }
 }
 

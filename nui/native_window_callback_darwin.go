@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"fmt"
 	"image"
-	"image/draw"
 	"image/png"
 	"unsafe"
 )
@@ -38,7 +37,7 @@ func loadPngFromBytes(bs []byte) (*image.RGBA, error) {
 }
 
 //export go_on_paint
-func go_on_paint(ptr unsafe.Pointer, width C.int, height C.int) {
+func go_on_paint(ptr unsafe.Pointer, width C.int, height C.int, hwnd C.int) {
 	// read the embedded png image
 
 	imgTest := GetRGBATestImage()
@@ -51,7 +50,13 @@ func go_on_paint(ptr unsafe.Pointer, width C.int, height C.int) {
 		Rect:   image.Rect(0, 0, int(width), int(height)),
 	}
 
-	draw.Draw(img, img.Rect, imgTest, image.Point{0, 0}, draw.Src)
+	if win, ok := hwnds[int(hwnd)]; ok {
+		win.OnPaint(img)
+	}
+
+	//mainNativeWindow.OnPaint(img)
+
+	//draw.Draw(img, img.Rect, imgTest, image.Point{0, 0}, draw.Src)
 	_ = imgTest
 
 	/*for y := 0; y < img.Rect.Dy(); y++ {
