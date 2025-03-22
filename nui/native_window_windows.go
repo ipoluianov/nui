@@ -41,6 +41,7 @@ type NativeWindow struct {
 	OnMove         func(x, y int)
 	OnResize       func(width, height int)
 	OnCloseRequest func() bool
+	OnTimer        func()
 }
 
 var (
@@ -75,6 +76,9 @@ var (
 
 	procLoadCursorW = user32.NewProc("LoadCursorW")
 	procSetCursor   = user32.NewProc("SetCursor")
+
+	procSetTimer  = user32.NewProc("SetTimer")
+	procKillTimer = user32.NewProc("KillTimer")
 )
 
 const (
@@ -136,6 +140,9 @@ const (
 	WM_MOUSELEAVE = 0x02A3
 
 	TME_LEAVE = 0x00000002
+
+	WM_TIMER   = 0x0113
+	timerID1ms = 1 // любой уникальный ID
 )
 
 type WNDCLASSEXW struct {
@@ -384,6 +391,7 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 		return 0
 
 	case WM_DESTROY:
+		procKillTimer.Call(uintptr(hwnd), timerID1ms)
 		procPostQuitMessage.Call(0)
 		return 0
 
@@ -552,6 +560,14 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 		procDefWindowProcW.Call(uintptr(hwnd), uintptr(msg), wParam, lParam)
 		return 0
 
+	case WM_TIMER:
+		if wParam == timerID1ms {
+			if win != nil && win.OnTimer != nil {
+				win.OnTimer()
+			}
+		}
+		return 0
+
 	default:
 		ret, _, _ := procDefWindowProcW.Call(uintptr(hwnd), uintptr(msg), wParam, lParam)
 		return ret
@@ -611,8 +627,24 @@ func (c *NativeWindow) Show() {
 	procUpdateWindow.Call(uintptr(c.hwnd))
 }
 
+func (c *NativeWindow) Hide() {
+	procShowWindow.Call(uintptr(c.hwnd), SW_HIDE)
+}
+
+func (c *NativeWindow) Update() {
+	procInvalidateRect.Call(uintptr(c.hwnd), 0, 0)
+	procUpdateWindow.Call(uintptr(c.hwnd))
+}
+
 func (c *NativeWindow) EventLoop() {
 	var msg MSG
+
+	procSetTimer.Call(
+		uintptr(c.hwnd),
+		timerID1ms,
+		1,
+		0,
+	)
 
 	procInvalidateRect.Call(uintptr(c.hwnd), 0, 0)
 	for {

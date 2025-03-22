@@ -44,6 +44,10 @@ func main() {
 			wnd.MinimizeWindow()
 		}
 
+		if key == nui.KeyF8 {
+			wnd.Update()
+		}
+
 	}
 
 	wnd.OnMouseEnter = func() {
@@ -63,10 +67,23 @@ func main() {
 		return true
 	}
 
+	timerCounter := 0
+	timerCounterBig := 0
+
+	wnd.OnTimer = func() {
+		timerCounter++
+		if timerCounter > 10 {
+			timerCounter = 0
+			timerCounterBig++
+			wnd.SetTitle("Timer 1 sec " + fmt.Sprint(timerCounterBig))
+		}
+	}
+
 	counter := 0
 	testPng := nui.GetRGBATestImage()
 	wnd.OnPaint = func(rgba *image.RGBA) {
 		counter++
+		fmt.Println("Paint", counter)
 		draw.Draw(rgba, rgba.Rect, testPng, image.Point{0, 0}, draw.Src)
 	}
 
