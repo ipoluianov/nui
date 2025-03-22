@@ -47,6 +47,7 @@ const (
 	SW_SHOWDEFAULT      = 10
 
 	CS_DBLCLKS = 0x0008
+	CS_OWNDC   = 0x0020
 
 	WM_SIZE = 0x0005
 
@@ -154,6 +155,60 @@ const (
 
 var mouseInside bool = false
 
+var (
+	procGetDeviceCaps = gdi32.NewProc("GetDeviceCaps")
+	procGetObjectType = gdi32.NewProc("GetObjectType")
+	procGetClipBox    = gdi32.NewProc("GetClipBox")
+)
+
+const (
+	HORZRES   = 8
+	VERTRES   = 10
+	BITSPIXEL = 12
+	PLANES    = 14
+
+	OBJ_DC        = 1
+	OBJ_MEMDC     = 10
+	OBJ_ENHMETADC = 12
+)
+
+type rect struct {
+	left, top, right, bottom int32
+}
+
+func DiagnoseHDC(hdc uintptr) {
+	fmt.Println("🧪 Diagnosing HDC:", hdc)
+
+	// Device capabilities
+	horz, _, _ := procGetDeviceCaps.Call(hdc, HORZRES)
+	vert, _, _ := procGetDeviceCaps.Call(hdc, VERTRES)
+	bits, _, _ := procGetDeviceCaps.Call(hdc, BITSPIXEL)
+	planes, _, _ := procGetDeviceCaps.Call(hdc, PLANES)
+	fmt.Printf("  DeviceCaps: %dx%d, BPP: %d, Planes: %d\n", horz, vert, bits, planes)
+
+	// Object type
+	objType, _, _ := procGetObjectType.Call(hdc)
+	var objTypeName string
+	switch objType {
+	case OBJ_DC:
+		objTypeName = "OBJ_DC"
+	case OBJ_MEMDC:
+		objTypeName = "OBJ_MEMDC"
+	case OBJ_ENHMETADC:
+		objTypeName = "OBJ_ENHMETADC"
+	case 0:
+		objTypeName = "INVALID"
+	default:
+		objTypeName = fmt.Sprintf("Unknown (%d)", objType)
+	}
+	fmt.Println("  Object Type:", objTypeName)
+
+	// Clip box
+	var r rect
+	clipResult, _, _ := procGetClipBox.Call(hdc, uintptr(unsafe.Pointer(&r)))
+	fmt.Printf("  ClipBox result: %d, Rect: %+v\n", clipResult, r)
+}
+
 func loadPngFromBytes(bs []byte) (*image.RGBA, error) {
 	img, err := png.Decode(bytes.NewReader(bs))
 	if err != nil {
@@ -199,14 +254,23 @@ func getImageBytes() (bs []byte, width int32, height int32) {
 	return
 }
 
+var pixBuffer = make([]byte, 1920*1080*4)
+
 func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
-	//fmt.Println("Message:", win.MessageName(msg))
+	//fmt.Println("Message:", native.MessageName(msg))
 	switch msg {
 	case WM_PAINT:
+
 		var ps PAINTSTRUCT
-		hdc, _, _ := procBeginPaint.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&ps)))
+		hdc, _, err := procBeginPaint.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&ps)))
+		fmt.Println("BeginPaint:", hdc, hwnd, err)
+		e := err.(syscall.Errno)
+		if e != 0 {
+			panic(e)
+		}
 
 		pixels, imageWidth, imageHeight := getImageBytes()
+		fmt.Println("Buffer address", &pixels[0])
 		bi := BITMAPINFO{
 			Header: BITMAPINFOHEADER{
 				Size:        uint32(unsafe.Sizeof(BITMAPINFOHEADER{})),
@@ -218,8 +282,14 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 			},
 		}
 
+		copy(pixBuffer, pixels)
+
 		imageWidthAsUintPtr := uintptr(imageWidth)
 		imageHeightAsUintPtr := uintptr(imageHeight)
+
+		pointerToBuffer := uintptr(unsafe.Pointer(&pixBuffer[0]))
+		//pointerToBuffer := uintptr(unsafe.Pointer(&pixels[0]))
+		//fmt.Println("Pointer to buffer:", strconv.FormatInt(int64(pointerToBuffer), 16))
 
 		procSetDIBitsToDevice.Call(
 			hdc,
@@ -228,12 +298,13 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 			0, 0,
 			0,
 			imageHeightAsUintPtr,
-			uintptr(unsafe.Pointer(&pixels[0])),
+			pointerToBuffer,
 			uintptr(unsafe.Pointer(&bi)),
 			0,
 		)
 
 		procEndPaint.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&ps)))
+
 		return 0
 
 	case WM_DESTROY:
@@ -265,9 +336,9 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 		return 0
 
 	case WM_MOUSEMOVE:
-		x := int16(lParam & 0xFFFF)
-		y := int16((lParam >> 16) & 0xFFFF)
-		println("Mouse move:", x, y)
+		//x := int16(lParam & 0xFFFF)
+		//y := int16((lParam >> 16) & 0xFFFF)
+		// println("Mouse move:", x, y)
 
 		if !mouseInside {
 			mouseInside = true
@@ -286,6 +357,7 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 		x := int16(lParam & 0xFFFF)
 		y := int16((lParam >> 16) & 0xFFFF)
 		println("Left button down at:", x, y)
+		procInvalidateRect.Call(uintptr(hwnd), 0, 0)
 		return 0
 
 	case WM_LBUTTONUP:
@@ -346,8 +418,10 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 	}
 }
 
-func Run() {
+///////////////////////////////////////////////////////////////////
 
+func CreateWindow() *NativeWindow {
+	var c NativeWindow
 	className, _ := syscall.UTF16PtrFromString("MyWindowClass")
 	windowTitle, _ := syscall.UTF16PtrFromString("1234567")
 
@@ -355,7 +429,7 @@ func Run() {
 
 	wndClass := WNDCLASSEXW{
 		cbSize:        uint32(unsafe.Sizeof(WNDCLASSEXW{})),
-		style:         CS_DBLCLKS,
+		style:         CS_OWNDC | CS_DBLCLKS,
 		lpfnWndProc:   syscall.NewCallback(wndProc),
 		hInstance:     syscall.Handle(hInstance),
 		hCursor:       0,
@@ -384,18 +458,28 @@ func Run() {
 		0,
 	)
 
+	c.hwnd = syscall.Handle(hwnd)
+
 	procShowWindow.Call(hwnd, SW_SHOWDEFAULT)
 	procInvalidateRect.Call(uintptr(hwnd), 0, 0)
 	procUpdateWindow.Call(hwnd)
 
+	return &c
+}
+
+func (c *NativeWindow) EventLoop() {
 	var msg MSG
 	for {
-		ret, _, _ := procGetMessageW.Call(uintptr(unsafe.Pointer(&msg)), 0, 0, 0)
+		ret, _, err := procGetMessageW.Call(uintptr(unsafe.Pointer(&msg)), 0, 0, 0)
+		e := err.(syscall.Errno)
+		if e != 0 {
+			panic(e)
+		}
+
 		if ret == 0 {
 			fmt.Println("Exiting...")
 			break
 		}
-		//fmt.Println("procTranslateMessage Message:", msg.message)
 		procTranslateMessage.Call(uintptr(unsafe.Pointer(&msg)))
 		procDispatchMessageW.Call(uintptr(unsafe.Pointer(&msg)))
 	}
