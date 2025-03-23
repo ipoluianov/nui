@@ -79,6 +79,9 @@ var (
 
 	procSetTimer  = user32.NewProc("SetTimer")
 	procKillTimer = user32.NewProc("KillTimer")
+
+	procSendMessageW = user32.NewProc("SendMessageW")
+	procCreateIcon   = user32.NewProc("CreateIcon")
 )
 
 const (
@@ -97,6 +100,12 @@ const (
 	SWP_NOMOVE     = 0x0002
 	SWP_NOZORDER   = 0x0004
 	SWP_NOACTIVATE = 0x0010
+
+	WM_SETICON      = 0x0080
+	ICON_SMALL      = 0
+	ICON_BIG        = 1
+	IMAGE_ICON      = 1
+	LR_DEFAULTCOLOR = 0x0000
 
 	IDC_ARROW  = uintptr(32512)
 	IDC_HAND   = uintptr(32649)
@@ -618,6 +627,11 @@ func CreateWindow() *NativeWindow {
 
 	c.hwnd = syscall.Handle(hwnd)
 	hwnds[c.hwnd] = &c
+
+	icon := image.NewRGBA(image.Rect(0, 0, 32, 32))
+
+	c.SetAppIcon(icon)
+
 	return &c
 }
 
@@ -752,4 +766,48 @@ func (c *NativeWindow) MaximizeWindow() {
 
 func (c *NativeWindow) RestoreWindow() {
 	procShowWindow.Call(uintptr(c.hwnd), SW_RESTORE)
+}
+
+func createHICONFromRGBA(img *image.RGBA) syscall.Handle {
+	width := img.Bounds().Dx()
+	height := img.Bounds().Dy()
+
+	// В Windows иконки идут снизу вверх — инвертируем
+	pixels := make([]byte, 0, width*height*4)
+	for y := height - 1; y >= 0; y-- {
+		rowStart := y * img.Stride
+		for x := 0; x < width; x++ {
+			i := rowStart + x*4
+			r := img.Pix[i]
+			g := img.Pix[i+1]
+			b := img.Pix[i+2]
+			a := img.Pix[i+3]
+
+			// Windows ожидает BGRA
+			pixels = append(pixels, b, g, r, a)
+		}
+	}
+
+	hIcon, _, _ := procCreateIcon.Call(
+		0, // hInstance (0 = current)
+		uintptr(width),
+		uintptr(height),
+		1,  // Planes
+		32, // BitsPerPixel
+		0,  // XOR mask (set to 0 — not used)
+		uintptr(unsafe.Pointer(&pixels[0])),
+	)
+
+	return syscall.Handle(hIcon)
+}
+
+func (c *NativeWindow) SetAppIcon(icon *image.RGBA) {
+	hIcon := createHICONFromRGBA(icon)
+	if hIcon == 0 {
+		fmt.Println("failed to create icon")
+		return
+	}
+
+	procSendMessageW.Call(uintptr(c.hwnd), WM_SETICON, ICON_BIG, uintptr(hIcon))
+	procSendMessageW.Call(uintptr(c.hwnd), WM_SETICON, ICON_SMALL, uintptr(hIcon))
 }
