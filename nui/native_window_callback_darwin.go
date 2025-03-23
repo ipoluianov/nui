@@ -61,6 +61,17 @@ func go_on_paint(hwnd C.int, ptr unsafe.Pointer, width C.int, height C.int) {
 	}
 }
 
+//export go_on_resize
+func go_on_resize(windowId C.int, width C.int, height C.int) {
+	if win, ok := hwnds[int(windowId)]; ok {
+		if win.OnResize != nil {
+			win.windowWidth = int(width)
+			win.windowHeight = int(height)
+			win.OnResize(int(width), int(height))
+		}
+	}
+}
+
 //export go_on_key_down
 func go_on_key_down(hwnd C.int, code C.int) {
 	key := Key(ConvertMacOSKeyToNuiKey(int(code)))
@@ -202,9 +213,17 @@ func go_on_mouse_double_click(hwnd C.int, button, x, y C.int) {
 	}
 }
 
+var dtLastTimer = time.Now()
+
 //export go_on_timer
 func go_on_timer(hwnd C.int) {
 	if win, ok := hwnds[int(hwnd)]; ok {
+		dtNow := time.Now()
+		dtDiff := dtNow.Sub(dtLastTimer)
+		if dtDiff < time.Millisecond*50 {
+			return
+		}
+		dtLastTimer = dtNow
 		if win.OnTimer != nil {
 			win.OnTimer()
 		}

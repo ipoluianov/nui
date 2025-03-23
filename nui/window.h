@@ -31,5 +31,6 @@ void go_on_mouse_enter(int hwnd);
 void go_on_mouse_leave(int hwnd);
 void go_on_mouse_double_click(int hwnd, int button, int x, int y);
 void go_on_timer(int hwnd);
+void go_on_resize(int windowId, int width, int height);
 
 #endif

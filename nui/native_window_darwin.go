@@ -19,6 +19,9 @@ type NativeWindow struct {
 	currentCursor MouseCursor
 	lastSetCursor MouseCursor
 
+	windowWidth  int
+	windowHeight int
+
 	// Keyboard events
 	OnKeyDown func(keyCode Key)
 	OnKeyUp   func(keyCode Key)
@@ -79,7 +82,7 @@ func CreateWindow() *NativeWindow {
 
 	c.hwnd = int(C.InitWindow())
 	hwnds[c.hwnd] = &c
-	c.startTimer(16)
+	c.startTimer(1)
 	return &c
 }
 
@@ -386,4 +389,8 @@ func (c *NativeWindow) startTimer(intervalMs float64) {
 
 func (c *NativeWindow) stopTimer() {
 	C.StopTimer(C.int(c.hwnd))
+}
+
+func (c *NativeWindow) Size() (width, height int) {
+	return c.windowWidth, c.windowHeight
 }

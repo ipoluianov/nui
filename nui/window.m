@@ -38,6 +38,13 @@ static void InitWindowMap() {
     return YES;
 }
 
+- (void)setFrameSize:(NSSize)newSize {
+    [super setFrameSize:newSize];
+
+    int windowId = (int)[self.window windowNumber];
+    go_on_resize(windowId, (int)newSize.width, (int)newSize.height);
+}
+
 - (void)keyUp:(NSEvent *)event {
     NSString *chars = [event characters];
     if ([chars length] > 0) {
