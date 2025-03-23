@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"image"
 	"image/png"
+	"math/rand"
+	"strconv"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -14,6 +17,11 @@ type NativeWindow struct {
 
 	currentCursor MouseCursor
 	lastSetCursor MouseCursor
+
+	windowPosX   int
+	windowPosY   int
+	windowWidth  int
+	windowHeight int
 
 	// Keyboard events
 	OnKeyDown func(keyCode Key)
@@ -82,6 +90,8 @@ var (
 
 	procSendMessageW = user32.NewProc("SendMessageW")
 	procCreateIcon   = user32.NewProc("CreateIcon")
+
+	procGetSystemMetrics = user32.NewProc("GetSystemMetrics")
 )
 
 const (
@@ -95,6 +105,9 @@ const (
 	SW_SHOWMINIMIZED = 2
 	SW_SHOWMAXIMIZED = 3
 	SW_RESTORE       = 9
+
+	SM_CXSCREEN = 0
+	SM_CYSCREEN = 1
 
 	SWP_NOSIZE     = 0x0001
 	SWP_NOMOVE     = 0x0002
@@ -116,6 +129,7 @@ const (
 	CS_DBLCLKS = 0x0008
 	CS_OWNDC   = 0x0020
 
+	WM_MOVE = 0x0003
 	WM_SIZE = 0x0005
 
 	WM_CLOSE   = 0x0010
@@ -556,7 +570,17 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 		if win != nil && win.OnResize != nil {
 			win.OnResize(int(width), int(height))
 		}
+		win.windowWidth = int(width)
+		win.windowHeight = int(height)
 		procInvalidateRect.Call(uintptr(hwnd), 0, 0)
+		return 0
+
+	case WM_MOVE:
+		x := int16(lParam & 0xFFFF)
+		y := int16((lParam >> 16) & 0xFFFF)
+		if win != nil && win.OnMove != nil {
+			win.OnMove(int(x), int(y))
+		}
 		return 0
 
 	case WM_CLOSE:
@@ -587,13 +611,23 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 
 func CreateWindow() *NativeWindow {
 	var c NativeWindow
-	className, _ := syscall.UTF16PtrFromString("MyWindowClass")
-	windowTitle, _ := syscall.UTF16PtrFromString("1234567")
 
+	// Create a unique class name
+	dt := time.Now().Format("2006-01-02-15-04-05")
+	randomNumber := rand.Intn(1024 * 1024)
+	tempClassName := "WCL" + dt + strconv.Itoa(randomNumber)
+	className, _ := syscall.UTF16PtrFromString(tempClassName)
+
+	// Set default window title
+	windowTitle, _ := syscall.UTF16PtrFromString(DefaultWindowTitle)
+
+	// Set default cursor
 	c.currentCursor = MouseCursorArrow
 
+	// Get the instance handle
 	hInstance, _, _ := procGetModuleHandleW.Call(0)
 
+	// Register the window class
 	wndClass := WNDCLASSEXW{
 		cbSize:        uint32(unsafe.Sizeof(WNDCLASSEXW{})),
 		style:         CS_OWNDC | CS_DBLCLKS,
@@ -603,13 +637,9 @@ func CreateWindow() *NativeWindow {
 		hbrBackground: 5,
 		lpszClassName: className,
 	}
-
-	if err := procTextOutW.Find(); err != nil {
-		panic("TextOutW not found: " + err.Error())
-	}
-
 	procRegisterClassExW.Call(uintptr(unsafe.Pointer(&wndClass)))
 
+	// Create the window
 	hwnd, _, _ := procCreateWindowExW.Call(
 		0,
 		uintptr(unsafe.Pointer(className)),
@@ -625,27 +655,31 @@ func CreateWindow() *NativeWindow {
 		0,
 	)
 
+	// Store the window handle
 	c.hwnd = syscall.Handle(hwnd)
 	hwnds[c.hwnd] = &c
 
+	// Set default icon
 	icon := image.NewRGBA(image.Rect(0, 0, 32, 32))
-
 	c.SetAppIcon(icon)
 
 	return &c
 }
 
 func (c *NativeWindow) Show() {
+	// Show the window
 	procShowWindow.Call(uintptr(c.hwnd), SW_SHOWDEFAULT)
 	procInvalidateRect.Call(uintptr(c.hwnd), 0, 0)
 	procUpdateWindow.Call(uintptr(c.hwnd))
 }
 
 func (c *NativeWindow) Hide() {
+	// Hide the window
 	procShowWindow.Call(uintptr(c.hwnd), SW_HIDE)
 }
 
 func (c *NativeWindow) Update() {
+	// Update the window
 	procInvalidateRect.Call(uintptr(c.hwnd), 0, 0)
 	procUpdateWindow.Call(uintptr(c.hwnd))
 }
@@ -701,6 +735,20 @@ func (c *NativeWindow) Move(x, y int) {
 	)
 }
 
+func GetScreenSize() (width, height int) {
+	w, _, _ := procGetSystemMetrics.Call(SM_CXSCREEN)
+	h, _, _ := procGetSystemMetrics.Call(SM_CYSCREEN)
+	return int(w), int(h)
+}
+
+func (c *NativeWindow) MoveToCenterOfScreen() {
+	screenWidth, screenHeight := GetScreenSize()
+	windowWidth, windowHeight := c.Size()
+	x := (screenWidth - windowWidth) / 2
+	y := (screenHeight - windowHeight) / 2
+	c.Move(int(x), int(y))
+}
+
 func (c *NativeWindow) Resize(width, height int) {
 	flags := SWP_NOMOVE | SWP_NOZORDER
 
@@ -712,6 +760,10 @@ func (c *NativeWindow) Resize(width, height int) {
 		uintptr(height),
 		uintptr(flags),
 	)
+}
+
+func (c *NativeWindow) Size() (width, height int) {
+	return c.windowWidth, c.windowHeight
 }
 
 func (c *NativeWindow) SetMouseCursor(cursor MouseCursor) {

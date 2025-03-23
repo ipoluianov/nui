@@ -8,6 +8,10 @@ import (
 //go:embed test.png
 var TestPng []byte
 
+const (
+	DefaultWindowTitle = "NUI Window"
+)
+
 func Init() {
 	runtime.LockOSThread()
 }
