@@ -44,12 +44,6 @@ func loadPngFromBytes(bs []byte) (*image.RGBA, error) {
 
 //export go_on_paint
 func go_on_paint(ptr unsafe.Pointer, width C.int, height C.int, hwnd C.int) {
-	// read the embedded png image
-
-	//imgTest := GetRGBATestImage()
-
-	//fmt.Println("imgTest", imgTest.Bounds())
-
 	img := &image.RGBA{
 		Pix:    unsafe.Slice((*uint8)(ptr), int(width*height*4)),
 		Stride: int(width) * 4,
@@ -61,36 +55,26 @@ func go_on_paint(ptr unsafe.Pointer, width C.int, height C.int, hwnd C.int) {
 			win.OnPaint(img)
 		}
 	}
-
-	// mainNativeWindow.OnPaint(img)
-
-	//draw.Draw(img, img.Rect, imgTest, image.Point{0, 0}, draw.Src)
-	//_ = imgTest
-
-	/*for y := 0; y < img.Rect.Dy(); y++ {
-		for x := 0; x < img.Rect.Dx(); x++ {
-			if x > 100 && x < 200 && y > 100 && y < 200 {
-				img.Set(x, y, color.RGBA{255, 0, 0, 255})
-			} else {
-				img.Set(x, y, color.RGBA{0, 255, 0, 255})
-			}
-		}
-	}*/
 }
 
 //export go_on_key_down
 func go_on_key_down(code C.int) {
-	fmt.Println("Key down:", code)
+	key := Key(ConvertMacOSKeyToNuiKey(int(code)))
 	for _, win := range hwnds {
 		if win.OnKeyDown != nil {
-			win.OnKeyDown(Key(code))
+			win.OnKeyDown(key)
 		}
 	}
 }
 
 //export go_on_key_up
 func go_on_key_up(code C.int) {
-	fmt.Println("Key up:", code)
+	key := Key(ConvertMacOSKeyToNuiKey(int(code)))
+	for _, win := range hwnds {
+		if win.OnKeyUp != nil {
+			win.OnKeyUp(key)
+		}
+	}
 }
 
 //export go_on_modifier_change

@@ -21,7 +21,7 @@ func main() {
 	nui.Init()
 	wnd := nui.CreateWindow()
 	wnd.OnKeyDown = func(key nui.Key) {
-		wnd.Close()
+		fmt.Println("Key down:", key.String())
 
 		if key == nui.KeyEsc {
 			wnd.Close()
@@ -32,7 +32,7 @@ func main() {
 		}
 
 		if key == nui.KeyF2 {
-			wnd.Resize(1000, 800)
+			wnd.Resize(200, 100)
 		}
 
 		if key == nui.KeyF3 {

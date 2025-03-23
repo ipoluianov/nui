@@ -37,8 +37,8 @@ static void InitWindowMap() {
 - (void)keyUp:(NSEvent *)event {
     NSString *chars = [event characters];
     if ([chars length] > 0) {
-        unichar c = [chars characterAtIndex:0];
-        go_on_key_up((int)c);
+        //unichar c = [chars characterAtIndex:0];
+        go_on_key_up((int)[event keyCode]);
     }
 }
 
@@ -194,7 +194,7 @@ int InitWindow(void) {
         [app setDelegate:delegate];
 
         NSRect frame = NSMakeRect(100, 100, 800, 600);
-        NSUInteger style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable;
+        NSUInteger style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable | NSWindowStyleMaskMiniaturizable;
 
         window = [[NSWindow alloc] initWithContentRect:frame
                                              styleMask:style
@@ -224,5 +224,63 @@ void CloseWindowById(int windowId) {
     if (w) {
         [w performClose:nil];
         [windowMap removeObjectForKey:@(windowId)];
+    }
+}
+
+void SetWindowTitle(int windowId, const char* title) {
+    NSWindow *w = windowMap[@(windowId)];
+    if (w && title) {
+        NSString *nsTitle = [NSString stringWithUTF8String:title];
+        [w setTitle:nsTitle];
+    }
+}
+
+void SetWindowSize(int windowId, int width, int height) {
+    NSWindow *w = windowMap[@(windowId)];
+    if (w) {
+        NSRect frame = [w frame];
+        NSRect newFrame = NSMakeRect(
+            frame.origin.x,
+            frame.origin.y + frame.size.height - height,
+            width,
+            height
+        );
+        [w setFrame:newFrame display:YES animate:NO];
+    }
+}
+
+void SetWindowPosition(int windowId, int x, int y) {
+    NSWindow *w = windowMap[@(windowId)];
+    if (w) {
+        NSRect frame = [w frame];
+        CGFloat newY = y;
+
+        NSRect screenFrame = [[w screen] frame];
+        newY = screenFrame.size.height - y - frame.size.height;
+
+        NSRect newFrame = NSMakeRect(
+            x,
+            newY,
+            frame.size.width,
+            frame.size.height
+        );
+
+        [w setFrame:newFrame display:YES animate:NO];
+    }
+}
+
+void MinimizeWindow(int windowId) {
+    NSWindow *w = windowMap[@(windowId)];
+    if (w) {
+        [NSApp activateIgnoringOtherApps:YES];
+        [w makeKeyAndOrderFront:nil];
+        [w miniaturize:nil];
+    }
+}
+
+void MaximizeWindow(int windowId) {
+    NSWindow *w = windowMap[@(windowId)];
+    if (w && ![w isZoomed]) {
+        [w zoom:nil];
     }
 }

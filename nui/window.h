@@ -5,6 +5,13 @@ int InitWindow(void);
 void RunEventLoop(void);
 
 void CloseWindowById(int windowId);
+void SetWindowTitle(int windowId, const char* title);
+void SetWindowSize(int windowId, int width, int height);
+void SetWindowPosition(int windowId, int x, int y);
+void MinimizeWindow(int windowId);
+void MaximizeWindow(int windowId);
+
+
 
 void go_on_paint(void* buffer, int width, int height, int hwnd);
 void go_on_key_down(int keycode);
