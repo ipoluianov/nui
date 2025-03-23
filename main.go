@@ -3,15 +3,28 @@ package main
 import (
 	"fmt"
 	"image"
+	"image/color"
 	"image/draw"
 
 	"github.com/ipoluianov/nui/nui"
 )
 
+func fullRectOnRGBA(rgba *image.RGBA, x, y, w, h int, c color.Color) {
+	for i := x; i < x+w; i++ {
+		for j := y; j < y+h; j++ {
+			rgba.Set(i, j, c)
+		}
+	}
+}
+
 func main() {
 	nui.Init()
 	wnd := nui.CreateWindow()
+	wnd.SetAppIcon(nui.GetRGBATestImage())
+
 	wnd.OnKeyDown = func(key nui.Key) {
+		fmt.Println("Key down:", key.String())
+
 		if key == nui.KeyEsc {
 			wnd.Close()
 		}
@@ -21,7 +34,7 @@ func main() {
 		}
 
 		if key == nui.KeyF2 {
-			wnd.Resize(1000, 800)
+			wnd.Resize(200, 100)
 		}
 
 		if key == nui.KeyF3 {
@@ -85,6 +98,9 @@ func main() {
 		counter++
 		fmt.Println("Paint", counter)
 		draw.Draw(rgba, rgba.Rect, testPng, image.Point{0, 0}, draw.Src)
+		fullRectOnRGBA(rgba, 100, 100, 100, 100, color.RGBA{255, 0, 0, 255})
+		fullRectOnRGBA(rgba, 200, 200, 100, 100, color.RGBA{0, 255, 0, 255})
+		fullRectOnRGBA(rgba, 300, 300, 100, 100, color.RGBA{0, 0, 255, 255})
 	}
 
 	wnd.Show()
