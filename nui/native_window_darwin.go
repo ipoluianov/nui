@@ -45,6 +45,7 @@ type NativeWindow struct {
 	OnMove         func(x, y int)
 	OnResize       func(width, height int)
 	OnCloseRequest func() bool
+	OnTimer        func()
 }
 
 var hwnds map[int]*NativeWindow
@@ -373,6 +374,10 @@ func (c *NativeWindow) SetAppIcon(img image.Image) {
 		C.int(width),
 		C.int(height),
 	)
+}
+
+func (c *NativeWindow) Update() {
+	C.UpdateWindow(C.int(c.hwnd))
 }
 
 func (c *NativeWindow) startTimer(intervalMs float64) {

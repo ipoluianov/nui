@@ -211,7 +211,7 @@ int InitWindow(void) {
 
         GoPaintView *view = [[GoPaintView alloc] initWithFrame:frame];
         [window setContentView:view];
-        [window setTitle:@"NUI"];
+        [window setTitle:@"NUI Window"];
         //[window makeKeyAndOrderFront:nil];
 
         [app activateIgnoringOtherApps:YES];
@@ -362,5 +362,14 @@ void StopTimer(int windowId) {
     if (timer) {
         [timer invalidate];
         [timers removeObjectForKey:key];
+    }
+}
+
+void UpdateWindow(int windowId) {
+    NSNumber *key = @(windowId);
+    NSWindow *win = windowMap[key];
+    if (win) {
+        NSView *view = [win contentView];
+        [view setNeedsDisplay:YES];
     }
 }

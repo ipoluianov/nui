@@ -15,6 +15,7 @@ void MaximizeWindow(int windowId);
 void SetAppIconFromRGBA(const char* data, int width, int height);
 void StartTimer(int windowId, double intervalMilliseconds);
 void StopTimer(int windowId);
+void UpdateWindow(int windowId);
 
 void go_on_paint(void* buffer, int width, int height, int hwnd);
 void go_on_key_down(int keycode);

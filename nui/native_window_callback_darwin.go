@@ -51,7 +51,7 @@ func go_on_paint(ptr unsafe.Pointer, width C.int, height C.int, hwnd C.int) {
 	}
 
 	imgDataSize := img.Rect.Dx() * img.Rect.Dy() * 4
-	copy(img.Pix, canvasBufferBackground)
+	copy(img.Pix[:imgDataSize], canvasBufferBackground)
 
 	if win, ok := hwnds[int(hwnd)]; ok {
 		if win.OnPaint != nil {
@@ -127,5 +127,10 @@ func go_on_mouse_double_click(button, x, y C.int) {
 
 //export go_on_timer
 func go_on_timer(windowId C.int) {
-	fmt.Println("Timer tick")
+	//fmt.Println("Timer tick")
+	if win, ok := hwnds[int(windowId)]; ok {
+		if win.OnTimer != nil {
+			win.OnTimer()
+		}
+	}
 }
