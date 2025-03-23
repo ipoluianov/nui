@@ -42,7 +42,7 @@ static void InitWindowMap() {
     NSString *chars = [event characters];
     if ([chars length] > 0) {
         //unichar c = [chars characterAtIndex:0];
-        go_on_key_up((int)[event keyCode]);
+        go_on_key_up((int)[self.window windowNumber], (int)[event keyCode]);
     }
 }
 
@@ -50,10 +50,10 @@ static void InitWindowMap() {
     NSString *chars = [event characters];
     if ([chars length] > 0) {
         unichar ch = [chars characterAtIndex:0];
-        go_on_char((int)ch);
+        go_on_char((int)[self.window windowNumber], (int)ch);
     }
 
-    go_on_key_down((int)[event keyCode]);
+    go_on_key_down((int)[self.window windowNumber], (int)[event keyCode]);
 }
 
 - (void)flagsChanged:(NSEvent *)event {
@@ -64,54 +64,54 @@ static void InitWindowMap() {
     int alt   = (flags & NSEventModifierFlagOption) ? 1 : 0;
     int cmd   = (flags & NSEventModifierFlagCommand) ? 1 : 0;
 
-    go_on_modifier_change(shift, ctrl, alt, cmd);
+    go_on_modifier_change((int)[self.window windowNumber], shift, ctrl, alt, cmd);
 }
 
 - (void)mouseDown:(NSEvent *)event {
     NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
     if ([event clickCount] == 2) {
-        go_on_mouse_double_click(0, (int)p.x, (int)p.y); // Left
+        go_on_mouse_double_click((int)[self.window windowNumber], 0, (int)p.x, (int)p.y); // Left
     } else {
-        go_on_mouse_down(0, (int)p.x, (int)p.y);
+        go_on_mouse_down((int)[self.window windowNumber], 0, (int)p.x, (int)p.y);
     }
 }
 
 - (void)rightMouseDown:(NSEvent *)event {
     NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
     if ([event clickCount] == 2) {
-        go_on_mouse_double_click(1, (int)p.x, (int)p.y); // Right
+        go_on_mouse_double_click((int)[self.window windowNumber], 1, (int)p.x, (int)p.y); // Right
     } else {
-        go_on_mouse_down(1, (int)p.x, (int)p.y);
+        go_on_mouse_down((int)[self.window windowNumber], 1, (int)p.x, (int)p.y);
     }
 }
 
 - (void)otherMouseDown:(NSEvent *)event {
     NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
     if ([event clickCount] == 2) {
-        go_on_mouse_double_click(2, (int)p.x, (int)p.y); // Middle/Other
+        go_on_mouse_double_click((int)[self.window windowNumber], 2, (int)p.x, (int)p.y); // Middle/Other
     } else {
-        go_on_mouse_down(2, (int)p.x, (int)p.y);
+        go_on_mouse_down((int)[self.window windowNumber], 2, (int)p.x, (int)p.y);
     }
 }
 
 - (void)mouseUp:(NSEvent *)event {
     NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
-    go_on_mouse_up(0, (int)p.x, (int)p.y);
+    go_on_mouse_up((int)[self.window windowNumber], 0, (int)p.x, (int)p.y);
 }
 
 - (void)rightMouseUp:(NSEvent *)event {
     NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
-    go_on_mouse_up(1, (int)p.x, (int)p.y);
+    go_on_mouse_up((int)[self.window windowNumber], 1, (int)p.x, (int)p.y);
 }
 
 - (void)otherMouseUp:(NSEvent *)event {
     NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
-    go_on_mouse_up(2, (int)p.x, (int)p.y);
+    go_on_mouse_up((int)[self.window windowNumber], 2, (int)p.x, (int)p.y);
 }
 
 - (void)mouseMoved:(NSEvent *)event {
     NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
-    go_on_mouse_move((int)p.x, (int)p.y);
+    go_on_mouse_move((int)[self.window windowNumber], (int)p.x, (int)p.y);
 }
 
 - (void)mouseDragged:(NSEvent *)event {
@@ -122,15 +122,15 @@ static void InitWindowMap() {
     float deltaX = [event deltaX];
     float deltaY = [event deltaY];
     if (deltaX == 0 && deltaY == 0) return;
-    go_on_mouse_scroll(deltaX, deltaY);
+    go_on_mouse_scroll((int)[self.window windowNumber], deltaX, deltaY);
 }
 
 - (void)mouseEntered:(NSEvent *)event {
-    go_on_mouse_enter();
+    go_on_mouse_enter((int)[self.window windowNumber]);
 }
 
 - (void)mouseExited:(NSEvent *)event {
-    go_on_mouse_leave();
+    go_on_mouse_leave((int)[self.window windowNumber]);
 }
 
 - (void)updateTrackingAreas {
@@ -166,8 +166,7 @@ static void buffer_release_callback(void* info, const void* data, size_t size) {
 
     memset(buffer, 255, dataSize); 
 
-    int windowId = (int)[self.window windowNumber];
-    go_on_paint(buffer, width, height, windowId);
+    go_on_paint((int)[self.window windowNumber], buffer, width, height);
 
     CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
     CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();

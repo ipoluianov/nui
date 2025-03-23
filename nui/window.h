@@ -17,19 +17,19 @@ void StartTimer(int windowId, double intervalMilliseconds);
 void StopTimer(int windowId);
 void UpdateWindow(int windowId);
 
-void go_on_paint(void* buffer, int width, int height, int hwnd);
-void go_on_key_down(int keycode);
-void go_on_key_up(int keycode);
-void go_on_modifier_change(int shift, int ctrl, int alt, int cmd);
-void go_on_char(int codepoint);
+void go_on_paint(int hwnd, void* buffer, int width, int height);
+void go_on_key_down(int hwnd, int keycode);
+void go_on_key_up(int hwnd, int keycode);
+void go_on_modifier_change(int hwnd, int shift, int ctrl, int alt, int cmd);
+void go_on_char(int hwnd, int codepoint);
 
-void go_on_mouse_down(int button, int x, int y);
-void go_on_mouse_up(int button, int x, int y);
-void go_on_mouse_move(int x, int y);
-void go_on_mouse_scroll(float deltaX, float deltaY);
-void go_on_mouse_enter(void);
-void go_on_mouse_leave(void);
-void go_on_mouse_double_click(int button, int x, int y);
-void go_on_timer(int windowId);
+void go_on_mouse_down(int hwnd, int button, int x, int y);
+void go_on_mouse_up(int hwnd, int button, int x, int y);
+void go_on_mouse_move(int hwnd, int x, int y);
+void go_on_mouse_scroll(int hwnd, float deltaX, float deltaY);
+void go_on_mouse_enter(int hwnd);
+void go_on_mouse_leave(int hwnd);
+void go_on_mouse_double_click(int hwnd, int button, int x, int y);
+void go_on_timer(int hwnd);
 
 #endif
