@@ -164,7 +164,7 @@ static void buffer_release_callback(void* info, const void* data, size_t size) {
     if (!buffer) return;
 
 
-    memset(buffer, 255, dataSize); 
+    //memset(buffer, 255, dataSize); 
 
     go_on_paint((int)[self.window windowNumber], buffer, width, height);
 
