@@ -203,7 +203,7 @@ int InitWindow(void) {
 
         GoPaintView *view = [[GoPaintView alloc] initWithFrame:frame];
         [window setContentView:view];
-        [window setTitle:@"Paint from Go"];
+        [window setTitle:@"NUI"];
         [window makeKeyAndOrderFront:nil];
 
         [app activateIgnoringOtherApps:YES];
