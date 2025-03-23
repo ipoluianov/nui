@@ -119,8 +119,10 @@ static void InitWindowMap() {
 }
 
 - (void)scrollWheel:(NSEvent *)event {
+    float deltaX = [event deltaX];
     float deltaY = [event deltaY];
-    go_on_mouse_scroll((int)deltaY);
+    if (deltaX == 0 && deltaY == 0) return;
+    go_on_mouse_scroll(deltaX, deltaY);
 }
 
 - (void)mouseEntered:(NSEvent *)event {

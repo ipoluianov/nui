@@ -23,6 +23,9 @@ func Run() {
 
 	counter := 0
 
+	scrollPosX := float64(0)
+	scrollPosY := float64(0)
+
 	wnd.OnPaint = func(rgba *image.RGBA) {
 		cnv := nuicanvas.NewCanvas(rgba)
 		_ = cnv
@@ -30,6 +33,18 @@ func Run() {
 		cnv.DrawRect(10, 10, 100, 100, color.RGBA{255, 0, 0, 255})
 		counterStr := "Counter: " + strconv.FormatInt(int64(counter), 10)
 		cnv.DrawFixedString(10, 120, counterStr, 2, color.RGBA{200, 200, 200, 255})
+
+		scrollXStr := "ScrollX: " + strconv.FormatFloat(scrollPosX, 'f', 2, 64)
+		scrollYStr := "ScrollY: " + strconv.FormatFloat(scrollPosY, 'f', 2, 64)
+
+		cnv.DrawFixedString(10, 140, scrollXStr, 2, color.RGBA{200, 200, 200, 255})
+		cnv.DrawFixedString(10, 160, scrollYStr, 2, color.RGBA{200, 200, 200, 255})
+	}
+
+	wnd.OnMouseWheel = func(deltaX float64, deltaY float64) {
+		scrollPosX += float64(deltaX)
+		scrollPosY += float64(deltaY)
+		wnd.Update()
 	}
 
 	wnd.OnTimer = func() {
@@ -39,8 +54,8 @@ func Run() {
 
 	wnd.Show()
 	//wnd.MoveToCenterOfScreen()
-	wnd.Resize(900, 900)
+	wnd.Resize(300, 300)
 	//wnd.MoveToCenterOfScreen()
-	wnd.MaximizeWindow()
+	//wnd.MaximizeWindow()
 	wnd.EventLoop()
 }

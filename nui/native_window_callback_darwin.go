@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"image"
 	"image/png"
+	"time"
 	"unsafe"
 )
 
@@ -106,8 +107,19 @@ func go_on_mouse_move(x, y C.int) {
 }
 
 //export go_on_mouse_scroll
-func go_on_mouse_scroll(delta C.int) {
-	fmt.Printf("Scroll: delta=%d\n", delta)
+func go_on_mouse_scroll(deltaX C.float, deltaY C.float) {
+	dt := time.Now()
+	dtStr := dt.Format("15:04:05.000")
+
+	fmt.Println("Scroll: delta=", dtStr, deltaX, deltaY)
+	deltaX = deltaX * 2
+	deltaY = deltaY * 2
+
+	for _, win := range hwnds {
+		if win.OnMouseWheel != nil {
+			win.OnMouseWheel(float64(deltaX), float64(deltaY))
+		}
+	}
 }
 
 //export go_on_mouse_enter

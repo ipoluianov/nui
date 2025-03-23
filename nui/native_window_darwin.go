@@ -34,7 +34,7 @@ type NativeWindow struct {
 	OnMouseUpRightButton           func(x, y int)
 	OnMouseDownMiddleButton        func(x, y int)
 	OnMouseUpMiddleButton          func(x, y int)
-	OnMouseWheel                   func(delta int)
+	OnMouseWheel                   func(deltaX float64, deltaY float64)
 	OnMouseDoubleClickLeftButton   func(x, y int)
 	OnMouseDoubleClickRightButton  func(x, y int)
 	OnMouseDoubleClickMiddleButton func(x, y int)
