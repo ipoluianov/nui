@@ -26,7 +26,7 @@ func Run() {
 	wnd.OnPaint = func(rgba *image.RGBA) {
 		cnv := nuicanvas.NewCanvas(rgba)
 		_ = cnv
-		cnv.Clear(color.RGBA{0, 0, 0, 255})
+		//cnv.Clear(color.RGBA{0, 0, 0, 255})
 		cnv.DrawRect(10, 10, 100, 100, color.RGBA{255, 0, 0, 255})
 		counterStr := "Counter: " + strconv.FormatInt(int64(counter), 10)
 		cnv.DrawFixedString(10, 120, counterStr, 2, color.RGBA{200, 200, 200, 255})

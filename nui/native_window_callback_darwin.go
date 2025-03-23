@@ -50,6 +50,9 @@ func go_on_paint(ptr unsafe.Pointer, width C.int, height C.int, hwnd C.int) {
 		Rect:   image.Rect(0, 0, int(width), int(height)),
 	}
 
+	imgDataSize := img.Rect.Dx() * img.Rect.Dy() * 4
+	copy(img.Pix, canvasBufferBackground)
+
 	if win, ok := hwnds[int(hwnd)]; ok {
 		if win.OnPaint != nil {
 			win.OnPaint(img)

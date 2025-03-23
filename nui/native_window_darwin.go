@@ -8,6 +8,7 @@ package nui
 import "C"
 import (
 	"image"
+	"image/color"
 	"image/draw"
 	"unsafe"
 )
@@ -52,8 +53,29 @@ func init() {
 	hwnds = make(map[int]*NativeWindow)
 }
 
+const maxCanvasWidth = 10000
+const maxCanvasHeight = 5000
+
+var canvasBufferBackground = make([]byte, maxCanvasWidth*maxCanvasHeight*4)
+
+func initCanvasBufferBackground(col color.Color) {
+	for y := 0; y < maxCanvasHeight; y++ {
+		for x := 0; x < maxCanvasWidth; x++ {
+			i := (y*maxCanvasWidth + x) * 4
+			r, g, b, a := col.RGBA()
+			canvasBufferBackground[i+0] = byte(b)
+			canvasBufferBackground[i+1] = byte(g)
+			canvasBufferBackground[i+2] = byte(r)
+			canvasBufferBackground[i+3] = byte(a)
+		}
+	}
+}
+
 func CreateWindow() *NativeWindow {
 	var c NativeWindow
+
+	initCanvasBufferBackground(color.RGBA{0, 50, 0, 255})
+
 	c.hwnd = int(C.InitWindow())
 	hwnds[c.hwnd] = &c
 	c.startTimer(16)

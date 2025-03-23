@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"image"
+	"image/color"
 	"image/png"
 	"math/rand"
 	"strconv"
@@ -370,6 +371,20 @@ const maxCanvasWidth = 10000
 const maxCanvasHeight = 5000
 
 var canvasBuffer = make([]byte, maxCanvasWidth*maxCanvasHeight*4)
+var canvasBufferBackground = make([]byte, maxCanvasWidth*maxCanvasHeight*4)
+
+func initCanvasBufferBackground(col color.Color) {
+	for y := 0; y < maxCanvasHeight; y++ {
+		for x := 0; x < maxCanvasWidth; x++ {
+			i := (y*maxCanvasWidth + x) * 4
+			r, g, b, a := col.RGBA()
+			canvasBufferBackground[i+0] = byte(b)
+			canvasBufferBackground[i+1] = byte(g)
+			canvasBufferBackground[i+2] = byte(r)
+			canvasBufferBackground[i+3] = byte(a)
+		}
+	}
+}
 
 func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 	//fmt.Println("Message:", native.MessageName(msg))
@@ -399,9 +414,10 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 
 		// Clear the canvas
 		canvasDataBufferSize := int(hdcWidth * hdcHeight * 4)
-		for i := range canvasDataBufferSize {
+		/*for i := range canvasDataBufferSize {
 			canvasBuffer[i] = 0
-		}
+		}*/
+		copy(canvasBuffer[:canvasDataBufferSize], canvasBufferBackground)
 
 		if win != nil && win.OnPaint != nil {
 			win.OnPaint(img)
@@ -617,6 +633,8 @@ func CreateWindow() *NativeWindow {
 	randomNumber := rand.Intn(1024 * 1024)
 	tempClassName := "WCL" + dt + strconv.Itoa(randomNumber)
 	className, _ := syscall.UTF16PtrFromString(tempClassName)
+
+	initCanvasBufferBackground(color.RGBA{0, 50, 0, 255})
 
 	// Set default window title
 	windowTitle, _ := syscall.UTF16PtrFromString(DefaultWindowTitle)
