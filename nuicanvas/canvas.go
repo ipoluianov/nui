@@ -35,11 +35,12 @@ func (c *Canvas) Height() int {
 }
 
 func (c *Canvas) Clear(col color.Color) {
-	bounds := c.rgba.Bounds()
-	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-		for x := bounds.Min.X; x < bounds.Max.X; x++ {
-			c.SetPixel(x, y, col)
-		}
+	dataSize := c.rgba.Bounds().Dx() * c.rgba.Bounds().Dy() * 4
+	for i := 0; i < dataSize; i += 4 {
+		c.rgba.Pix[i] = col.(color.RGBA).R
+		c.rgba.Pix[i+1] = col.(color.RGBA).G
+		c.rgba.Pix[i+2] = col.(color.RGBA).B
+		c.rgba.Pix[i+3] = col.(color.RGBA).A
 	}
 }
 
@@ -110,7 +111,7 @@ func (c *Canvas) DrawFixedChar(x, y int, ch byte, pixelSize int, col color.Color
 			if charMask[yi*5+xi] == 1 {
 				c.FillRect(x+xi*pixelSize, y+yi*pixelSize, pixelSize, pixelSize, col)
 			}
-			c.DrawRect(x+xi*pixelSize, y+yi*pixelSize, pixelSize, pixelSize, color.RGBA{50, 50, 50, 255})
+			//c.DrawRect(x+xi*pixelSize, y+yi*pixelSize, pixelSize, pixelSize, color.RGBA{50, 50, 50, 255})
 		}
 	}
 }

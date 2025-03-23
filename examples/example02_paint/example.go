@@ -3,6 +3,7 @@ package example02paint
 import (
 	"image"
 	"image/color"
+	"strconv"
 
 	"github.com/ipoluianov/nui/nui"
 	"github.com/ipoluianov/nui/nuicanvas"
@@ -20,11 +21,20 @@ func Run() {
 	nui.Init()
 	wnd := nui.CreateWindow()
 
+	counter := 0
+
 	wnd.OnPaint = func(rgba *image.RGBA) {
 		cnv := nuicanvas.NewCanvas(rgba)
+		_ = cnv
 		cnv.Clear(color.RGBA{0, 0, 0, 255})
 		cnv.DrawRect(10, 10, 100, 100, color.RGBA{255, 0, 0, 255})
-		cnv.DrawFixedString(10, 120, string([]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31}), 10, color.RGBA{200, 200, 200, 255})
+		counterStr := "Counter: " + strconv.FormatInt(int64(counter), 10)
+		cnv.DrawFixedString(10, 120, counterStr, 2, color.RGBA{200, 200, 200, 255})
+	}
+
+	wnd.OnTimer = func() {
+		counter++
+		wnd.Update()
 	}
 
 	wnd.Show()
