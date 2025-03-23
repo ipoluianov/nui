@@ -1,7 +1,9 @@
 #ifndef WINDOW_H
 #define WINDOW_H
 
+
 int InitWindow(void);
+void ShowWindow(int windowId);
 void RunEventLoop(void);
 
 void CloseWindowById(int windowId);
@@ -10,8 +12,9 @@ void SetWindowSize(int windowId, int width, int height);
 void SetWindowPosition(int windowId, int x, int y);
 void MinimizeWindow(int windowId);
 void MaximizeWindow(int windowId);
-
-
+void SetAppIconFromRGBA(const char* data, int width, int height);
+void StartTimer(int windowId, double intervalMilliseconds);
+void StopTimer(int windowId);
 
 void go_on_paint(void* buffer, int width, int height, int hwnd);
 void go_on_key_down(int keycode);
@@ -26,6 +29,6 @@ void go_on_mouse_scroll(int delta);
 void go_on_mouse_enter(void);
 void go_on_mouse_leave(void);
 void go_on_mouse_double_click(int button, int x, int y);
-
+void go_on_timer(int windowId);
 
 #endif

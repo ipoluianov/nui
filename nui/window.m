@@ -4,6 +4,7 @@
 // static NSWindow* window;
 
 static NSMutableDictionary<NSNumber*, NSWindow*> *windowMap;
+static NSMutableDictionary<NSNumber*, NSTimer*> *timers;
 
 __attribute__((constructor))
 static void InitWindowMap() {
@@ -186,6 +187,10 @@ static void buffer_release_callback(void* info, const void* data, size_t size) {
 
 int InitWindow(void) {
     @autoreleasepool {
+        if (!timers) {
+            timers = [[NSMutableDictionary alloc] init];
+        }
+
         NSWindow* window;
         NSApplication *app = [NSApplication sharedApplication];
         [app setActivationPolicy:NSApplicationActivationPolicyRegular];
@@ -204,7 +209,7 @@ int InitWindow(void) {
         GoPaintView *view = [[GoPaintView alloc] initWithFrame:frame];
         [window setContentView:view];
         [window setTitle:@"NUI"];
-        [window makeKeyAndOrderFront:nil];
+        //[window makeKeyAndOrderFront:nil];
 
         [app activateIgnoringOtherApps:YES];
         int windowId = (int)[window windowNumber];
@@ -282,5 +287,77 @@ void MaximizeWindow(int windowId) {
     NSWindow *w = windowMap[@(windowId)];
     if (w && ![w isZoomed]) {
         [w zoom:nil];
+    }
+}
+
+void ShowWindow(int windowId) {
+    NSWindow *w = windowMap[@(windowId)];
+    if (!w) return;
+
+    [w makeKeyAndOrderFront:nil];
+    [NSApp activateIgnoringOtherApps:YES];
+}
+
+void SetAppIconFromRGBA(const char* data, int width, int height) {
+    if (!data || width <= 0 || height <= 0) return;
+
+    @autoreleasepool {
+        NSBitmapImageRep *bitmapRep = [[NSBitmapImageRep alloc]
+            initWithBitmapDataPlanes:NULL
+                          pixelsWide:width
+                          pixelsHigh:height
+                       bitsPerSample:8
+                     samplesPerPixel:4
+                            hasAlpha:YES
+                            isPlanar:NO
+                      colorSpaceName:NSCalibratedRGBColorSpace
+                         bytesPerRow:width * 4
+                        bitsPerPixel:32];
+
+        if (!bitmapRep) return;
+
+        memcpy([bitmapRep bitmapData], data, width * height * 4);
+
+        NSImage *image = [[NSImage alloc] initWithSize:NSMakeSize(width, height)];
+        [image addRepresentation:bitmapRep];
+
+        [NSApp setApplicationIconImage:image];
+    }
+}
+
+void timerCallback(NSTimer *timer) {
+    NSNumber *key = timer.userInfo;
+    if (key) {
+        int windowId = key.intValue;
+        go_on_timer(windowId); // вызываем Go-функцию
+    }
+}
+
+void StartTimer(int windowId, double intervalMilliseconds) {
+    if (!timers) timers = [[NSMutableDictionary alloc] init];
+
+    NSNumber *key = @(windowId);
+
+    NSTimer *existing = timers[key];
+    if (existing) {
+        [existing invalidate];
+    }
+
+    NSTimer *timer = [NSTimer scheduledTimerWithTimeInterval:(intervalMilliseconds / 1000.0)
+                                                      repeats:YES
+                                                        block:^(NSTimer * _Nonnull t) {
+        go_on_timer(windowId);
+    }];
+
+    [[NSRunLoop mainRunLoop] addTimer:timer forMode:NSRunLoopCommonModes];
+    timers[key] = timer;
+}
+
+void StopTimer(int windowId) {
+    NSNumber *key = @(windowId);
+    NSTimer *timer = timers[key];
+    if (timer) {
+        [timer invalidate];
+        [timers removeObjectForKey:key];
     }
 }

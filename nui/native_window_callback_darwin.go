@@ -121,3 +121,8 @@ func go_on_mouse_leave() {
 func go_on_mouse_double_click(button, x, y C.int) {
 	fmt.Printf("Mouse double click: button=%d at (%d,%d)\n", button, x, y)
 }
+
+//export go_on_timer
+func go_on_timer(windowId C.int) {
+	fmt.Println("Timer tick")
+}

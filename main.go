@@ -20,6 +20,8 @@ func fullRectOnRGBA(rgba *image.RGBA, x, y, w, h int, c color.Color) {
 func main() {
 	nui.Init()
 	wnd := nui.CreateWindow()
+	wnd.SetAppIcon(nui.GetRGBATestImage())
+
 	wnd.OnKeyDown = func(key nui.Key) {
 		fmt.Println("Key down:", key.String())
 

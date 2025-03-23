@@ -8,6 +8,8 @@ package nui
 import "C"
 import (
 	"image"
+	"image/draw"
+	"unsafe"
 )
 
 type NativeWindow struct {
@@ -54,10 +56,12 @@ func CreateWindow() *NativeWindow {
 	var c NativeWindow
 	c.hwnd = int(C.InitWindow())
 	hwnds[c.hwnd] = &c
+	c.startTimer(16)
 	return &c
 }
 
 func (c *NativeWindow) Show() {
+	C.ShowWindow(C.int(c.hwnd))
 }
 
 func (c *NativeWindow) EventLoop() {
@@ -332,4 +336,27 @@ func ConvertMacOSKeyToNuiKey(macosKey int) Key {
 		return key
 	}
 	return Key(0)
+}
+
+func (c *NativeWindow) SetAppIcon(img image.Image) {
+	bounds := img.Bounds()
+	width := bounds.Dx()
+	height := bounds.Dy()
+
+	rgba := image.NewRGBA(bounds)
+	draw.Draw(rgba, bounds, img, bounds.Min, draw.Src)
+
+	C.SetAppIconFromRGBA(
+		(*C.char)(unsafe.Pointer(&rgba.Pix[0])),
+		C.int(width),
+		C.int(height),
+	)
+}
+
+func (c *NativeWindow) startTimer(intervalMs float64) {
+	C.StartTimer(C.int(c.hwnd), C.double(intervalMs))
+}
+
+func (c *NativeWindow) stopTimer() {
+	C.StopTimer(C.int(c.hwnd))
 }
