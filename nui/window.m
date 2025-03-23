@@ -157,6 +157,7 @@ static void buffer_release_callback(void* info, const void* data, size_t size) {
     uint8_t* buffer = (uint8_t*)malloc(dataSize);
     if (!buffer) return;
 
+
     memset(buffer, 255, dataSize); 
 
     int windowId = (int)[self.window windowNumber];

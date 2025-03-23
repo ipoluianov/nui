@@ -12,11 +12,17 @@ import (
 	"unsafe"
 )
 
+var rgbaTest *image.RGBA
+
 func GetRGBATestImage() *image.RGBA {
+	if rgbaTest != nil {
+		return rgbaTest
+	}
 	rgba, err := loadPngFromBytes(TestPng)
 	if err != nil {
 		panic(err)
 	}
+	rgbaTest = rgba
 	return rgba
 }
 
@@ -40,9 +46,9 @@ func loadPngFromBytes(bs []byte) (*image.RGBA, error) {
 func go_on_paint(ptr unsafe.Pointer, width C.int, height C.int, hwnd C.int) {
 	// read the embedded png image
 
-	imgTest := GetRGBATestImage()
+	//imgTest := GetRGBATestImage()
 
-	fmt.Println("imgTest", imgTest.Bounds())
+	//fmt.Println("imgTest", imgTest.Bounds())
 
 	img := &image.RGBA{
 		Pix:    unsafe.Slice((*uint8)(ptr), int(width*height*4)),
@@ -51,13 +57,15 @@ func go_on_paint(ptr unsafe.Pointer, width C.int, height C.int, hwnd C.int) {
 	}
 
 	if win, ok := hwnds[int(hwnd)]; ok {
-		win.OnPaint(img)
+		if win.OnPaint != nil {
+			win.OnPaint(img)
+		}
 	}
 
-	//mainNativeWindow.OnPaint(img)
+	// mainNativeWindow.OnPaint(img)
 
 	//draw.Draw(img, img.Rect, imgTest, image.Point{0, 0}, draw.Src)
-	_ = imgTest
+	//_ = imgTest
 
 	/*for y := 0; y < img.Rect.Dy(); y++ {
 		for x := 0; x < img.Rect.Dx(); x++ {
@@ -107,7 +115,7 @@ func go_on_mouse_up(button, x, y C.int) {
 
 //export go_on_mouse_move
 func go_on_mouse_move(x, y C.int) {
-	fmt.Printf("Mouse move: (%d,%d)\n", x, y)
+	//fmt.Printf("Mouse move: (%d,%d)\n", x, y)
 }
 
 //export go_on_mouse_scroll
