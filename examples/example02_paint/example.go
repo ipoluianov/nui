@@ -41,11 +41,11 @@ func Run() {
 		cnv.DrawFixedString(10, 160, scrollYStr, 2, color.RGBA{200, 200, 200, 255})
 	}
 
-	wnd.OnMouseWheel = func(deltaX float64, deltaY float64) {
+	/*wnd.OnMouseWheel = func(deltaX float64, deltaY float64) {
 		scrollPosX += float64(deltaX)
 		scrollPosY += float64(deltaY)
 		wnd.Update()
-	}
+	}*/
 
 	wnd.OnTimer = func() {
 		counter++

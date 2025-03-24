@@ -414,9 +414,6 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 
 		// Clear the canvas
 		canvasDataBufferSize := int(hdcWidth * hdcHeight * 4)
-		/*for i := range canvasDataBufferSize {
-			canvasBuffer[i] = 0
-		}*/
 		copy(canvasBuffer[:canvasDataBufferSize], canvasBufferBackground)
 
 		if win != nil && win.OnPaint != nil {
