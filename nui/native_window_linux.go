@@ -53,7 +53,7 @@ type NativeWindow struct {
 	OnMouseUpRightButton           func(x, y int)
 	OnMouseDownMiddleButton        func(x, y int)
 	OnMouseUpMiddleButton          func(x, y int)
-	OnMouseWheel                   func(delta int)
+	OnMouseWheel                   func(deltaX float64, deltaY float64)
 	OnMouseDoubleClickLeftButton   func(x, y int)
 	OnMouseDoubleClickRightButton  func(x, y int)
 	OnMouseDoubleClickMiddleButton func(x, y int)
@@ -274,7 +274,8 @@ func (c *NativeWindow) EventLoop() {
 
 						c.drawImageRGBA(c.display, c.window, img)
 						paintTime := time.Since(dtLastPaint)
-						fmt.Println("PaintTime:", paintTime.Microseconds())
+						_ = paintTime
+						//fmt.Println("PaintTime:", paintTime.Microseconds())
 					}
 
 				}
@@ -304,23 +305,32 @@ func (c *NativeWindow) EventLoop() {
 
 			case C.ConfigureNotify:
 				configureEvent := (*C.XConfigureEvent)(unsafe.Pointer(&event))
-				/*posX = C.uint(configureEvent.x)
-				posY = C.uint(configureEvent.y)
-				width = C.uint(configureEvent.width)
-				height = C.uint(configureEvent.height)
 
+				needEventMove := false
+				if c.windowPosX != int(configureEvent.x) || c.windowPosY != int(configureEvent.y) {
+					needEventMove = true
+				}
+
+				needEventResize := false
+				if c.windowWidth != int(configureEvent.width) || c.windowHeight != int(configureEvent.height) {
+					needEventResize = true
+				}
+
+				c.windowPosX = int(configureEvent.x)
+				c.windowPosY = int(configureEvent.y)
 				c.windowWidth = int(configureEvent.width)
 				c.windowHeight = int(configureEvent.height)
 
-				fmt.Println("Configure:", posX, posY, width, height)*/
-				posX := int(configureEvent.x)
-				posY := int(configureEvent.y)
-				width := int(configureEvent.width)
-				height := int(configureEvent.height)
+				if needEventMove {
+					// TODO: event window move
+				}
 
-				fmt.Println("Configure:", posX, posY, width, height)
-				c.windowWidth = int(configureEvent.width)
-				c.windowHeight = int(configureEvent.height)
+				if needEventResize {
+					if c.OnResize != nil {
+						c.OnResize(c.windowWidth, c.windowHeight)
+					}
+				}
+
 				c.Update()
 
 			case C.KeyPress:
@@ -338,24 +348,90 @@ func (c *NativeWindow) EventLoop() {
 				keyEvent := (*C.XKeyEvent)(unsafe.Pointer(&event))
 				keySym := C.XLookupKeysym(keyEvent, 0)
 				fmt.Printf("Key released: KeySym = %d, KeyCode = %d\n", keySym, keyEvent.keycode)
+
 			case C.EnterNotify:
-				enterEvent := (*C.XCrossingEvent)(unsafe.Pointer(&event))
-				fmt.Printf("Cursor entered window at (%d, %d)\n", enterEvent.x, enterEvent.y)
+				//enterEvent := (*C.XCrossingEvent)(unsafe.Pointer(&event))
+				//fmt.Printf("Cursor entered window at (%d, %d)\n", enterEvent.x, enterEvent.y)
+				if c.OnMouseEnter != nil {
+					c.OnMouseEnter()
+				}
 
 			case C.LeaveNotify:
-				leaveEvent := (*C.XCrossingEvent)(unsafe.Pointer(&event))
-				fmt.Printf("Cursor left window at (%d, %d)\n", leaveEvent.x, leaveEvent.y)
+				//leaveEvent := (*C.XCrossingEvent)(unsafe.Pointer(&event))
+				//fmt.Printf("Cursor left window at (%d, %d)\n", leaveEvent.x, leaveEvent.y)
+				if c.OnMouseLeave != nil {
+					c.OnMouseLeave()
+				}
+
 			case C.MotionNotify:
-				//motionEvent := (*C.XMotionEvent)(unsafe.Pointer(&event))
-				//fmt.Printf("Mouse moved to (%d, %d)\n", motionEvent.x, motionEvent.y)
+				motionEvent := (*C.XMotionEvent)(unsafe.Pointer(&event))
+				if c.OnMouseMove != nil {
+					c.OnMouseMove(int(motionEvent.x), int(motionEvent.y))
+				}
 
 			case C.ButtonPress:
+				/*buttonEvent := (*C.XButtonEvent)(unsafe.Pointer(&event))
+				fmt.Printf("Mouse button %d pressed at (%d, %d)\n", buttonEvent.button, buttonEvent.x, buttonEvent.y)*/
+
 				buttonEvent := (*C.XButtonEvent)(unsafe.Pointer(&event))
 				fmt.Printf("Mouse button %d pressed at (%d, %d)\n", buttonEvent.button, buttonEvent.x, buttonEvent.y)
+
+				x := int(buttonEvent.x)
+				y := int(buttonEvent.y)
+
+				switch buttonEvent.button {
+				case 1:
+					if c.OnMouseDownLeftButton != nil {
+						c.OnMouseDownLeftButton(x, y)
+					}
+				case 2:
+					if c.OnMouseDownMiddleButton != nil {
+						c.OnMouseDownMiddleButton(x, y)
+					}
+				case 3:
+					if c.OnMouseDownRightButton != nil {
+						c.OnMouseDownRightButton(x, y)
+					}
+				case 4:
+					if c.OnMouseWheel != nil {
+						c.OnMouseWheel(1, 0)
+					}
+				case 5:
+					if c.OnMouseWheel != nil {
+						c.OnMouseWheel(-1, 0)
+					}
+				case 6:
+					if c.OnMouseWheel != nil {
+						c.OnMouseWheel(0, 1)
+					}
+				case 7:
+					if c.OnMouseWheel != nil {
+						c.OnMouseWheel(0, -1)
+					}
+				}
 
 			case C.ButtonRelease:
 				buttonEvent := (*C.XButtonEvent)(unsafe.Pointer(&event))
 				fmt.Printf("Mouse button %d released at (%d, %d)\n", buttonEvent.button, buttonEvent.x, buttonEvent.y)
+
+				x := int(buttonEvent.x)
+				y := int(buttonEvent.y)
+
+				switch buttonEvent.button {
+				case 1:
+					if c.OnMouseUpLeftButton != nil {
+						c.OnMouseUpLeftButton(x, y)
+					}
+				case 2:
+					if c.OnMouseUpMiddleButton != nil {
+						c.OnMouseUpMiddleButton(x, y)
+					}
+				case 3:
+					if c.OnMouseUpRightButton != nil {
+						c.OnMouseUpRightButton(x, y)
+					}
+				}
+
 			}
 		}
 

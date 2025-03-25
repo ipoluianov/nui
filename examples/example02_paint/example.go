@@ -23,8 +23,15 @@ func Run() {
 
 	counter := 0
 
+	lastMousePosX := int(0)
+	lastMousePosY := int(0)
+
 	scrollPosX := float64(0)
 	scrollPosY := float64(0)
+
+	mouseLeftButtonStatus := false
+	mouseMiddleButtonStatus := false
+	mouseRightButtonStatus := false
 
 	wnd.OnPaint = func(rgba *image.RGBA) {
 		cnv := nuicanvas.NewCanvas(rgba)
@@ -39,13 +46,67 @@ func Run() {
 
 		cnv.DrawFixedString(10, 140, scrollXStr, 2, color.RGBA{200, 200, 200, 255})
 		cnv.DrawFixedString(10, 160, scrollYStr, 2, color.RGBA{200, 200, 200, 255})
+
+		mouseXStr := "MouseX: " + strconv.FormatInt(int64(lastMousePosX), 10)
+		mouseYStr := "MouseY: " + strconv.FormatInt(int64(lastMousePosY), 10)
+
+		cnv.DrawFixedString(10, 180, mouseXStr, 2, color.RGBA{200, 200, 200, 255})
+		cnv.DrawFixedString(10, 200, mouseYStr, 2, color.RGBA{200, 200, 200, 255})
+
+		mouseButtonLeftStr := "Mouse Button Left: "
+		if mouseLeftButtonStatus {
+			mouseButtonLeftStr += "pressed"
+		}
+		cnv.DrawFixedString(10, 220, mouseButtonLeftStr, 2, color.RGBA{200, 200, 200, 255})
+
+		mouseButtonMiddleStr := "Mouse Button Middle: "
+		if mouseMiddleButtonStatus {
+			mouseButtonMiddleStr += "pressed"
+		}
+		cnv.DrawFixedString(10, 240, mouseButtonMiddleStr, 2, color.RGBA{200, 200, 200, 255})
+
+		mouseButtonRightStr := "Mouse Button Right: "
+		if mouseRightButtonStatus {
+			mouseButtonRightStr += "pressed"
+		}
+		cnv.DrawFixedString(10, 260, mouseButtonRightStr, 2, color.RGBA{200, 200, 200, 255})
+
 	}
 
-	/*wnd.OnMouseWheel = func(deltaX float64, deltaY float64) {
+	wnd.OnMouseWheel = func(deltaX float64, deltaY float64) {
 		scrollPosX += float64(deltaX)
 		scrollPosY += float64(deltaY)
 		wnd.Update()
-	}*/
+	}
+
+	wnd.OnMouseDownLeftButton = func(x, y int) {
+		mouseLeftButtonStatus = true
+	}
+
+	wnd.OnMouseDownMiddleButton = func(x, y int) {
+		mouseMiddleButtonStatus = true
+	}
+
+	wnd.OnMouseDownRightButton = func(x, y int) {
+		mouseRightButtonStatus = true
+	}
+
+	wnd.OnMouseUpLeftButton = func(x, y int) {
+		mouseLeftButtonStatus = false
+	}
+
+	wnd.OnMouseUpMiddleButton = func(x, y int) {
+		mouseMiddleButtonStatus = false
+	}
+
+	wnd.OnMouseUpRightButton = func(x, y int) {
+		mouseRightButtonStatus = false
+	}
+
+	wnd.OnMouseMove = func(x, y int) {
+		lastMousePosX = x
+		lastMousePosY = y
+	}
 
 	wnd.OnTimer = func() {
 		counter++
