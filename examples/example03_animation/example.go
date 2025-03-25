@@ -26,13 +26,16 @@ func Run() {
 	wnd := nui.CreateWindow()
 	wnd.Show()
 	wnd.OnPaint = func(rgba *image.RGBA) {
-		posX := int(time.Now().UnixMilli()%10000) / 20
+		posX := 2 * int(time.Now().UnixMilli()%10000) / 20
 		fullRectOnRGBA(rgba, posX, 10, 100, 100, color.RGBA{255, 0, 0, 255})
 		cnv := nuicanvas.NewCanvas(rgba)
 		counterStr := "Counter: " + strconv.FormatInt(int64(counter), 10)
 		cnv.DrawFixedString(10, 120, counterStr, 2, color.RGBA{200, 200, 200, 255})
 		speedStr := "Speed: " + strconv.FormatFloat(speed, 'f', 2, 64)
 		cnv.DrawFixedString(10, 140, speedStr, 2, color.RGBA{200, 200, 200, 255})
+	}
+	wnd.OnKeyDown = func(keyCode nui.Key) {
+		wnd.Resize(800, 600)
 	}
 	dtBegin := time.Now()
 	lastTotalCounter := 0

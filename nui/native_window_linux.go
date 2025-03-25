@@ -17,8 +17,13 @@ import (
 #include <X11/Xutil.h>
 #include <X11/Xatom.h>
 #include <stdlib.h>
+#include <string.h>
+#include "ximage_helper.h"
 */
 import "C"
+
+func init() {
+}
 
 type NativeWindow struct {
 	display *C.Display
@@ -148,10 +153,27 @@ func CreateWindow() *NativeWindow {
 
 	c.screen = C.XDefaultScreen(c.display)
 
-	cwa := C.XSetWindowAttributes{}
-	cwa.background_pixmap = C.None
+	attrs := C.XSetWindowAttributes{}
+	attrs.background_pixmap = C.None
 
-	c.window = C.XCreateSimpleWindow(
+	mask := C.CWBackPixmap
+
+	c.window = C.XCreateWindow(
+		c.display,
+		C.XRootWindow(c.display, c.screen),
+		100, 100, // x, y
+		800, 600, // width, height
+		1,                // border width
+		C.CopyFromParent, // depth
+		C.InputOutput,    // class
+		nil,              // visual
+		C.ulong(mask),    // valuemask
+		&attrs,           // attributes pointer (не значение!)
+	)
+	/*cwa := C.XSetWindowAttributes{}
+	cwa.background_pixmap = C.None*/
+
+	/*c.window = C.XCreateSimpleWindow(
 		c.display,
 		C.XRootWindow(c.display, c.screen),
 		100, 100,
@@ -159,9 +181,9 @@ func CreateWindow() *NativeWindow {
 		1,
 		C.XBlackPixel(c.display, c.screen),
 		C.XWhitePixel(c.display, c.screen),
-	)
+	)*/
 
-	C.XSelectInput(c.display, c.window, C.ExposureMask|C.PropertyChangeMask|C.ResizeRedirectMask|C.StructureNotifyMask|C.KeyPressMask|C.StructureNotifyMask|C.KeyReleaseMask|C.EnterWindowMask|C.LeaveWindowMask|C.ButtonPressMask|C.ButtonReleaseMask|C.PointerMotionMask)
+	C.XSelectInput(c.display, c.window, C.ExposureMask|C.PropertyChangeMask|C.StructureNotifyMask|C.KeyPressMask|C.KeyReleaseMask|C.EnterWindowMask|C.LeaveWindowMask|C.ButtonPressMask|C.ButtonReleaseMask|C.PointerMotionMask)
 
 	C.XMapWindow(c.display, c.window)
 
@@ -197,10 +219,10 @@ func eventType(event C.XEvent) int {
 	return int(*(*C.int)(unsafe.Pointer(&event)))
 }
 
-var posX C.uint
+/*var posX C.uint
 var posY C.uint
 var width C.uint
-var height C.uint
+var height C.uint*/
 
 //go:embed test.png
 var pngContent []byte
@@ -214,6 +236,8 @@ func (c *NativeWindow) EventLoop() {
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
 
+	dtLastPaint := time.Now()
+
 	for {
 		for C.XPending(c.display) > 0 {
 			var event C.XEvent
@@ -223,30 +247,35 @@ func (c *NativeWindow) EventLoop() {
 
 			case C.Expose:
 				{
-					hdcWidth, hdcHeight := width, height
-					if hdcWidth > maxCanvasWidth {
-						hdcWidth = maxCanvasWidth
+					{
+						dtLastPaint = time.Now()
+						hdcWidth, hdcHeight := c.windowWidth, c.windowHeight
+						if hdcWidth > maxCanvasWidth {
+							hdcWidth = maxCanvasWidth
+						}
+
+						if hdcHeight > maxCanvasHeight {
+							hdcHeight = maxCanvasHeight
+						}
+
+						img := &image.RGBA{
+							Pix:    canvasBuffer,
+							Stride: int(hdcWidth) * 4,
+							Rect:   image.Rect(0, 0, int(hdcWidth), int(hdcHeight)),
+						}
+
+						// Clear the canvas
+						canvasDataBufferSize := int(hdcWidth * hdcHeight * 4)
+						copy(canvasBuffer[:canvasDataBufferSize], canvasBufferBackground)
+
+						if c.OnPaint != nil {
+							c.OnPaint(img)
+						}
+
+						c.drawImageRGBA(c.display, c.window, img)
+						paintTime := time.Since(dtLastPaint)
+						fmt.Println("PaintTime:", paintTime.Microseconds())
 					}
-
-					if hdcHeight > maxCanvasHeight {
-						hdcHeight = maxCanvasHeight
-					}
-
-					img := &image.RGBA{
-						Pix:    canvasBuffer,
-						Stride: int(hdcWidth) * 4,
-						Rect:   image.Rect(0, 0, int(hdcWidth), int(hdcHeight)),
-					}
-
-					// Clear the canvas
-					canvasDataBufferSize := int(hdcWidth * hdcHeight * 4)
-					copy(canvasBuffer[:canvasDataBufferSize], canvasBufferBackground)
-
-					if c.OnPaint != nil {
-						c.OnPaint(img)
-					}
-
-					drawImageRGBA(c.display, c.window, img)
 
 				}
 			case C.MapNotify:
@@ -267,21 +296,40 @@ func (c *NativeWindow) EventLoop() {
 			case C.ResizeRequest:
 				resizeEvent := (*C.XResizeRequestEvent)(unsafe.Pointer(&event))
 				fmt.Printf("Resize request received: Width=%d, Height=%d\n", resizeEvent.width, resizeEvent.height)
-				c.Update()
+
+				c.windowWidth = int(resizeEvent.width)
+				c.windowHeight = int(resizeEvent.height)
+
+				//c.Update()
 
 			case C.ConfigureNotify:
 				configureEvent := (*C.XConfigureEvent)(unsafe.Pointer(&event))
-				posX = C.uint(configureEvent.x)
+				/*posX = C.uint(configureEvent.x)
 				posY = C.uint(configureEvent.y)
 				width = C.uint(configureEvent.width)
 				height = C.uint(configureEvent.height)
+
+				c.windowWidth = int(configureEvent.width)
+				c.windowHeight = int(configureEvent.height)
+
+				fmt.Println("Configure:", posX, posY, width, height)*/
+				posX := int(configureEvent.x)
+				posY := int(configureEvent.y)
+				width := int(configureEvent.width)
+				height := int(configureEvent.height)
+
 				fmt.Println("Configure:", posX, posY, width, height)
+				c.windowWidth = int(configureEvent.width)
+				c.windowHeight = int(configureEvent.height)
 				c.Update()
 
 			case C.KeyPress:
 				keyEvent := (*C.XKeyEvent)(unsafe.Pointer(&event))
 				keySym := C.XLookupKeysym((*C.XKeyEvent)(unsafe.Pointer(&event)), 0)
 				fmt.Printf("Key pressed: KeySym = %d, KeyCode = %d\n", keySym, keyEvent.keycode)
+				if c.OnKeyDown != nil {
+					c.OnKeyDown(Key(0))
+				}
 
 				//resizeWindow(display, window, 600, 200)
 				//moveWindow(display, window, 100, 100)
@@ -298,8 +346,8 @@ func (c *NativeWindow) EventLoop() {
 				leaveEvent := (*C.XCrossingEvent)(unsafe.Pointer(&event))
 				fmt.Printf("Cursor left window at (%d, %d)\n", leaveEvent.x, leaveEvent.y)
 			case C.MotionNotify:
-				motionEvent := (*C.XMotionEvent)(unsafe.Pointer(&event))
-				fmt.Printf("Mouse moved to (%d, %d)\n", motionEvent.x, motionEvent.y)
+				//motionEvent := (*C.XMotionEvent)(unsafe.Pointer(&event))
+				//fmt.Printf("Mouse moved to (%d, %d)\n", motionEvent.x, motionEvent.y)
 
 			case C.ButtonPress:
 				buttonEvent := (*C.XButtonEvent)(unsafe.Pointer(&event))
@@ -314,9 +362,10 @@ func (c *NativeWindow) EventLoop() {
 		select {
 		case <-ticker.C:
 			{
-				fmt.Println("Timer event: 10ms tick")
+				//fmt.Println("Timer event: 10ms tick")
 				if c.OnTimer != nil {
 					c.OnTimer()
+					c.Update()
 				}
 			}
 		default:
@@ -399,25 +448,20 @@ func (c *NativeWindow) RestoreWindow() {
 func (c *NativeWindow) SetAppIcon(icon *image.RGBA) {
 }
 
-func drawImageRGBA(display *C.Display, window C.Window, img image.Image) {
-	bounds := img.Bounds()
-	width := bounds.Dx()
-	height := bounds.Dy()
+func (c *NativeWindow) drawImageRGBA(display *C.Display, window C.Window, img image.Image) {
+	width := c.windowWidth
+	height := c.windowHeight
 
-	pixels := make([]byte, width*height*4)
+	dataSize := width * height * 4
 
-	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-		for x := bounds.Min.X; x < bounds.Max.X; x++ {
-			offset := ((y-bounds.Min.Y)*width + (x - bounds.Min.X)) * 4
-			r, g, b, a := img.At(x, y).RGBA()
-
-			pixels[offset+0] = byte(b >> 8)
-			pixels[offset+1] = byte(g >> 8)
-			pixels[offset+2] = byte(r >> 8)
-			pixels[offset+3] = byte(a >> 8)
-
-		}
+	// RGBA->BGRA
+	pixelsCount := width * height
+	for i := 0; i < pixelsCount; i++ {
+		canvasBuffer[i*4], canvasBuffer[i*4+2] = canvasBuffer[i*4+2], canvasBuffer[i*4]
 	}
+
+	cBuffer := C.malloc(C.size_t(dataSize))
+	C.memcpy(cBuffer, unsafe.Pointer(&canvasBuffer[0]), C.size_t(dataSize))
 
 	ximage := C.XCreateImage(
 		display,
@@ -425,22 +469,24 @@ func drawImageRGBA(display *C.Display, window C.Window, img image.Image) {
 		24,
 		C.ZPixmap,
 		0,
-		(*C.char)(unsafe.Pointer(&pixels[0])),
+		(*C.char)(cBuffer),
 		C.uint(width),
 		C.uint(height),
 		32,
 		0,
 	)
 
-	//defer C.DestroyXImage(ximage) // TODO:
+	//C.DestroyXImage(ximage) // TODO:
 
 	gc := C.XCreateGC(display, C.Drawable(window), 0, nil)
 	defer C.XFreeGC(display, gc) // TODO:
 
 	C.XPutImage(display, C.Drawable(window), gc, ximage, 0, 0, 0, 0, C.uint(width), C.uint(height))
+
+	C.destroy_ximage(ximage)
 }
 
-func drawBlue(display *C.Display, window C.Window, screen C.int) {
+/*func drawBlue(display *C.Display, window C.Window, screen C.int) {
 	gc := C.XCreateGC(display, C.Drawable(window), 0, nil)
 	defer C.XFreeGC(display, gc)
 	colorName := C.CString("blue")
@@ -453,3 +499,4 @@ func drawBlue(display *C.Display, window C.Window, screen C.int) {
 
 	C.XFillRectangle(display, C.Drawable(window), gc, 0, 0, width/2, height/2)
 }
+*/
