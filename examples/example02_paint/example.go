@@ -71,6 +71,14 @@ func Run() {
 		}
 		cnv.DrawFixedString(10, 260, mouseButtonRightStr, 2, color.RGBA{200, 200, 200, 255})
 
+		winWidth := wnd.Width()
+		winHeight := wnd.Height()
+
+		windowWidthStr := "Window Width: " + strconv.FormatInt(int64(winWidth), 10)
+		cnv.DrawFixedString(10, 280, windowWidthStr, 2, color.RGBA{200, 200, 200, 255})
+		windowHeightStr := "Window Height: " + strconv.FormatInt(int64(winHeight), 10)
+		cnv.DrawFixedString(10, 300, windowHeightStr, 2, color.RGBA{200, 200, 200, 255})
+
 	}
 
 	wnd.OnMouseWheel = func(deltaX float64, deltaY float64) {
@@ -115,7 +123,7 @@ func Run() {
 
 	wnd.Show()
 	//wnd.MoveToCenterOfScreen()
-	wnd.Resize(300, 300)
+	wnd.Resize(800, 600)
 	//wnd.MoveToCenterOfScreen()
 	//wnd.MaximizeWindow()
 	wnd.EventLoop()

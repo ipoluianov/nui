@@ -395,6 +395,14 @@ func (c *NativeWindow) Size() (width, height int) {
 	return c.windowWidth, c.windowHeight
 }
 
+func (c *NativeWindow) Width() int {
+	return c.windowWidth
+}
+
+func (c *NativeWindow) Height() int {
+	return c.windowHeight
+}
+
 func (c *NativeWindow) windowMouseMove(x, y int) {
 	if c.OnMouseMove != nil {
 		y = c.windowHeight - y
