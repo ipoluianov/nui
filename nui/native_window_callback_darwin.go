@@ -64,11 +64,7 @@ func go_on_paint(hwnd C.int, ptr unsafe.Pointer, width C.int, height C.int) {
 //export go_on_resize
 func go_on_resize(windowId C.int, width C.int, height C.int) {
 	if win, ok := hwnds[int(windowId)]; ok {
-		if win.OnResize != nil {
-			win.windowWidth = int(width)
-			win.windowHeight = int(height)
-			win.OnResize(int(width), int(height))
-		}
+		win.windowResized(int(width), int(height))
 	}
 }
 
@@ -109,7 +105,7 @@ func go_on_char(hwnd C.int, codepoint C.int) {
 
 //export go_on_mouse_down
 func go_on_mouse_down(hwnd C.int, button, x, y C.int) {
-	//fmt.Printf("Mouse down: button=%d at (%d,%d)\n", button, x, y)
+	fmt.Printf("Mouse down: button=%d at (%d,%d)\n", button, x, y)
 	if win, ok := hwnds[int(hwnd)]; ok {
 		if button == 0 {
 			if win.OnMouseDownLeftButton != nil {
@@ -149,11 +145,8 @@ func go_on_mouse_up(hwnd C.int, button, x, y C.int) {
 
 //export go_on_mouse_move
 func go_on_mouse_move(hwnd C.int, x, y C.int) {
-	//fmt.Printf("Mouse move: (%d,%d)\n", x, y)
 	if win, ok := hwnds[int(hwnd)]; ok {
-		if win.OnMouseMove != nil {
-			win.OnMouseMove(int(x), int(y))
-		}
+		win.windowMouseMove(int(x), int(y))
 	}
 }
 

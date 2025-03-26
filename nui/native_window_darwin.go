@@ -394,3 +394,18 @@ func (c *NativeWindow) stopTimer() {
 func (c *NativeWindow) Size() (width, height int) {
 	return c.windowWidth, c.windowHeight
 }
+
+func (c *NativeWindow) windowMouseMove(x, y int) {
+	if c.OnMouseMove != nil {
+		y = c.windowHeight - y
+		c.OnMouseMove(x, y)
+	}
+}
+
+func (c *NativeWindow) windowResized(width, height int) {
+	c.windowWidth = width
+	c.windowHeight = height
+	if c.OnResize != nil {
+		c.OnResize(width, height)
+	}
+}
