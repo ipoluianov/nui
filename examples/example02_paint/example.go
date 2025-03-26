@@ -4,6 +4,7 @@ import (
 	"image"
 	"image/color"
 	"strconv"
+	"time"
 
 	"github.com/ipoluianov/nui/nui"
 	"github.com/ipoluianov/nui/nuicanvas"
@@ -17,9 +18,26 @@ func fullRectOnRGBA(rgba *image.RGBA, x, y, w, h int, c color.Color) {
 	}
 }
 
+var logItems = make([]string, 0)
+
+func log(s string) {
+	dtStr := time.Now().Format("2006-01-02 15:04:05.999")
+	if len(dtStr) < 23 {
+		dtStr += "0"
+	}
+
+	s = dtStr + " " + s
+	logItems = append(logItems, s)
+	if len(logItems) > 10 {
+		logItems = logItems[1:]
+	}
+}
+
 func Run() {
 	nui.Init()
 	wnd := nui.CreateWindow()
+
+	log("started")
 
 	counter := 0
 
@@ -79,36 +97,58 @@ func Run() {
 		windowHeightStr := "Window Height: " + strconv.FormatInt(int64(winHeight), 10)
 		cnv.DrawFixedString(10, 300, windowHeightStr, 2, color.RGBA{200, 200, 200, 255})
 
+		for i, s := range logItems {
+			cnv.DrawFixedString(10, 340+20*i, s, 2, color.RGBA{200, 200, 200, 255})
+		}
+
 	}
 
 	wnd.OnMouseWheel = func(deltaX float64, deltaY float64) {
 		scrollPosX += float64(deltaX)
 		scrollPosY += float64(deltaY)
-		wnd.Update()
+		log("Mouse wheel: " + strconv.FormatFloat(deltaX, 'f', 2, 64) + " " + strconv.FormatFloat(deltaY, 'f', 2, 64))
 	}
 
 	wnd.OnMouseDownLeftButton = func(x, y int) {
 		mouseLeftButtonStatus = true
+		log("Mouse left button pressed")
 	}
 
 	wnd.OnMouseDownMiddleButton = func(x, y int) {
 		mouseMiddleButtonStatus = true
+		log("Mouse middle button pressed")
 	}
 
 	wnd.OnMouseDownRightButton = func(x, y int) {
 		mouseRightButtonStatus = true
+		log("Mouse right button pressed")
 	}
 
 	wnd.OnMouseUpLeftButton = func(x, y int) {
 		mouseLeftButtonStatus = false
+		log("Mouse left button released")
 	}
 
 	wnd.OnMouseUpMiddleButton = func(x, y int) {
 		mouseMiddleButtonStatus = false
+		log("Mouse middle button released")
 	}
 
 	wnd.OnMouseUpRightButton = func(x, y int) {
 		mouseRightButtonStatus = false
+		log("Mouse right button released")
+	}
+
+	wnd.OnChar = func(char rune) {
+		log("Char: " + string(char))
+	}
+
+	wnd.OnKeyDown = func(key nui.Key) {
+		log("Key down: " + key.String())
+	}
+
+	wnd.OnKeyUp = func(key nui.Key) {
+		log("Key up: " + key.String())
 	}
 
 	wnd.OnMouseMove = func(x, y int) {

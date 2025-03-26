@@ -39,7 +39,7 @@ type NativeWindow struct {
 	OnMouseUpRightButton           func(x, y int)
 	OnMouseDownMiddleButton        func(x, y int)
 	OnMouseUpMiddleButton          func(x, y int)
-	OnMouseWheel                   func(delta int)
+	OnMouseWheel                   func(deltaX float64, deltaY float64)
 	OnMouseDoubleClickLeftButton   func(x, y int)
 	OnMouseDoubleClickRightButton  func(x, y int)
 	OnMouseDoubleClickMiddleButton func(x, y int)
@@ -540,9 +540,9 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 		return 0
 
 	case WM_MOUSEWHEEL:
-		delta := int16((wParam >> 16) & 0xFFFF)
+		deltaY := int16((wParam >> 16) & 0xFFFF)
 		if win != nil && win.OnMouseWheel != nil {
-			win.OnMouseWheel(int(delta))
+			win.OnMouseWheel(0, float64(deltaY)/120)
 		}
 		return 0
 
@@ -833,6 +833,14 @@ func (c *NativeWindow) MaximizeWindow() {
 
 func (c *NativeWindow) RestoreWindow() {
 	procShowWindow.Call(uintptr(c.hwnd), SW_RESTORE)
+}
+
+func (c *NativeWindow) Width() int {
+	return c.windowWidth
+}
+
+func (c *NativeWindow) Height() int {
+	return c.windowHeight
 }
 
 func createHICONFromRGBA(img *image.RGBA) syscall.Handle {
