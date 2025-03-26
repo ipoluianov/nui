@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"image"
 	"image/png"
+	"strconv"
 	"time"
 	"unsafe"
 )
@@ -70,11 +71,10 @@ func go_on_resize(windowId C.int, width C.int, height C.int) {
 
 //export go_on_key_down
 func go_on_key_down(hwnd C.int, code C.int) {
+	fmt.Println("Key down", strconv.FormatInt(int64(code), 16))
 	key := Key(ConvertMacOSKeyToNuiKey(int(code)))
 	if win, ok := hwnds[int(hwnd)]; ok {
-		if win.OnKeyDown != nil {
-			win.OnKeyDown(key)
-		}
+		win.windowKeyDown(key)
 	}
 }
 
@@ -82,15 +82,15 @@ func go_on_key_down(hwnd C.int, code C.int) {
 func go_on_key_up(hwnd C.int, code C.int) {
 	key := Key(ConvertMacOSKeyToNuiKey(int(code)))
 	if win, ok := hwnds[int(hwnd)]; ok {
-		if win.OnKeyUp != nil {
-			win.OnKeyUp(key)
-		}
+		win.windowKeyUp(key)
 	}
 }
 
 //export go_on_modifier_change
 func go_on_modifier_change(hwnd C.int, shift, ctrl, alt, cmd C.int) {
-	fmt.Printf("Modifiers: Shift=%v Ctrl=%v Alt=%v Cmd=%v\n", shift != 0, ctrl != 0, alt != 0, cmd != 0)
+	if win, ok := hwnds[int(hwnd)]; ok {
+		win.windowKeyModifiersChanged(shift != 0, ctrl != 0, alt != 0, cmd != 0)
+	}
 }
 
 //export go_on_char
@@ -152,17 +152,8 @@ func go_on_mouse_move(hwnd C.int, x, y C.int) {
 
 //export go_on_mouse_scroll
 func go_on_mouse_scroll(hwnd C.int, deltaX C.float, deltaY C.float) {
-	dt := time.Now()
-	dtStr := dt.Format("15:04:05.000")
-
-	fmt.Println("Scroll: delta=", dtStr, deltaX, deltaY)
-	deltaX = deltaX * 2
-	deltaY = deltaY * 2
-
 	if win, ok := hwnds[int(hwnd)]; ok {
-		if win.OnMouseWheel != nil {
-			win.OnMouseWheel(float64(deltaX), float64(deltaY))
-		}
+		win.windowMouseWheel(float64(deltaX), float64(deltaY))
 	}
 }
 

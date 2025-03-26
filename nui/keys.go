@@ -2,6 +2,39 @@ package nui
 
 type Key int
 
+type KeyModifiers struct {
+	Shift bool
+	Ctrl  bool
+	Alt   bool
+	Cmd   bool
+}
+
+func (c KeyModifiers) String() string {
+	str := ""
+	if c.Shift {
+		str += "Shift"
+	}
+	if c.Ctrl {
+		if str != "" {
+			str += " "
+		}
+		str += "Ctrl"
+	}
+	if c.Alt {
+		if str != "" {
+			str += " "
+		}
+		str += "Alt"
+	}
+	if c.Cmd {
+		if str != "" {
+			str += " "
+		}
+		str += "Cmd"
+	}
+	return str
+}
+
 const (
 	KeyEsc            = 0x01
 	Key1              = 0x02

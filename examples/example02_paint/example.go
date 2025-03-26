@@ -101,12 +101,23 @@ func Run() {
 			cnv.DrawFixedString(10, 340+20*i, s, 2, color.RGBA{200, 200, 200, 255})
 		}
 
+		mods := wnd.KeyModifiers()
+
+		keyModifiersShift := "Shift:" + strconv.FormatBool(mods.Shift)
+		keyModifiersCtrl := "Ctrl:" + strconv.FormatBool(mods.Ctrl)
+		keyModifiersAlt := "Alt:" + strconv.FormatBool(mods.Alt)
+		keyModifiersCmd := "Cmd:" + strconv.FormatBool(mods.Cmd)
+
+		cnv.DrawFixedString(600, 0, keyModifiersShift, 2, color.RGBA{200, 200, 200, 255})
+		cnv.DrawFixedString(600, 20, keyModifiersCtrl, 2, color.RGBA{200, 200, 200, 255})
+		cnv.DrawFixedString(600, 40, keyModifiersAlt, 2, color.RGBA{200, 200, 200, 255})
+		cnv.DrawFixedString(600, 60, keyModifiersCmd, 2, color.RGBA{200, 200, 200, 255})
 	}
 
-	wnd.OnMouseWheel = func(deltaX float64, deltaY float64) {
+	wnd.OnMouseWheel = func(deltaX int, deltaY int) {
 		scrollPosX += float64(deltaX)
 		scrollPosY += float64(deltaY)
-		log("Mouse wheel: " + strconv.FormatFloat(deltaX, 'f', 2, 64) + " " + strconv.FormatFloat(deltaY, 'f', 2, 64))
+		log("Mouse wheel: " + strconv.FormatInt(int64(deltaX), 10) + " " + strconv.FormatInt(int64(deltaY), 10))
 	}
 
 	wnd.OnMouseDownLeftButton = func(x, y int) {
@@ -143,12 +154,12 @@ func Run() {
 		log("Char: " + string(char))
 	}
 
-	wnd.OnKeyDown = func(key nui.Key) {
-		log("Key down: " + key.String())
+	wnd.OnKeyDown = func(key nui.Key, mods nui.KeyModifiers) {
+		log("Key down: " + key.String() + " " + mods.String())
 	}
 
-	wnd.OnKeyUp = func(key nui.Key) {
-		log("Key up: " + key.String())
+	wnd.OnKeyUp = func(key nui.Key, mods nui.KeyModifiers) {
+		log("Key up: " + key.String() + " " + mods.String())
 	}
 
 	wnd.OnMouseMove = func(x, y int) {

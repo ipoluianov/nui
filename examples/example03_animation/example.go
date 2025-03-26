@@ -34,7 +34,7 @@ func Run() {
 		speedStr := "Speed: " + strconv.FormatFloat(speed, 'f', 2, 64)
 		cnv.DrawFixedString(10, 140, speedStr, 2, color.RGBA{200, 200, 200, 255})
 	}
-	wnd.OnKeyDown = func(keyCode nui.Key) {
+	wnd.OnKeyDown = func(keyCode nui.Key, keyModifiers nui.KeyModifiers) {
 		wnd.Resize(800, 600)
 	}
 	dtBegin := time.Now()

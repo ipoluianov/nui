@@ -22,9 +22,11 @@ type NativeWindow struct {
 	windowWidth  int
 	windowHeight int
 
+	keyModifiers KeyModifiers
+
 	// Keyboard events
-	OnKeyDown func(keyCode Key)
-	OnKeyUp   func(keyCode Key)
+	OnKeyDown func(keyCode Key, modifiers KeyModifiers)
+	OnKeyUp   func(keyCode Key, modifiers KeyModifiers)
 	OnChar    func(char rune)
 
 	// Mouse events
@@ -37,7 +39,7 @@ type NativeWindow struct {
 	OnMouseUpRightButton           func(x, y int)
 	OnMouseDownMiddleButton        func(x, y int)
 	OnMouseUpMiddleButton          func(x, y int)
-	OnMouseWheel                   func(deltaX float64, deltaY float64)
+	OnMouseWheel                   func(deltaX int, deltaY int)
 	OnMouseDoubleClickLeftButton   func(x, y int)
 	OnMouseDoubleClickRightButton  func(x, y int)
 	OnMouseDoubleClickMiddleButton func(x, y int)
@@ -288,7 +290,7 @@ var macToPCScanCode = map[int]Key{
 	0x2C: KeySlash,
 	0x2D: KeyN,
 	0x2E: KeyM,
-	0x2F: KeySpace,
+	0x2F: KeyDot,
 	0x32: KeyGrave,
 	0x41: KeyNumpadDot,
 	0x43: KeyNumpadMultiply,
@@ -311,7 +313,7 @@ var macToPCScanCode = map[int]Key{
 	0x24: KeyEnter,
 	0x30: KeyTab,
 	0x31: KeySpace,
-	0x33: KeyDelete,
+	0x33: KeyBackspace,
 	0x35: KeyEsc,
 	0x37: KeyCommand,
 	0x38: KeyLeftShift,
@@ -415,5 +417,51 @@ func (c *NativeWindow) windowResized(width, height int) {
 	c.windowHeight = height
 	if c.OnResize != nil {
 		c.OnResize(width, height)
+	}
+}
+
+func (c *NativeWindow) windowMouseWheel(deltaX, deltaY float64) {
+	deltaXInt := 0
+	if deltaX > 0.2 {
+		deltaXInt = 1
+	}
+	if deltaX < -0.2 {
+		deltaXInt = -1
+	}
+
+	deltaYInt := 0
+	if deltaY > 0.2 {
+		deltaYInt = 1
+	}
+	if deltaY < -0.2 {
+		deltaYInt = -1
+	}
+
+	if c.OnMouseWheel != nil {
+		c.OnMouseWheel(deltaXInt, deltaYInt)
+	}
+}
+
+// key modifiers
+func (c *NativeWindow) windowKeyModifiersChanged(shift bool, ctrl bool, alt bool, cmd bool) {
+	c.keyModifiers.Shift = shift
+	c.keyModifiers.Ctrl = ctrl
+	c.keyModifiers.Alt = alt
+	c.keyModifiers.Cmd = cmd
+}
+
+func (c *NativeWindow) KeyModifiers() KeyModifiers {
+	return c.keyModifiers
+}
+
+func (c *NativeWindow) windowKeyDown(keyCode Key) {
+	if c.OnKeyDown != nil {
+		c.OnKeyDown(keyCode, c.keyModifiers)
+	}
+}
+
+func (c *NativeWindow) windowKeyUp(keyCode Key) {
+	if c.OnKeyUp != nil {
+		c.OnKeyUp(keyCode, c.keyModifiers)
 	}
 }
