@@ -120,34 +120,28 @@ func Run() {
 		log("Mouse wheel: " + strconv.FormatInt(int64(deltaX), 10) + " " + strconv.FormatInt(int64(deltaY), 10))
 	}
 
-	wnd.OnMouseDownLeftButton = func(x, y int) {
-		mouseLeftButtonStatus = true
-		log("Mouse left button pressed")
+	wnd.OnMouseButtonDown = func(button nui.MouseButton, x, y int) {
+		log("Mouse button down: " + button.String())
+		switch button {
+		case nui.MouseButtonLeft:
+			mouseLeftButtonStatus = true
+		case nui.MouseButtonMiddle:
+			mouseMiddleButtonStatus = true
+		case nui.MouseButtonRight:
+			mouseRightButtonStatus = true
+		}
 	}
 
-	wnd.OnMouseDownMiddleButton = func(x, y int) {
-		mouseMiddleButtonStatus = true
-		log("Mouse middle button pressed")
-	}
-
-	wnd.OnMouseDownRightButton = func(x, y int) {
-		mouseRightButtonStatus = true
-		log("Mouse right button pressed")
-	}
-
-	wnd.OnMouseUpLeftButton = func(x, y int) {
-		mouseLeftButtonStatus = false
-		log("Mouse left button released")
-	}
-
-	wnd.OnMouseUpMiddleButton = func(x, y int) {
-		mouseMiddleButtonStatus = false
-		log("Mouse middle button released")
-	}
-
-	wnd.OnMouseUpRightButton = func(x, y int) {
-		mouseRightButtonStatus = false
-		log("Mouse right button released")
+	wnd.OnMouseButtonUp = func(button nui.MouseButton, x, y int) {
+		log("Mouse button up: " + button.String())
+		switch button {
+		case nui.MouseButtonLeft:
+			mouseLeftButtonStatus = false
+		case nui.MouseButtonMiddle:
+			mouseMiddleButtonStatus = false
+		case nui.MouseButtonRight:
+			mouseRightButtonStatus = false
+		}
 	}
 
 	wnd.OnChar = func(char rune) {

@@ -30,19 +30,15 @@ type NativeWindow struct {
 	OnChar    func(char rune)
 
 	// Mouse events
-	OnMouseEnter                   func()
-	OnMouseLeave                   func()
-	OnMouseMove                    func(x, y int)
-	OnMouseDownLeftButton          func(x, y int)
-	OnMouseUpLeftButton            func(x, y int)
-	OnMouseDownRightButton         func(x, y int)
-	OnMouseUpRightButton           func(x, y int)
-	OnMouseDownMiddleButton        func(x, y int)
-	OnMouseUpMiddleButton          func(x, y int)
-	OnMouseWheel                   func(deltaX int, deltaY int)
-	OnMouseDoubleClickLeftButton   func(x, y int)
-	OnMouseDoubleClickRightButton  func(x, y int)
-	OnMouseDoubleClickMiddleButton func(x, y int)
+	OnMouseEnter func()
+	OnMouseLeave func()
+	OnMouseMove  func(x, y int)
+
+	OnMouseButtonDown     func(button MouseButton, x, y int)
+	OnMouseButtonUp       func(button MouseButton, x, y int)
+	OnMouseButtonDblClick func(button MouseButton, x, y int)
+
+	OnMouseWheel func(deltaX int, deltaY int)
 
 	// Window events
 	OnCreated      func()
@@ -463,5 +459,38 @@ func (c *NativeWindow) windowKeyDown(keyCode Key) {
 func (c *NativeWindow) windowKeyUp(keyCode Key) {
 	if c.OnKeyUp != nil {
 		c.OnKeyUp(keyCode, c.keyModifiers)
+	}
+}
+
+func (c *NativeWindow) windowPaint(rgba *image.RGBA) {
+	imgDataSize := rgba.Rect.Dx() * rgba.Rect.Dy() * 4
+	copy(rgba.Pix[:imgDataSize], canvasBufferBackground)
+
+	if c.OnPaint != nil {
+		c.OnPaint(rgba)
+	}
+}
+
+func (c *NativeWindow) windowChar(char rune) {
+	if c.OnChar != nil {
+		c.OnChar(char)
+	}
+}
+
+func (c *NativeWindow) windowMouseButtonDown(button MouseButton, x, y int) {
+	if c.OnMouseButtonDown != nil {
+		c.OnMouseButtonDown(button, x, y)
+	}
+}
+
+func (c *NativeWindow) windowMouseButtonUp(button MouseButton, x, y int) {
+	if c.OnMouseButtonUp != nil {
+		c.OnMouseButtonUp(button, x, y)
+	}
+}
+
+func (c *NativeWindow) windowMouseButtonDblClick(button MouseButton, x, y int) {
+	if c.OnMouseButtonDblClick != nil {
+		c.OnMouseButtonDblClick(button, x, y)
 	}
 }
