@@ -36,17 +36,32 @@ func (c KeyModifiers) String() string {
 }
 
 const (
-	KeyEsc            = 0x01
-	Key1              = 0x02
-	Key2              = 0x03
-	Key3              = 0x04
-	Key4              = 0x05
-	Key5              = 0x06
-	Key6              = 0x07
-	Key7              = 0x08
-	Key8              = 0x09
-	Key9              = 0x0A
-	Key0              = 0x0B
+	KeyEsc = 0x01
+
+	KeyF1  = 0x3B
+	KeyF2  = 0x3C
+	KeyF3  = 0x3D
+	KeyF4  = 0x3E
+	KeyF5  = 0x3F
+	KeyF6  = 0x40
+	KeyF7  = 0x41
+	KeyF8  = 0x42
+	KeyF9  = 0x43
+	KeyF10 = 0x44
+	KeyF11 = 0x57
+	KeyF12 = 0x58
+
+	Key1 = 0x02
+	Key2 = 0x03
+	Key3 = 0x04
+	Key4 = 0x05
+	Key5 = 0x06
+	Key6 = 0x07
+	Key7 = 0x08
+	Key8 = 0x09
+	Key9 = 0x0A
+	Key0 = 0x0B
+
 	KeyMinus          = 0x0C
 	KeyEqual          = 0x0D
 	KeyBackspace      = 0x0E
@@ -64,7 +79,7 @@ const (
 	KeyLeftBracket    = 0x1A
 	KeyRightBracket   = 0x1B
 	KeyEnter          = 0x1C
-	KeyLeftCtrl       = 0x1D
+	KeyCtrl           = 0x1D
 	KeyA              = 0x1E
 	KeyS              = 0x1F
 	KeyD              = 0x20
@@ -77,7 +92,7 @@ const (
 	KeySemicolon      = 0x27
 	KeyApostrophe     = 0x28
 	KeyGrave          = 0x29
-	KeyLeftShift      = 0x2A
+	KeyShift          = 0x2A
 	KeyBackslash      = 0x2B
 	KeyZ              = 0x2C
 	KeyX              = 0x2D
@@ -89,21 +104,10 @@ const (
 	KeyComma          = 0x33
 	KeyDot            = 0x34
 	KeySlash          = 0x35
-	KeyRightShift     = 0x36
 	KeyNumpadAsterisk = 0x37
-	KeyLeftAlt        = 0x38
+	KeyAlt            = 0x38
 	KeySpace          = 0x39
 	KeyCapsLock       = 0x3A
-	KeyF1             = 0x3B
-	KeyF2             = 0x3C
-	KeyF3             = 0x3D
-	KeyF4             = 0x3E
-	KeyF5             = 0x3F
-	KeyF6             = 0x40
-	KeyF7             = 0x41
-	KeyF8             = 0x42
-	KeyF9             = 0x43
-	KeyF10            = 0x44
 	KeyNumLock        = 0x45
 	KeyScrollLock     = 0x46
 	KeyNumpad7        = 0x47
@@ -119,8 +123,6 @@ const (
 	KeyNumpad3        = 0x51
 	KeyNumpad0        = 0x52
 	KeyNumpadDot      = 0x53
-	KeyF11            = 0x57
-	KeyF12            = 0x58
 	KeyNumpadDivide   = 0x5A
 	KeyNumpadMultiply = 0x5F
 
@@ -134,13 +136,6 @@ const (
 	KeyArrowLeft  = 0xE04B
 	KeyArrowDown  = 0xE050
 	KeyArrowRight = 0xE04D
-
-	// Modifiers - right side
-	KeyRightCtrl = 0xE01D
-	KeyRightAlt  = 0xE038
-	KeyRightWin  = 0xE05C
-	KeyLeftWin   = 0xE05B
-	KeyApps      = 0xE05D // Menu key
 
 	// Numpad - special keys
 	KeyNumpadEnter = 0xE01C
@@ -198,7 +193,7 @@ var keyNames = map[Key]string{
 	KeyLeftBracket:    "[",
 	KeyRightBracket:   "]",
 	KeyEnter:          "Enter",
-	KeyLeftCtrl:       "LeftCtrl",
+	KeyCtrl:           "Ctrl",
 	KeyA:              "A",
 	KeyS:              "S",
 	KeyD:              "D",
@@ -211,7 +206,7 @@ var keyNames = map[Key]string{
 	KeySemicolon:      ";",
 	KeyApostrophe:     "'",
 	KeyGrave:          "`",
-	KeyLeftShift:      "LeftShift",
+	KeyShift:          "Shift",
 	KeyBackslash:      "\\",
 	KeyZ:              "Z",
 	KeyX:              "X",
@@ -223,9 +218,8 @@ var keyNames = map[Key]string{
 	KeyComma:          ",",
 	KeyDot:            ".",
 	KeySlash:          "/",
-	KeyRightShift:     "RightShift",
 	KeyNumpadAsterisk: "NumpadAsterisk",
-	KeyLeftAlt:        "LeftAlt",
+	KeyAlt:            "Alt",
 	KeySpace:          "Space",
 	KeyCapsLock:       "CapsLock",
 	KeyF1:             "F1",
@@ -265,11 +259,6 @@ var keyNames = map[Key]string{
 	KeyArrowLeft:      "ArrowLeft",
 	KeyArrowDown:      "ArrowDown",
 	KeyArrowRight:     "ArrowRight",
-	KeyRightCtrl:      "RightCtrl",
-	KeyRightAlt:       "RightAlt",
-	KeyRightWin:       "RightWin",
-	KeyLeftWin:        "LeftWin",
-	KeyApps:           "Apps",
 	KeyNumpadEnter:    "NumpadEnter",
 	KeyNumpadSlash:    "NumpadSlash",
 	KeyPause:          "Pause",

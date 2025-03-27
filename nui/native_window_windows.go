@@ -428,20 +428,50 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 		return 0
 
 	case WM_KEYDOWN:
+		virtualKeyCode := uint32(wParam)
+		fmt.Println("VirtualCode:", strconv.FormatInt(int64(virtualKeyCode), 16))
+
 		scanCode := (lParam >> 16) & 0xFF
 
+		needGenEvent := true
+		if scanCode == 54 {
+			scanCode = 42
+		}
+
+		code := uint32(lParam)
+		fmt.Println("CODE:" + strconv.FormatInt(int64(code), 16))
+
+		extended := (lParam>>24)&1 == 1
+		if !extended && scanCode == 0x45 {
+			scanCode = 0xE11D45
+		}
+
+		fmt.Println("Key down:", strconv.FormatInt(int64(scanCode), 16))
+
 		k := Key(scanCode)
-		if k == KeyLeftShift || k == KeyRightShift {
+		if k == KeyShift {
+			if win.keyModifiers.Shift {
+				needGenEvent = false
+			}
 			win.keyModifiers.Shift = true
-		} else if k == KeyLeftCtrl || k == KeyRightCtrl {
+		} else if k == KeyCtrl {
+			if win.keyModifiers.Ctrl {
+				needGenEvent = false
+			}
 			win.keyModifiers.Ctrl = true
-		} else if k == KeyLeftAlt || k == KeyRightAlt {
+		} else if k == KeyAlt {
+			if win.keyModifiers.Alt {
+				needGenEvent = false
+			}
 			win.keyModifiers.Alt = true
 		} else if k == KeyCommand {
+			if win.keyModifiers.Cmd {
+				needGenEvent = false
+			}
 			win.keyModifiers.Cmd = true
 		}
 
-		if win != nil && win.OnKeyDown != nil {
+		if win != nil && win.OnKeyDown != nil && needGenEvent {
 			win.OnKeyDown(k, win.keyModifiers)
 		}
 		return 0
@@ -449,18 +479,40 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 	case WM_KEYUP:
 		scanCode := (lParam >> 16) & 0xFF
 
+		needGenEvent := true
+		if scanCode == 54 {
+			scanCode = 42
+		}
+
+		extended := (lParam>>24)&1 == 1
+		if !extended && scanCode == 0x45 {
+			scanCode = 0xE11D45
+		}
+
 		k := Key(scanCode)
-		if k == KeyLeftShift || k == KeyRightShift {
+		if k == KeyShift {
+			if !win.keyModifiers.Shift {
+				needGenEvent = false
+			}
 			win.keyModifiers.Shift = false
-		} else if k == KeyLeftCtrl || k == KeyRightCtrl {
+		} else if k == KeyCtrl {
+			if !win.keyModifiers.Ctrl {
+				needGenEvent = false
+			}
 			win.keyModifiers.Ctrl = false
-		} else if k == KeyLeftAlt || k == KeyRightAlt {
+		} else if k == KeyAlt {
+			if !win.keyModifiers.Alt {
+				needGenEvent = false
+			}
 			win.keyModifiers.Alt = false
 		} else if k == KeyCommand {
+			if !win.keyModifiers.Cmd {
+				needGenEvent = false
+			}
 			win.keyModifiers.Cmd = false
 		}
 
-		if win != nil && win.OnKeyUp != nil {
+		if win != nil && win.OnKeyUp != nil && needGenEvent {
 			win.OnKeyUp(k, win.keyModifiers)
 		}
 		return 0
@@ -468,18 +520,37 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 	case WM_SYSKEYDOWN:
 		scanCode := (lParam >> 16) & 0xFF
 
+		fmt.Println("Key down:", strconv.FormatInt(int64(scanCode), 16))
+
+		needGenEvent := true
+		if scanCode == 54 {
+			scanCode = 42
+		}
+
 		k := Key(scanCode)
-		if k == KeyLeftShift || k == KeyRightShift {
+		if k == KeyShift {
+			if win.keyModifiers.Shift {
+				needGenEvent = false
+			}
 			win.keyModifiers.Shift = true
-		} else if k == KeyLeftCtrl || k == KeyRightCtrl {
+		} else if k == KeyCtrl {
+			if win.keyModifiers.Ctrl {
+				needGenEvent = false
+			}
 			win.keyModifiers.Ctrl = true
-		} else if k == KeyLeftAlt || k == KeyRightAlt {
+		} else if k == KeyAlt {
+			if win.keyModifiers.Alt {
+				needGenEvent = false
+			}
 			win.keyModifiers.Alt = true
 		} else if k == KeyCommand {
+			if win.keyModifiers.Cmd {
+				needGenEvent = false
+			}
 			win.keyModifiers.Cmd = true
 		}
 
-		if win != nil && win.OnKeyDown != nil {
+		if win != nil && win.OnKeyDown != nil && needGenEvent {
 			win.OnKeyDown(k, win.keyModifiers)
 		}
 		return 0
@@ -487,18 +558,35 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 	case WM_SYSKEYUP:
 		scanCode := (lParam >> 16) & 0xFF
 
+		needGenEvent := true
+		if scanCode == 54 {
+			scanCode = 42
+		}
+
 		k := Key(scanCode)
-		if k == KeyLeftShift || k == KeyRightShift {
+		if k == KeyShift {
+			if !win.keyModifiers.Shift {
+				needGenEvent = false
+			}
 			win.keyModifiers.Shift = false
-		} else if k == KeyLeftCtrl || k == KeyRightCtrl {
+		} else if k == KeyCtrl {
+			if !win.keyModifiers.Ctrl {
+				needGenEvent = false
+			}
 			win.keyModifiers.Ctrl = false
-		} else if k == KeyLeftAlt || k == KeyRightAlt {
+		} else if k == KeyAlt {
+			if !win.keyModifiers.Alt {
+				needGenEvent = false
+			}
 			win.keyModifiers.Alt = false
 		} else if k == KeyCommand {
+			if !win.keyModifiers.Cmd {
+				needGenEvent = false
+			}
 			win.keyModifiers.Cmd = false
 		}
 
-		if win != nil && win.OnKeyUp != nil {
+		if win != nil && win.OnKeyUp != nil && needGenEvent {
 			win.OnKeyUp(k, win.keyModifiers)
 		}
 		return 0
@@ -509,7 +597,8 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 
 	case WM_CHAR:
 		println("Char typed:", rune(wParam), "=", string(rune(wParam)))
-		if win != nil && win.OnChar != nil {
+
+		if win != nil && win.OnChar != nil && wParam >= 32 {
 			win.OnChar(rune(wParam))
 		}
 		return 0
