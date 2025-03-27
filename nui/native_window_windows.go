@@ -428,27 +428,15 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 		return 0
 
 	case WM_KEYDOWN:
-		virtualKeyCode := uint32(wParam)
-		fmt.Println("VirtualCode:", strconv.FormatInt(int64(virtualKeyCode), 16))
-
-		scanCode := (lParam >> 16) & 0xFF
+		scanCode := uint32(wParam)
 
 		needGenEvent := true
-		if scanCode == 54 {
-			scanCode = 42
-		}
-
-		code := uint32(lParam)
-		fmt.Println("CODE:" + strconv.FormatInt(int64(code), 16))
-
-		extended := (lParam>>24)&1 == 1
-		if !extended && scanCode == 0x45 {
-			scanCode = 0xE11D45
-		}
-
-		fmt.Println("Key down:", strconv.FormatInt(int64(scanCode), 16))
 
 		k := Key(scanCode)
+		if scanCode == 0x5B || scanCode == 0x5C {
+			k = KeyWin
+		}
+
 		if k == KeyShift {
 			if win.keyModifiers.Shift {
 				needGenEvent = false
@@ -477,19 +465,14 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 		return 0
 
 	case WM_KEYUP:
-		scanCode := (lParam >> 16) & 0xFF
+		scanCode := uint32(wParam)
 
 		needGenEvent := true
-		if scanCode == 54 {
-			scanCode = 42
-		}
-
-		extended := (lParam>>24)&1 == 1
-		if !extended && scanCode == 0x45 {
-			scanCode = 0xE11D45
-		}
-
 		k := Key(scanCode)
+		if scanCode == 0x5B || scanCode == 0x5C {
+			k = KeyWin
+		}
+
 		if k == KeyShift {
 			if !win.keyModifiers.Shift {
 				needGenEvent = false
@@ -518,16 +501,15 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 		return 0
 
 	case WM_SYSKEYDOWN:
-		scanCode := (lParam >> 16) & 0xFF
-
-		fmt.Println("Key down:", strconv.FormatInt(int64(scanCode), 16))
+		scanCode := uint32(wParam)
 
 		needGenEvent := true
-		if scanCode == 54 {
-			scanCode = 42
-		}
 
 		k := Key(scanCode)
+		if scanCode == 0x5B || scanCode == 0x5C {
+			k = KeyWin
+		}
+
 		if k == KeyShift {
 			if win.keyModifiers.Shift {
 				needGenEvent = false
@@ -556,14 +538,15 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 		return 0
 
 	case WM_SYSKEYUP:
-		scanCode := (lParam >> 16) & 0xFF
+		scanCode := uint32(wParam)
 
 		needGenEvent := true
-		if scanCode == 54 {
-			scanCode = 42
-		}
 
 		k := Key(scanCode)
+		if scanCode == 0x5B || scanCode == 0x5C {
+			k = KeyWin
+		}
+
 		if k == KeyShift {
 			if !win.keyModifiers.Shift {
 				needGenEvent = false
