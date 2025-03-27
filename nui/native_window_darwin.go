@@ -30,15 +30,13 @@ type NativeWindow struct {
 	OnChar    func(char rune)
 
 	// Mouse events
-	OnMouseEnter func()
-	OnMouseLeave func()
-	OnMouseMove  func(x, y int)
-
+	OnMouseEnter          func()
+	OnMouseLeave          func()
+	OnMouseMove           func(x, y int)
 	OnMouseButtonDown     func(button MouseButton, x, y int)
 	OnMouseButtonUp       func(button MouseButton, x, y int)
 	OnMouseButtonDblClick func(button MouseButton, x, y int)
-
-	OnMouseWheel func(deltaX int, deltaY int)
+	OnMouseWheel          func(deltaX int, deltaY int)
 
 	// Window events
 	OnCreated      func()

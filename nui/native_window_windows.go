@@ -19,30 +19,26 @@ type NativeWindow struct {
 	currentCursor MouseCursor
 	lastSetCursor MouseCursor
 
+	keyModifiers KeyModifiers
+
 	windowPosX   int
 	windowPosY   int
 	windowWidth  int
 	windowHeight int
 
 	// Keyboard events
-	OnKeyDown func(keyCode Key)
-	OnKeyUp   func(keyCode Key)
+	OnKeyDown func(keyCode Key, mods KeyModifiers)
+	OnKeyUp   func(keyCode Key, mods KeyModifiers)
 	OnChar    func(char rune)
 
 	// Mouse events
-	OnMouseEnter                   func()
-	OnMouseLeave                   func()
-	OnMouseMove                    func(x, y int)
-	OnMouseDownLeftButton          func(x, y int)
-	OnMouseUpLeftButton            func(x, y int)
-	OnMouseDownRightButton         func(x, y int)
-	OnMouseUpRightButton           func(x, y int)
-	OnMouseDownMiddleButton        func(x, y int)
-	OnMouseUpMiddleButton          func(x, y int)
-	OnMouseWheel                   func(deltaX float64, deltaY float64)
-	OnMouseDoubleClickLeftButton   func(x, y int)
-	OnMouseDoubleClickRightButton  func(x, y int)
-	OnMouseDoubleClickMiddleButton func(x, y int)
+	OnMouseEnter          func()
+	OnMouseLeave          func()
+	OnMouseMove           func(x, y int)
+	OnMouseButtonDown     func(button MouseButton, x, y int)
+	OnMouseButtonUp       func(button MouseButton, x, y int)
+	OnMouseButtonDblClick func(button MouseButton, x, y int)
+	OnMouseWheel          func(deltaX int, deltaY int)
 
 	// Window events
 	OnCreated      func()
@@ -433,24 +429,78 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 
 	case WM_KEYDOWN:
 		scanCode := (lParam >> 16) & 0xFF
+
+		k := Key(scanCode)
+		if k == KeyLeftShift || k == KeyRightShift {
+			win.keyModifiers.Shift = true
+		} else if k == KeyLeftCtrl || k == KeyRightCtrl {
+			win.keyModifiers.Ctrl = true
+		} else if k == KeyLeftAlt || k == KeyRightAlt {
+			win.keyModifiers.Alt = true
+		} else if k == KeyCommand {
+			win.keyModifiers.Cmd = true
+		}
+
 		if win != nil && win.OnKeyDown != nil {
-			win.OnKeyDown(Key(scanCode))
+			win.OnKeyDown(k, win.keyModifiers)
 		}
 		return 0
 
 	case WM_KEYUP:
 		scanCode := (lParam >> 16) & 0xFF
+
+		k := Key(scanCode)
+		if k == KeyLeftShift || k == KeyRightShift {
+			win.keyModifiers.Shift = false
+		} else if k == KeyLeftCtrl || k == KeyRightCtrl {
+			win.keyModifiers.Ctrl = false
+		} else if k == KeyLeftAlt || k == KeyRightAlt {
+			win.keyModifiers.Alt = false
+		} else if k == KeyCommand {
+			win.keyModifiers.Cmd = false
+		}
+
 		if win != nil && win.OnKeyUp != nil {
-			win.OnKeyUp(Key(scanCode))
+			win.OnKeyUp(k, win.keyModifiers)
 		}
 		return 0
 
 	case WM_SYSKEYDOWN:
-		println("SysKey down:", wParam)
+		scanCode := (lParam >> 16) & 0xFF
+
+		k := Key(scanCode)
+		if k == KeyLeftShift || k == KeyRightShift {
+			win.keyModifiers.Shift = true
+		} else if k == KeyLeftCtrl || k == KeyRightCtrl {
+			win.keyModifiers.Ctrl = true
+		} else if k == KeyLeftAlt || k == KeyRightAlt {
+			win.keyModifiers.Alt = true
+		} else if k == KeyCommand {
+			win.keyModifiers.Cmd = true
+		}
+
+		if win != nil && win.OnKeyDown != nil {
+			win.OnKeyDown(k, win.keyModifiers)
+		}
 		return 0
 
 	case WM_SYSKEYUP:
-		println("SysKey up:", wParam)
+		scanCode := (lParam >> 16) & 0xFF
+
+		k := Key(scanCode)
+		if k == KeyLeftShift || k == KeyRightShift {
+			win.keyModifiers.Shift = false
+		} else if k == KeyLeftCtrl || k == KeyRightCtrl {
+			win.keyModifiers.Ctrl = false
+		} else if k == KeyLeftAlt || k == KeyRightAlt {
+			win.keyModifiers.Alt = false
+		} else if k == KeyCommand {
+			win.keyModifiers.Cmd = false
+		}
+
+		if win != nil && win.OnKeyUp != nil {
+			win.OnKeyUp(k, win.keyModifiers)
+		}
 		return 0
 
 	case WM_SYSCHAR:
@@ -492,81 +542,81 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 		return 0
 
 	case WM_LBUTTONDOWN:
-		x := int16(lParam & 0xFFFF)
-		y := int16((lParam >> 16) & 0xFFFF)
-		if win != nil && win.OnMouseDownLeftButton != nil {
-			win.OnMouseDownLeftButton(int(x), int(y))
+		if win != nil && win.OnMouseButtonDown != nil {
+			x := int16(lParam & 0xFFFF)
+			y := int16((lParam >> 16) & 0xFFFF)
+			win.OnMouseButtonDown(MouseButtonLeft, int(x), int(y))
 		}
 		return 0
 
 	case WM_LBUTTONUP:
-		if win != nil && win.OnMouseUpLeftButton != nil {
+		if win != nil && win.OnMouseButtonUp != nil {
 			x := int16(lParam & 0xFFFF)
 			y := int16((lParam >> 16) & 0xFFFF)
-			win.OnMouseUpLeftButton(int(x), int(y))
+			win.OnMouseButtonUp(MouseButtonLeft, int(x), int(y))
 		}
 		return 0
 
 	case WM_RBUTTONDOWN:
-		x := int16(lParam & 0xFFFF)
-		y := int16((lParam >> 16) & 0xFFFF)
-		if win != nil && win.OnMouseDownRightButton != nil {
-			win.OnMouseDownRightButton(int(x), int(y))
+		if win != nil && win.OnMouseButtonDown != nil {
+			x := int16(lParam & 0xFFFF)
+			y := int16((lParam >> 16) & 0xFFFF)
+			win.OnMouseButtonDown(MouseButtonRight, int(x), int(y))
 		}
 		return 0
 
 	case WM_RBUTTONUP:
-		x := int16(lParam & 0xFFFF)
-		y := int16((lParam >> 16) & 0xFFFF)
-		if win != nil && win.OnMouseUpRightButton != nil {
-			win.OnMouseUpRightButton(int(x), int(y))
+		if win != nil && win.OnMouseButtonUp != nil {
+			x := int16(lParam & 0xFFFF)
+			y := int16((lParam >> 16) & 0xFFFF)
+			win.OnMouseButtonUp(MouseButtonRight, int(x), int(y))
 		}
 		return 0
 
 	case WM_MBUTTONDOWN:
-		x := int16(lParam & 0xFFFF)
-		y := int16((lParam >> 16) & 0xFFFF)
-		if win != nil && win.OnMouseDownMiddleButton != nil {
-			win.OnMouseDownMiddleButton(int(x), int(y))
+		if win != nil && win.OnMouseButtonDown != nil {
+			x := int16(lParam & 0xFFFF)
+			y := int16((lParam >> 16) & 0xFFFF)
+			win.OnMouseButtonDown(MouseButtonMiddle, int(x), int(y))
 		}
 		return 0
 
 	case WM_MBUTTONUP:
-		x := int16(lParam & 0xFFFF)
-		y := int16((lParam >> 16) & 0xFFFF)
-		if win != nil && win.OnMouseUpMiddleButton != nil {
-			win.OnMouseUpMiddleButton(int(x), int(y))
+		if win != nil && win.OnMouseButtonUp != nil {
+			x := int16(lParam & 0xFFFF)
+			y := int16((lParam >> 16) & 0xFFFF)
+			win.OnMouseButtonUp(MouseButtonMiddle, int(x), int(y))
 		}
 		return 0
 
 	case WM_MOUSEWHEEL:
 		deltaY := int16((wParam >> 16) & 0xFFFF)
 		if win != nil && win.OnMouseWheel != nil {
-			win.OnMouseWheel(0, float64(deltaY)/120)
+			win.OnMouseWheel(0, int(deltaY/120))
 		}
 		return 0
 
 	case WM_LBUTTONDBLCLK:
-		x := int16(lParam & 0xFFFF)
-		y := int16((lParam >> 16) & 0xFFFF)
-		if win != nil && win.OnMouseDoubleClickLeftButton != nil {
-			win.OnMouseDoubleClickLeftButton(int(x), int(y))
+		if win != nil && win.OnMouseButtonDblClick != nil {
+			x := int16(lParam & 0xFFFF)
+			y := int16((lParam >> 16) & 0xFFFF)
+			win.OnMouseButtonDblClick(MouseButtonLeft, int(x), int(y))
 		}
 		return 0
 
 	case WM_RBUTTONDBLCLK:
-		x := int16(lParam & 0xFFFF)
-		y := int16((lParam >> 16) & 0xFFFF)
-		if win != nil && win.OnMouseDoubleClickRightButton != nil {
-			win.OnMouseDoubleClickRightButton(int(x), int(y))
+		if win != nil && win.OnMouseButtonDblClick != nil {
+			x := int16(lParam & 0xFFFF)
+			y := int16((lParam >> 16) & 0xFFFF)
+			win.OnMouseButtonDblClick(MouseButtonRight, int(x), int(y))
 		}
 		return 0
 
 	case WM_MBUTTONDBLCLK:
-		x := int16(lParam & 0xFFFF)
-		y := int16((lParam >> 16) & 0xFFFF)
-		if win != nil && win.OnMouseDoubleClickMiddleButton != nil {
-			win.OnMouseDoubleClickMiddleButton(int(x), int(y))
+		if win != nil && win.OnMouseButtonDblClick != nil {
+			x := int16(lParam & 0xFFFF)
+			y := int16((lParam >> 16) & 0xFFFF)
+			win.OnMouseButtonDblClick(MouseButtonMiddle, int(x), int(y))
 		}
 		return 0
 
@@ -885,4 +935,8 @@ func (c *NativeWindow) SetAppIcon(icon *image.RGBA) {
 
 	procSendMessageW.Call(uintptr(c.hwnd), WM_SETICON, ICON_BIG, uintptr(hIcon))
 	procSendMessageW.Call(uintptr(c.hwnd), WM_SETICON, ICON_SMALL, uintptr(hIcon))
+}
+
+func (c *NativeWindow) KeyModifiers() KeyModifiers {
+	return c.keyModifiers
 }
