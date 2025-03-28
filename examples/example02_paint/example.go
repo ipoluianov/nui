@@ -28,7 +28,7 @@ func log(s string) {
 
 	s = dtStr + " " + s
 	logItems = append(logItems, s)
-	if len(logItems) > 10 {
+	if len(logItems) > 40 {
 		logItems = logItems[1:]
 	}
 }
@@ -54,52 +54,61 @@ func Run() {
 	wnd.OnPaint = func(rgba *image.RGBA) {
 		cnv := nuicanvas.NewCanvas(rgba)
 		_ = cnv
+		cnv.SetColor(color.RGBA{200, 200, 200, 255})
+		cnv.SetPixel(110, 110, 1)
+		cnv.SetPixel(113.1, 113.1, 1)
+
+		cnv.DrawLineSDF(20, 20, 220, 150, 10)
+
 		//cnv.Clear(color.RGBA{0, 0, 0, 255})
-		cnv.DrawRect(10, 10, 100, 100, color.RGBA{255, 0, 0, 255})
+		cnv.DrawRect(0, 0, 100, 100)
+		//cnv.DrawCircleAA(50, 50, 50)
 		counterStr := "Counter: " + strconv.FormatInt(int64(counter), 10)
-		cnv.DrawFixedString(10, 120, counterStr, 2, color.RGBA{200, 200, 200, 255})
+		cnv.DrawFixedString(10, 120, counterStr, 2)
 
 		scrollXStr := "ScrollX: " + strconv.FormatFloat(scrollPosX, 'f', 2, 64)
 		scrollYStr := "ScrollY: " + strconv.FormatFloat(scrollPosY, 'f', 2, 64)
 
-		cnv.DrawFixedString(10, 140, scrollXStr, 2, color.RGBA{200, 200, 200, 255})
-		cnv.DrawFixedString(10, 160, scrollYStr, 2, color.RGBA{200, 200, 200, 255})
+		cnv.DrawFixedString(10, 140, scrollXStr, 2)
+		cnv.DrawFixedString(10, 160, scrollYStr, 2)
 
 		mouseXStr := "MouseX: " + strconv.FormatInt(int64(lastMousePosX), 10)
 		mouseYStr := "MouseY: " + strconv.FormatInt(int64(lastMousePosY), 10)
 
-		cnv.DrawFixedString(10, 180, mouseXStr, 2, color.RGBA{200, 200, 200, 255})
-		cnv.DrawFixedString(10, 200, mouseYStr, 2, color.RGBA{200, 200, 200, 255})
+		cnv.DrawFixedString(10, 180, mouseXStr, 2)
+		cnv.DrawFixedString(10, 200, mouseYStr, 2)
 
 		mouseButtonLeftStr := "Mouse Button Left: "
 		if mouseLeftButtonStatus {
 			mouseButtonLeftStr += "pressed"
 		}
-		cnv.DrawFixedString(10, 220, mouseButtonLeftStr, 2, color.RGBA{200, 200, 200, 255})
+		cnv.DrawFixedString(10, 220, mouseButtonLeftStr, 2)
 
 		mouseButtonMiddleStr := "Mouse Button Middle: "
 		if mouseMiddleButtonStatus {
 			mouseButtonMiddleStr += "pressed"
 		}
-		cnv.DrawFixedString(10, 240, mouseButtonMiddleStr, 2, color.RGBA{200, 200, 200, 255})
+		cnv.DrawFixedString(10, 240, mouseButtonMiddleStr, 2)
 
 		mouseButtonRightStr := "Mouse Button Right: "
 		if mouseRightButtonStatus {
 			mouseButtonRightStr += "pressed"
 		}
-		cnv.DrawFixedString(10, 260, mouseButtonRightStr, 2, color.RGBA{200, 200, 200, 255})
+		cnv.DrawFixedString(10, 260, mouseButtonRightStr, 2)
+
+		winPosX := wnd.PosX()
+		winPosY := wnd.PosY()
+		windowPosXStr := "Window PosX: " + strconv.FormatInt(int64(winPosX), 10)
+		cnv.DrawFixedString(10, 280, windowPosXStr, 2)
+		windowPosYStr := "Window PosY: " + strconv.FormatInt(int64(winPosY), 10)
+		cnv.DrawFixedString(10, 300, windowPosYStr, 2)
 
 		winWidth := wnd.Width()
 		winHeight := wnd.Height()
-
 		windowWidthStr := "Window Width: " + strconv.FormatInt(int64(winWidth), 10)
-		cnv.DrawFixedString(10, 280, windowWidthStr, 2, color.RGBA{200, 200, 200, 255})
+		cnv.DrawFixedString(10, 320, windowWidthStr, 2)
 		windowHeightStr := "Window Height: " + strconv.FormatInt(int64(winHeight), 10)
-		cnv.DrawFixedString(10, 300, windowHeightStr, 2, color.RGBA{200, 200, 200, 255})
-
-		for i, s := range logItems {
-			cnv.DrawFixedString(10, 340+20*i, s, 2, color.RGBA{200, 200, 200, 255})
-		}
+		cnv.DrawFixedString(10, 340, windowHeightStr, 2)
 
 		mods := wnd.KeyModifiers()
 
@@ -108,10 +117,22 @@ func Run() {
 		keyModifiersAlt := "Alt:" + strconv.FormatBool(mods.Alt)
 		keyModifiersCmd := "Cmd:" + strconv.FormatBool(mods.Cmd)
 
-		cnv.DrawFixedString(600, 0, keyModifiersShift, 2, color.RGBA{200, 200, 200, 255})
-		cnv.DrawFixedString(600, 20, keyModifiersCtrl, 2, color.RGBA{200, 200, 200, 255})
-		cnv.DrawFixedString(600, 40, keyModifiersAlt, 2, color.RGBA{200, 200, 200, 255})
-		cnv.DrawFixedString(600, 60, keyModifiersCmd, 2, color.RGBA{200, 200, 200, 255})
+		cnv.DrawFixedString(10, 360, keyModifiersShift, 2)
+		cnv.DrawFixedString(10, 380, keyModifiersCtrl, 2)
+		cnv.DrawFixedString(10, 400, keyModifiersAlt, 2)
+		cnv.DrawFixedString(10, 420, keyModifiersCmd, 2)
+
+		for i, s := range logItems {
+			cnv.DrawFixedString(600, float64(10+20*i), s, 2)
+		}
+	}
+
+	wnd.OnMove = func(x, y int) {
+		log("Window moved: " + strconv.FormatInt(int64(x), 10) + " " + strconv.FormatInt(int64(y), 10))
+	}
+
+	wnd.OnResize = func(w, h int) {
+		log("Window resized: " + strconv.FormatInt(int64(w), 10) + " " + strconv.FormatInt(int64(h), 10))
 	}
 
 	wnd.OnMouseWheel = func(deltaX int, deltaY int) {

@@ -713,6 +713,8 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 	case WM_MOVE:
 		x := int16(lParam & 0xFFFF)
 		y := int16((lParam >> 16) & 0xFFFF)
+		win.windowPosX = int(x)
+		win.windowPosY = int(y)
 		if win != nil && win.OnMove != nil {
 			win.OnMove(int(x), int(y))
 		}
@@ -903,6 +905,10 @@ func (c *NativeWindow) Size() (width, height int) {
 	return c.windowWidth, c.windowHeight
 }
 
+func (c *NativeWindow) Position() (x, y int) {
+	return c.windowPosX, c.windowPosY
+}
+
 func (c *NativeWindow) SetMouseCursor(cursor MouseCursor) {
 	if c.currentCursor == cursor {
 		return
@@ -955,6 +961,14 @@ func (c *NativeWindow) MaximizeWindow() {
 
 func (c *NativeWindow) RestoreWindow() {
 	procShowWindow.Call(uintptr(c.hwnd), SW_RESTORE)
+}
+
+func (c *NativeWindow) PosX() int {
+	return c.windowPosX
+}
+
+func (c *NativeWindow) PosY() int {
+	return c.windowPosY
 }
 
 func (c *NativeWindow) Width() int {

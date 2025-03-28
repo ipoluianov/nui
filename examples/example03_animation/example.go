@@ -29,10 +29,11 @@ func Run() {
 		posX := 2 * int(time.Now().UnixMilli()%10000) / 20
 		fullRectOnRGBA(rgba, posX, 10, 100, 100, color.RGBA{255, 0, 0, 255})
 		cnv := nuicanvas.NewCanvas(rgba)
+		cnv.SetColor(color.RGBA{200, 200, 200, 255})
 		counterStr := "Counter: " + strconv.FormatInt(int64(counter), 10)
-		cnv.DrawFixedString(10, 120, counterStr, 2, color.RGBA{200, 200, 200, 255})
+		cnv.DrawFixedString(10, 120, counterStr, 2)
 		speedStr := "Speed: " + strconv.FormatFloat(speed, 'f', 2, 64)
-		cnv.DrawFixedString(10, 140, speedStr, 2, color.RGBA{200, 200, 200, 255})
+		cnv.DrawFixedString(10, 140, speedStr, 2)
 	}
 	wnd.OnKeyDown = func(keyCode nui.Key, keyModifiers nui.KeyModifiers) {
 		wnd.Resize(800, 600)
