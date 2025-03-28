@@ -54,14 +54,14 @@ func Run() {
 	wnd.OnPaint = func(rgba *image.RGBA) {
 		cnv := nuicanvas.NewCanvas(rgba)
 		_ = cnv
-		cnv.SetColor(color.RGBA{200, 200, 200, 255})
-		cnv.SetPixel(110, 110, 1)
-		cnv.SetPixel(113.1, 113.1, 1)
 
-		cnv.DrawLineSDF(20, 20, 220, 150, 10)
+		cnv.SetColor(color.RGBA{20, 200, 20, 50})
+		cnv.DrawLineSDF(12, 12, float64(lastMousePosX), float64(lastMousePosY), 5, nuicanvas.LineCapRound)
+
+		cnv.SetColor(color.RGBA{200, 200, 200, 150})
 
 		//cnv.Clear(color.RGBA{0, 0, 0, 255})
-		cnv.DrawRect(0, 0, 100, 100)
+		cnv.DrawRect(10, 10, 3, 3)
 		//cnv.DrawCircleAA(50, 50, 50)
 		counterStr := "Counter: " + strconv.FormatInt(int64(counter), 10)
 		cnv.DrawFixedString(10, 120, counterStr, 2)
