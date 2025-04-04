@@ -83,6 +83,13 @@ func go_on_window_move(hwnd C.int, x C.int, y C.int) {
 	}
 }
 
+//export go_on_declare_draw_time
+func go_on_declare_draw_time(hwnd C.int, dt C.int) {
+	if win, ok := hwnds[int(hwnd)]; ok {
+		win.windowDeclareDrawTime(int(dt))
+	}
+}
+
 //export go_on_mouse_down
 func go_on_mouse_down(hwnd C.int, button, x, y C.int) {
 	if win, ok := hwnds[int(hwnd)]; ok {

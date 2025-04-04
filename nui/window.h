@@ -26,6 +26,7 @@ void go_on_key_up(int hwnd, int keycode);
 void go_on_modifier_change(int hwnd, int shift, int ctrl, int alt, int cmd);
 void go_on_char(int hwnd, int codepoint);
 void go_on_window_move(int hwnd, int x, int y);
+void go_on_declare_draw_time(int hwnd, int time);
 
 void go_on_mouse_down(int hwnd, int button, int x, int y);
 void go_on_mouse_up(int hwnd, int button, int x, int y);

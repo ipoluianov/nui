@@ -2,6 +2,7 @@
 // +build darwin
 
 #import <Cocoa/Cocoa.h>
+#import <mach/mach_time.h>
 #import "window.h"
 
 // static NSWindow* window;
@@ -170,6 +171,8 @@ static void buffer_release_callback(void* info, const void* data, size_t size) {
 }
 
 - (void)drawRect:(NSRect)dirtyRect {
+    uint64_t start = mach_absolute_time();
+
     int width = (int)self.bounds.size.width;
     int height = (int)self.bounds.size.height;
     int stride = width * 4;
@@ -200,6 +203,15 @@ static void buffer_release_callback(void* info, const void* data, size_t size) {
     CGImageRelease(image);
     CGDataProviderRelease(provider);
     CGColorSpaceRelease(colorSpace);
+
+    uint64_t end = mach_absolute_time();
+    static mach_timebase_info_data_t info = {0};
+    if (info.denom == 0) {
+        mach_timebase_info(&info);
+    }
+    uint64_t elapsedNano = (end - start) * info.numer / info.denom;
+    uint64_t elapsedMicro = elapsedNano / 1000;
+    go_on_declare_draw_time((int)[self.window windowNumber], (int)elapsedMicro);
 }
 
 @end

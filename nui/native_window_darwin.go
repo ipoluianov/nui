@@ -31,6 +31,9 @@ type NativeWindow struct {
 	OnKeyUp   func(keyCode Key, modifiers KeyModifiers)
 	OnChar    func(char rune)
 
+	drawTimes      [32]int64
+	drawTimesIndex int
+
 	// Mouse events
 	OnMouseEnter          func()
 	OnMouseLeave          func()
@@ -471,7 +474,16 @@ func (c *NativeWindow) windowKeyUp(keyCode Key) {
 	}
 }
 
+func (c *NativeWindow) windowDeclareDrawTime(dt int) {
+	c.drawTimes[c.drawTimesIndex] = int64(dt)
+	c.drawTimesIndex++
+	if c.drawTimesIndex >= len(c.drawTimes) {
+		c.drawTimesIndex = 0
+	}
+}
+
 func (c *NativeWindow) windowPaint(rgba *image.RGBA) {
+
 	imgDataSize := rgba.Rect.Dx() * rgba.Rect.Dy() * 4
 	copy(rgba.Pix[:imgDataSize], canvasBufferBackground)
 
@@ -516,4 +528,21 @@ func (c *NativeWindow) requestWindowPosition() (int, int) {
 	x := int(C.GetWindowPositionX(C.int(c.hwnd)))
 	y := int(C.GetWindowPositionY(C.int(c.hwnd)))
 	return x, y
+}
+
+func (c *NativeWindow) DrawTimeUs() int64 {
+	drawTimeAvg := int64(0)
+	count := 0
+	for _, t := range c.drawTimes {
+		if t == 0 {
+			continue
+		}
+		drawTimeAvg += t
+		count++
+	}
+	if count == 0 {
+		return 0
+	}
+	drawTimeAvg = drawTimeAvg / int64(count)
+	return drawTimeAvg
 }

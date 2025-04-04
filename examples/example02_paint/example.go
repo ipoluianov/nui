@@ -210,7 +210,7 @@ func Run() {
 	wnd.Show()
 	//wnd.MoveToCenterOfScreen()
 	wnd.Resize(800, 600)
-	wnd.MoveToCenterOfScreen()
+	//wnd.MoveToCenterOfScreen()
 	//wnd.MaximizeWindow()
 	wnd.EventLoop()
 }
