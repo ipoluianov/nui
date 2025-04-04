@@ -309,6 +309,9 @@ const maxWidth = 10000
 
 var pixBuffer = make([]byte, 4*chunkHeight*maxWidth)
 
+//go:noescape
+func RgbaToBgraSIMD(data []byte)
+
 func drawImageToHDC(img *image.RGBA, hdc uintptr, width, height int32) {
 	imgStride := img.Stride
 	totalHeight := int(height)
@@ -328,28 +331,17 @@ func drawImageToHDC(img *image.RGBA, hdc uintptr, width, height int32) {
 				BitCount:    32,
 				Compression: 0,
 			},
-			Colors: [3]RGBQUAD{
-				{255, 0, 0, 0}, // Red
-				{0, 255, 0, 0}, // Green
-				{0, 0, 255, 0}, // Blue
-			},
 		}
 
 		srcOffset := y * imgStride
 		dataSize := int(width) * 4 * h
-		copy(pixBuffer[:dataSize], img.Pix[srcOffset:srcOffset+dataSize])
-		/*for offset := 0; offset < dataSize; offset += 4 {
-			pixBuffer[offset+0], pixBuffer[offset+2] = pixBuffer[offset+2], pixBuffer[offset+0]
-		}*/
 
-		/*for row := 0; row < h; row++ {
-			srcOffset := (y + row) * imgStride
-			dstOffset := row * int(width) * 4
-			copy(pixBuffer[dstOffset:], img.Pix[srcOffset:srcOffset+int(width)*4])
-			for offset := 0; offset < int(width)*4; offset += 4 {
-				pixBuffer[dstOffset+offset+0], pixBuffer[dstOffset+offset+2] = pixBuffer[dstOffset+offset+2], pixBuffer[dstOffset+offset+0]
-			}
-		}*/
+		_ = srcOffset
+		_ = dataSize
+		copy(pixBuffer[:dataSize], img.Pix[srcOffset:srcOffset+dataSize])
+
+		// Convert RGBA to BGRA
+		RgbaToBgraSIMD(pixBuffer[:dataSize])
 
 		ptr := uintptr(unsafe.Pointer(&pixBuffer[0]))
 

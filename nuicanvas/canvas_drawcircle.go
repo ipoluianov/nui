@@ -6,18 +6,19 @@ func (c *Canvas) DrawCircle(x0, y0 int, r int) {
 	xsq := 0
 	rsq := r * r
 	ysq := rsq
+	col := c.CurrentState().col
 	for x <= y {
-		c.BlendPixel(x0+x, y0+y, c.CurrentState().col)
-		c.BlendPixel(x0+y, y0+x, c.CurrentState().col)
+		c.BlendPixel(x0+x, y0+y, col)
+		c.BlendPixel(x0+y, y0+x, col)
 
-		c.BlendPixel(x0-x, y0+y, c.CurrentState().col)
-		c.BlendPixel(x0+y, y0-x, c.CurrentState().col)
+		c.BlendPixel(x0-x, y0+y, col)
+		c.BlendPixel(x0+y, y0-x, col)
 
-		c.BlendPixel(x0-x, y0-y, c.CurrentState().col)
-		c.BlendPixel(x0-y, y0-x, c.CurrentState().col)
+		c.BlendPixel(x0-x, y0-y, col)
+		c.BlendPixel(x0-y, y0-x, col)
 
-		c.BlendPixel(x0+x, y0-y, c.CurrentState().col)
-		c.BlendPixel(x0-y, y0+x, c.CurrentState().col)
+		c.BlendPixel(x0+x, y0-y, col)
+		c.BlendPixel(x0-y, y0+x, col)
 
 		xsq = xsq + 2*x + 1
 		x++
