@@ -418,6 +418,7 @@ func (c *NativeWindow) windowMouseMove(x, y int) {
 		y = c.windowHeight - y
 		c.OnMouseMove(x, y)
 	}
+	c.Update()
 }
 
 func (c *NativeWindow) windowResized(width, height int) {
