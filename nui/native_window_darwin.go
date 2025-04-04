@@ -387,6 +387,14 @@ func (c *NativeWindow) Size() (width, height int) {
 	return c.windowWidth, c.windowHeight
 }
 
+func (c *NativeWindow) PosX() int {
+	return 0
+}
+
+func (c *NativeWindow) PosY() int {
+	return 0
+}
+
 func (c *NativeWindow) Width() int {
 	return c.windowWidth
 }

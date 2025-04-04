@@ -55,8 +55,11 @@ func Run() {
 		cnv := nuicanvas.NewCanvas(rgba)
 		_ = cnv
 
-		cnv.SetColor(color.RGBA{20, 200, 20, 50})
-		cnv.DrawLineSDF(12, 12, float64(lastMousePosX), float64(lastMousePosY), 5, nuicanvas.LineCapRound)
+		cnv.SetColor(color.RGBA{20, 200, 20, 255})
+		cnv.DrawLine(12, 12, lastMousePosX, lastMousePosY, 1)
+		cnv.FillCircle(lastMousePosX, lastMousePosY, 10, 1)
+
+		cnv.DrawCircle(lastMousePosX, lastMousePosY, 20, 1)
 
 		cnv.SetColor(color.RGBA{200, 200, 200, 150})
 

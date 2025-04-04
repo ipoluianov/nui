@@ -1,102 +1,44 @@
 package nuicanvas
 
-import "math"
+func (c *Canvas) DrawLine(x0, y0, x1, y1 int, alpha float64) {
+	col := c.CurrentState().col
+	dx := abs(x1 - x0)
+	dy := abs(y1 - y0)
 
-type LineCapStyle int
-
-const (
-	LineCapRound LineCapStyle = iota
-	LineCapSquare
-)
-
-func (c *Canvas) DrawLineSDF(x0, y0, x1, y1, thickness float64, capStyle LineCapStyle) {
-	if thickness <= 0 {
-		return
+	sx := 1
+	if x0 > x1 {
+		sx = -1
+	}
+	sy := 1
+	if y0 > y1 {
+		sy = -1
 	}
 
-	dx := x1 - x0
-	dy := y1 - y0
-	length := math.Hypot(dx, dy) // length of the line
-	if length == 0 {
-		return
-	}
+	err := dx - dy
 
-	// normalize the direction vector
-	nx := dx / length
-	ny := dy / length
+	for {
+		c.BlendPixel(x0, y0, col, alpha) // Рисуем текущую точку
 
-	// adjust the start and end points if the cap style is square
-	if capStyle == LineCapSquare {
-		hx := nx * (thickness / 2)
-		hy := ny * (thickness / 2)
-		x0 -= hx
-		y0 -= hy
-		x1 += hx
-		y1 += hy
-		dx = x1 - x0
-		dy = y1 - y0
-		length = math.Hypot(dx, dy)
-	}
+		if x0 == x1 && y0 == y1 {
+			break
+		}
 
-	// calculate the bounding box of the line
-	minX := int(math.Floor(min(x0, x1) - thickness))
-	maxX := int(math.Ceil(max(x0, x1) + thickness))
-	minY := int(math.Floor(min(y0, y1) - thickness))
-	maxY := int(math.Ceil(max(y0, y1) + thickness))
+		e2 := 2 * err
 
-	// iterate over the bounding box
-	for y := minY; y <= maxY; y++ {
-		for x := minX; x <= maxX; x++ {
-
-			// calculate the distance between the current pixel and the line
-			px := float64(x) + 0.5
-			py := float64(y) + 0.5
-			t := ((px-x0)*dx + (py-y0)*dy) / (length * length)
-			if t < 0 || t > 1 {
-				// the projection of the point is outside the line segment,
-				continue
-			}
-
-			// calculate the nearest point on the line
-			nx := x0 + t*dx
-			ny := y0 + t*dy
-
-			// calculate the distance between the current pixel and the line
-			dist := math.Hypot(px-nx, py-ny)
-			blur := 1.0
-			alpha := 1.0 - smoothstep(thickness, thickness+blur, dist)
-			if alpha > 0.1 {
-				c.SetPixel(math.Round(px), math.Round(py), alpha)
-			}
+		if e2 > -dy {
+			err -= dy
+			x0 += sx
+		}
+		if e2 < dx {
+			err += dx
+			y0 += sy
 		}
 	}
 }
 
-func clamp(x, min, max float64) float64 {
-	if x < min {
-		return min
+func abs(a int) int {
+	if a < 0 {
+		return -a
 	}
-	if x > max {
-		return max
-	}
-	return x
-}
-
-func min(a, b float64) float64 {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-func max(a, b float64) float64 {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func smoothstep(edge0, edge1, x float64) float64 {
-	t := clamp((x-edge0)/(edge1-edge0), 0, 1)
-	return t * t * (3 - 2*t)
+	return a
 }
