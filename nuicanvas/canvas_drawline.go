@@ -2,8 +2,15 @@ package nuicanvas
 
 func (c *Canvas) DrawLine(x0, y0, x1, y1 int, alpha float64) {
 	col := c.CurrentState().col
-	dx := abs(x1 - x0)
-	dy := abs(y1 - y0)
+
+	dx := x1 - x0
+	dy := y1 - y0
+	if dx < 0 {
+		dx = -dx
+	}
+	if dy < 0 {
+		dy = -dy
+	}
 
 	sx := 1
 	if x0 > x1 {
@@ -17,14 +24,11 @@ func (c *Canvas) DrawLine(x0, y0, x1, y1 int, alpha float64) {
 	err := dx - dy
 
 	for {
-		c.BlendPixel(x0, y0, col, alpha) // Рисуем текущую точку
-
+		c.BlendPixel(x0, y0, col)
 		if x0 == x1 && y0 == y1 {
 			break
 		}
-
 		e2 := 2 * err
-
 		if e2 > -dy {
 			err -= dy
 			x0 += sx
@@ -34,11 +38,4 @@ func (c *Canvas) DrawLine(x0, y0, x1, y1 int, alpha float64) {
 			y0 += sy
 		}
 	}
-}
-
-func abs(a int) int {
-	if a < 0 {
-		return -a
-	}
-	return a
 }

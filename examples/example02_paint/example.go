@@ -1,6 +1,7 @@
 package example02paint
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 	"strconv"
@@ -41,32 +42,36 @@ func Run() {
 
 	counter := 0
 
-	lastMousePosX := int(0)
-	lastMousePosY := int(0)
+	//lastMousePosX := int(0)
+	//lastMousePosY := int(0)
 
 	scrollPosX := float64(0)
 	scrollPosY := float64(0)
 
-	mouseLeftButtonStatus := false
+	/*mouseLeftButtonStatus := false
 	mouseMiddleButtonStatus := false
-	mouseRightButtonStatus := false
+	mouseRightButtonStatus := false*/
 
 	wnd.OnPaint = func(rgba *image.RGBA) {
 		cnv := nuicanvas.NewCanvas(rgba)
 		_ = cnv
 
+		cnv.SetColor(color.RGBA{20, 20, 200, 255})
+		cnv.DrawCircle(100, 100, 40)
+		cnv.FillCircle(100, 100, 30)
+
+		/*cnv.SetColor(color.RGBA{20, 200, 20, 255})
+		cnv.DrawCircle(lastMousePosX, lastMousePosY, 40)
+		cnv.SetColor(color.RGBA{20, 200, 20, 50})
+		cnv.FillCircle(lastMousePosX, lastMousePosY, 30)
 		cnv.SetColor(color.RGBA{20, 200, 20, 255})
-		cnv.DrawLine(12, 12, lastMousePosX, lastMousePosY, 1)
-		cnv.FillCircle(lastMousePosX, lastMousePosY, 10, 1)
+		cnv.DrawLine(lastMousePosX-50, lastMousePosY, lastMousePosX+50, lastMousePosY, 0.5)
+		cnv.DrawLine(lastMousePosX, lastMousePosY-50, lastMousePosX, lastMousePosY+50, 0.5)
 
-		cnv.DrawCircle(lastMousePosX, lastMousePosY, 20, 1)
+		drawTimeStr := "Draw time: " + strconv.FormatInt(int64(wnd.DrawTimeUs()/1000), 10) + " ms"
+		cnv.DrawFixedString(10, 100, drawTimeStr, 2)*/
 
-		cnv.SetColor(color.RGBA{200, 200, 200, 150})
-
-		//cnv.Clear(color.RGBA{0, 0, 0, 255})
-		cnv.DrawRect(10, 10, 3, 3)
-		//cnv.DrawCircleAA(50, 50, 50)
-		counterStr := "Counter: " + strconv.FormatInt(int64(counter), 10)
+		/*counterStr := "Counter: " + strconv.FormatInt(int64(counter), 10)
 		cnv.DrawFixedString(10, 120, counterStr, 2)
 
 		scrollXStr := "ScrollX: " + strconv.FormatFloat(scrollPosX, 'f', 2, 64)
@@ -123,11 +128,11 @@ func Run() {
 		cnv.DrawFixedString(10, 360, keyModifiersShift, 2)
 		cnv.DrawFixedString(10, 380, keyModifiersCtrl, 2)
 		cnv.DrawFixedString(10, 400, keyModifiersAlt, 2)
-		cnv.DrawFixedString(10, 420, keyModifiersCmd, 2)
+		cnv.DrawFixedString(10, 420, keyModifiersCmd, 2)*/
 
-		for i, s := range logItems {
+		/*for i, s := range logItems {
 			cnv.DrawFixedString(600, float64(10+20*i), s, 2)
-		}
+		}*/
 	}
 
 	wnd.OnMove = func(x, y int) {
@@ -138,13 +143,22 @@ func Run() {
 		log("Window resized: " + strconv.FormatInt(int64(w), 10) + " " + strconv.FormatInt(int64(h), 10))
 	}
 
+	wnd.OnMouseLeave = func() {
+		log("Mouse leave")
+	}
+
+	wnd.OnMouseEnter = func() {
+		log("Mouse enter")
+	}
+
 	wnd.OnMouseWheel = func(deltaX int, deltaY int) {
 		scrollPosX += float64(deltaX)
 		scrollPosY += float64(deltaY)
 		log("Mouse wheel: " + strconv.FormatInt(int64(deltaX), 10) + " " + strconv.FormatInt(int64(deltaY), 10))
+		fmt.Println("Draw Time:", wnd.DrawTimeUs()/1000)
 	}
 
-	wnd.OnMouseButtonDown = func(button nui.MouseButton, x, y int) {
+	/*wnd.OnMouseButtonDown = func(button nui.MouseButton, x, y int) {
 		log("Mouse button down: " + button.String())
 		switch button {
 		case nui.MouseButtonLeft:
@@ -166,7 +180,7 @@ func Run() {
 		case nui.MouseButtonRight:
 			mouseRightButtonStatus = false
 		}
-	}
+	}*/
 
 	wnd.OnChar = func(char rune) {
 		log("Char: " + string(char))
@@ -181,8 +195,8 @@ func Run() {
 	}
 
 	wnd.OnMouseMove = func(x, y int) {
-		lastMousePosX = x
-		lastMousePosY = y
+		//lastMousePosX = x
+		//lastMousePosY = y
 	}
 
 	wnd.OnTimer = func() {
@@ -193,7 +207,7 @@ func Run() {
 	wnd.Show()
 	//wnd.MoveToCenterOfScreen()
 	wnd.Resize(800, 600)
-	//wnd.MoveToCenterOfScreen()
+	wnd.MoveToCenterOfScreen()
 	//wnd.MaximizeWindow()
 	wnd.EventLoop()
 }

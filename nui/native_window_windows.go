@@ -26,6 +26,9 @@ type NativeWindow struct {
 	windowWidth  int
 	windowHeight int
 
+	drawTimes      [32]int64
+	drawTimesIndex int
+
 	// Keyboard events
 	OnKeyDown func(keyCode Key, mods KeyModifiers)
 	OnKeyUp   func(keyCode Key, mods KeyModifiers)
@@ -221,7 +224,7 @@ type RGBQUAD struct {
 
 type BITMAPINFO struct {
 	Header BITMAPINFOHEADER
-	Colors [1]RGBQUAD
+	Colors [3]RGBQUAD
 }
 
 type TRACKMOUSEEVENT struct {
@@ -301,13 +304,12 @@ func getHDCSize(hdc uintptr) (width int32, height int32) {
 	return r.right - r.left, r.bottom - r.top
 }
 
-const chunkHeight = 100
+const chunkHeight = 300
 const maxWidth = 10000
 
 var pixBuffer = make([]byte, 4*chunkHeight*maxWidth)
 
 func drawImageToHDC(img *image.RGBA, hdc uintptr, width, height int32) {
-
 	imgStride := img.Stride
 	totalHeight := int(height)
 
@@ -326,24 +328,28 @@ func drawImageToHDC(img *image.RGBA, hdc uintptr, width, height int32) {
 				BitCount:    32,
 				Compression: 0,
 			},
+			Colors: [3]RGBQUAD{
+				{255, 0, 0, 0}, // Red
+				{0, 255, 0, 0}, // Green
+				{0, 0, 255, 0}, // Blue
+			},
 		}
 
-		for row := 0; row < h; row++ {
+		srcOffset := y * imgStride
+		dataSize := int(width) * 4 * h
+		copy(pixBuffer[:dataSize], img.Pix[srcOffset:srcOffset+dataSize])
+		/*for offset := 0; offset < dataSize; offset += 4 {
+			pixBuffer[offset+0], pixBuffer[offset+2] = pixBuffer[offset+2], pixBuffer[offset+0]
+		}*/
+
+		/*for row := 0; row < h; row++ {
 			srcOffset := (y + row) * imgStride
 			dstOffset := row * int(width) * 4
-
-			for col := 0; col < int(width); col++ {
-				r := img.Pix[srcOffset+col*4+0]
-				g := img.Pix[srcOffset+col*4+1]
-				b := img.Pix[srcOffset+col*4+2]
-				//a := img.Pix[srcOffset+col*4+3]
-
-				pixBuffer[dstOffset+col*4+0] = b // Blue
-				pixBuffer[dstOffset+col*4+1] = g // Green
-				pixBuffer[dstOffset+col*4+2] = r // Red
-				pixBuffer[dstOffset+col*4+3] = 255
+			copy(pixBuffer[dstOffset:], img.Pix[srcOffset:srcOffset+int(width)*4])
+			for offset := 0; offset < int(width)*4; offset += 4 {
+				pixBuffer[dstOffset+offset+0], pixBuffer[dstOffset+offset+2] = pixBuffer[dstOffset+offset+2], pixBuffer[dstOffset+offset+0]
 			}
-		}
+		}*/
 
 		ptr := uintptr(unsafe.Pointer(&pixBuffer[0]))
 
@@ -390,6 +396,8 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 	switch msg {
 	case WM_PAINT:
 
+		dtBegin := time.Now()
+
 		var ps PAINTSTRUCT
 		hdc, _, _ := procBeginPaint.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&ps)))
 
@@ -419,6 +427,12 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 		drawImageToHDC(img, hdc, hdcWidth, hdcHeight)
 
 		procEndPaint.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&ps)))
+
+		win.drawTimes[win.drawTimesIndex] = time.Since(dtBegin).Microseconds()
+		win.drawTimesIndex++
+		if win.drawTimesIndex >= len(win.drawTimes) {
+			win.drawTimesIndex = 0
+		}
 
 		return 0
 
@@ -1025,4 +1039,21 @@ func (c *NativeWindow) SetAppIcon(icon *image.RGBA) {
 
 func (c *NativeWindow) KeyModifiers() KeyModifiers {
 	return c.keyModifiers
+}
+
+func (c *NativeWindow) DrawTimeUs() int64 {
+	drawTimeAvg := int64(0)
+	count := 0
+	for _, t := range c.drawTimes {
+		if t == 0 {
+			continue
+		}
+		drawTimeAvg += t
+		count++
+	}
+	if count == 0 {
+		return 0
+	}
+	drawTimeAvg = drawTimeAvg / int64(count)
+	return drawTimeAvg
 }
