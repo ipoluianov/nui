@@ -17,11 +17,15 @@ void StartTimer(int windowId, double intervalMilliseconds);
 void StopTimer(int windowId);
 void UpdateWindow(int windowId);
 
+int GetWindowPositionX(int windowId);
+int GetWindowPositionY(int windowId);
+
 void go_on_paint(int hwnd, void* buffer, int width, int height);
 void go_on_key_down(int hwnd, int keycode);
 void go_on_key_up(int hwnd, int keycode);
 void go_on_modifier_change(int hwnd, int shift, int ctrl, int alt, int cmd);
 void go_on_char(int hwnd, int codepoint);
+void go_on_window_move(int hwnd, int x, int y);
 
 void go_on_mouse_down(int hwnd, int button, int x, int y);
 void go_on_mouse_up(int hwnd, int button, int x, int y);

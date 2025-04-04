@@ -23,6 +23,14 @@ static void InitWindowMap() {
     return YES;
 }
 
+- (void)windowDidMove:(NSNotification *)notification {
+    NSWindow *window = notification.object;
+    int windowId = (int)window.windowNumber;
+    NSPoint pos = [window frame].origin;
+    go_on_window_move(windowId, (int)pos.x, (int)pos.y); // вызов в Go
+}
+
+
 @end
 
 @interface GoPaintView : NSView
@@ -220,6 +228,8 @@ int InitWindow(void) {
         GoPaintView *view = [[GoPaintView alloc] initWithFrame:frame];
         [window setContentView:view];
         [window setTitle:@"NUI Window"];
+        [window setDelegate:delegate];
+
         //[window makeKeyAndOrderFront:nil];
 
         [app activateIgnoringOtherApps:YES];
@@ -334,6 +344,18 @@ void SetAppIconFromRGBA(const char* data, int width, int height) {
 
         [NSApp setApplicationIconImage:image];
     }
+}
+
+int GetWindowPositionX(int windowId) {
+    NSWindow *win = windowMap[@(windowId)];
+    if (!win) return -1;
+    return (int)win.frame.origin.x;
+}
+
+int GetWindowPositionY(int windowId) {
+    NSWindow *win = windowMap[@(windowId)];
+    if (!win) return -1;
+    return (int)win.frame.origin.y;
 }
 
 void timerCallback(NSTimer *timer) {

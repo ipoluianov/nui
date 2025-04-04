@@ -19,6 +19,8 @@ type NativeWindow struct {
 	currentCursor MouseCursor
 	lastSetCursor MouseCursor
 
+	windowPosX   int
+	windowPosY   int
 	windowWidth  int
 	windowHeight int
 
@@ -77,6 +79,11 @@ func CreateWindow() *NativeWindow {
 	initCanvasBufferBackground(color.RGBA{0, 50, 0, 255})
 
 	c.hwnd = int(C.InitWindow())
+
+	x, y := c.requestWindowPosition()
+	c.windowPosX = int(x)
+	c.windowPosY = int(y)
+
 	hwnds[c.hwnd] = &c
 	c.startTimer(1)
 	return &c
@@ -388,11 +395,11 @@ func (c *NativeWindow) Size() (width, height int) {
 }
 
 func (c *NativeWindow) PosX() int {
-	return 0
+	return c.windowPosX
 }
 
 func (c *NativeWindow) PosY() int {
-	return 0
+	return c.windowPosY
 }
 
 func (c *NativeWindow) Width() int {
@@ -495,4 +502,18 @@ func (c *NativeWindow) windowMouseButtonDblClick(button MouseButton, x, y int) {
 	if c.OnMouseButtonDblClick != nil {
 		c.OnMouseButtonDblClick(button, x, y)
 	}
+}
+
+func (c *NativeWindow) windowMoved(x, y int) {
+	c.windowPosX = x
+	c.windowPosY = y
+	if c.OnMove != nil {
+		c.OnMove(x, y)
+	}
+}
+
+func (c *NativeWindow) requestWindowPosition() (int, int) {
+	x := int(C.GetWindowPositionX(C.int(c.hwnd)))
+	y := int(C.GetWindowPositionY(C.int(c.hwnd)))
+	return x, y
 }

@@ -76,6 +76,13 @@ func convertMacMouseButtons(button C.int) MouseButton {
 	return MouseButtonLeft
 }
 
+//export go_on_window_move
+func go_on_window_move(hwnd C.int, x C.int, y C.int) {
+	if win, ok := hwnds[int(hwnd)]; ok {
+		win.windowMoved(int(x), int(y))
+	}
+}
+
 //export go_on_mouse_down
 func go_on_mouse_down(hwnd C.int, button, x, y C.int) {
 	if win, ok := hwnds[int(hwnd)]; ok {
