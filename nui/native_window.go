@@ -1,5 +1,11 @@
 package nui
 
+import "runtime"
+
+func init() {
+	runtime.LockOSThread()
+}
+
 /*
 ----------------------------------------------------
 

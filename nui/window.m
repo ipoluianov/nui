@@ -4,11 +4,16 @@
 #import <Cocoa/Cocoa.h>
 #import <mach/mach_time.h>
 #import "window.h"
+#include <pthread.h>
 
 // static NSWindow* window;
 
 static NSMutableDictionary<NSNumber*, NSWindow*> *windowMap;
 static NSMutableDictionary<NSNumber*, NSTimer*> *timers;
+
+void Log(int code) {
+    fprintf(stderr, "LOG: %d\n", code);
+}
 
 __attribute__((constructor))
 static void InitWindowMap() {
@@ -222,31 +227,56 @@ int InitWindow(void) {
             timers = [[NSMutableDictionary alloc] init];
         }
 
+        // Log to console
+        Log(1);
+
         NSWindow* window;
         NSApplication *app = [NSApplication sharedApplication];
         [app setActivationPolicy:NSApplicationActivationPolicyRegular];
 
+        Log(2);
+
         AppDelegate *delegate = [[AppDelegate alloc] init];
         [app setDelegate:delegate];
 
+        Log(3);
+
         NSRect frame = NSMakeRect(100, 100, 800, 600);
         NSUInteger style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable | NSWindowStyleMaskMiniaturizable;
+
+        Log(4);
+
+        fprintf(stderr, "Thread: %ld\n", pthread_self());
+        @try {
 
         window = [[NSWindow alloc] initWithContentRect:frame
                                              styleMask:style
                                                backing:NSBackingStoreBuffered
                                                  defer:NO];
 
+        } @catch (NSException *exception) {
+            fprintf(stderr, "Exception: %s\n", [[exception reason] UTF8String]);
+            return -1;
+        }
+
+        Log(5);
+
+
         GoPaintView *view = [[GoPaintView alloc] initWithFrame:frame];
         [window setContentView:view];
         [window setTitle:@"NUI Window"];
         [window setDelegate:delegate];
+
+        NSLog(@"NUI: InitWindow 1");
 
         //[window makeKeyAndOrderFront:nil];
 
         [app activateIgnoringOtherApps:YES];
         int windowId = (int)[window windowNumber];
         windowMap[@(windowId)] = window;
+
+        NSLog(@"NUI: InitWindow 1");
+
         return windowId;
     }
 }

@@ -11,10 +11,11 @@ import (
 )
 
 func Run() {
+	nui.Init()
 	doc := image.NewRGBA(image.Rect(0, 0, 1800, 1600))
+
 	buttonPressed := false
 
-	nui.Init()
 	wnd := nui.CreateWindow()
 
 	wnd.OnPaint = func(rgba *image.RGBA) {
@@ -47,10 +48,11 @@ func Run() {
 		}
 		lastX, lastY = x, y
 		wnd.Update()
+
 	}
 
 	wnd.SetTitle("Example 04 - Paint")
-	wnd.Resize(800, 600)
 	wnd.Show()
+	wnd.Resize(800, 600)
 	wnd.EventLoop()
 }
