@@ -204,7 +204,7 @@ func Run() {
 
 	wnd.OnTimer = func() {
 		counter++
-		//wnd.Update()
+		wnd.Update()
 	}
 
 	wnd.Show()
