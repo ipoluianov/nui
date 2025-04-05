@@ -33,9 +33,9 @@ Update()
 EventLoop()
 Close()
 
+// Window appearance
 SetTitle(title string)
 SetAppIcon(icon *image.RGBA)
-
 SetMouseCursor(cursor MouseCursor)
 
 Move(width int, height int)
@@ -46,7 +46,11 @@ MaximizeWindow()
 
 // Get window information
 Size() (width, height int)
+Pos() (x, y int)
+PosX() int
+PosY() int
 Width() int
 Height() int
+DrawTimeUs() int64
 
 */

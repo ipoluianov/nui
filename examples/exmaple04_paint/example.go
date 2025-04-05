@@ -46,6 +46,7 @@ func Run() {
 			cc.DrawLine(lastX, lastY, x, y, 1)
 		}
 		lastX, lastY = x, y
+		wnd.Update()
 	}
 
 	wnd.SetTitle("Example 04 - Paint")
