@@ -158,7 +158,6 @@ const (
 
 	// Mac OS
 	KeyCommand  = 0xCC01
-	KeyOption   = 0xCC02
 	KeyFunction = 0xCC03
 )
 
@@ -286,7 +285,6 @@ var keyNames = map[Key]string{
 
 	// Mac OS
 	KeyCommand:  "Command",
-	KeyOption:   "Option",
 	KeyFunction: "Function",
 }
 

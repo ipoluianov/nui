@@ -271,10 +271,8 @@ var macToPCScanCode = map[int]Key{
 	0x37: KeyCommand,
 	0x38: KeyShift,
 	0x39: KeyCapsLock,
-	0x3A: KeyOption,
 	0x3B: KeyCtrl,
 	0x3C: KeyShift,
-	0x3D: KeyOption,
 	0x3E: KeyCtrl,
 	0x3F: KeyFunction,
 	0x40: KeyF17,
@@ -383,10 +381,10 @@ func (c *NativeWindow) windowKeyModifiersChanged(shift bool, ctrl bool, alt bool
 
 	// Key alt
 	if c.keyModifiers.Alt && !alt {
-		c.windowKeyUp(KeyOption)
+		c.windowKeyUp(KeyAlt)
 	}
 	if !c.keyModifiers.Alt && alt {
-		c.windowKeyDown(KeyOption)
+		c.windowKeyDown(KeyAlt)
 	}
 	c.keyModifiers.Alt = alt
 
