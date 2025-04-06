@@ -26,6 +26,9 @@ type NativeWindow struct {
 
 	keyModifiers KeyModifiers
 
+	lastCapsLockState bool
+	lastNumLockState  bool
+
 	// Keyboard events
 	OnKeyDown func(keyCode Key, modifiers KeyModifiers)
 	OnKeyUp   func(keyCode Key, modifiers KeyModifiers)
@@ -331,11 +334,60 @@ func (c *NativeWindow) windowMouseWheel(deltaX, deltaY float64) {
 }
 
 // key modifiers
-func (c *NativeWindow) windowKeyModifiersChanged(shift bool, ctrl bool, alt bool, cmd bool) {
+func (c *NativeWindow) windowKeyModifiersChanged(shift bool, ctrl bool, alt bool, cmd bool, caps bool, num bool, _ bool) {
+	// Key shift
+	if c.keyModifiers.Shift && !shift {
+		c.windowKeyUp(KeyShift)
+	}
+	if !c.keyModifiers.Shift && shift {
+		c.windowKeyDown(KeyShift)
+	}
 	c.keyModifiers.Shift = shift
+
+	// Key ctrl
+	if c.keyModifiers.Ctrl && !ctrl {
+		c.windowKeyUp(KeyCtrl)
+	}
+	if !c.keyModifiers.Ctrl && ctrl {
+		c.windowKeyDown(KeyCtrl)
+	}
 	c.keyModifiers.Ctrl = ctrl
+
+	// Key alt
+	if c.keyModifiers.Alt && !alt {
+		c.windowKeyUp(KeyOption)
+	}
+	if !c.keyModifiers.Alt && alt {
+		c.windowKeyDown(KeyOption)
+	}
 	c.keyModifiers.Alt = alt
+
+	// Key cmd
+	if c.keyModifiers.Cmd && !cmd {
+		c.windowKeyUp(KeyCommand)
+	}
+	if !c.keyModifiers.Cmd && cmd {
+		c.windowKeyDown(KeyCommand)
+	}
 	c.keyModifiers.Cmd = cmd
+
+	if caps != c.lastCapsLockState {
+		if caps {
+			c.windowKeyDown(KeyCapsLock)
+		} else {
+			c.windowKeyDown(KeyCapsLock)
+		}
+		c.lastCapsLockState = caps
+	}
+
+	if num != c.lastNumLockState {
+		if num {
+			c.windowKeyDown(KeyNumLock)
+		} else {
+			c.windowKeyDown(KeyNumLock)
+		}
+		c.lastNumLockState = num
+	}
 }
 
 func (c *NativeWindow) KeyModifiers() KeyModifiers {

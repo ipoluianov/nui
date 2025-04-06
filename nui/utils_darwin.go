@@ -50,9 +50,9 @@ func go_on_key_up(hwnd C.int, code C.int) {
 }
 
 //export go_on_modifier_change
-func go_on_modifier_change(hwnd C.int, shift, ctrl, alt, cmd C.int) {
+func go_on_modifier_change(hwnd C.int, shift, ctrl, alt, cmd, caps, num, fnKey C.int) {
 	if win, ok := hwnds[int(hwnd)]; ok {
-		win.windowKeyModifiersChanged(shift != 0, ctrl != 0, alt != 0, cmd != 0)
+		win.windowKeyModifiersChanged(shift != 0, ctrl != 0, alt != 0, cmd != 0, caps != 0, num != 0, fnKey != 0)
 	}
 }
 

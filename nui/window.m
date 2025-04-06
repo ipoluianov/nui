@@ -84,8 +84,11 @@ static void InitWindowMap() {
     int ctrl  = (flags & NSEventModifierFlagControl) ? 1 : 0;
     int alt   = (flags & NSEventModifierFlagOption) ? 1 : 0;
     int cmd   = (flags & NSEventModifierFlagCommand) ? 1 : 0;
+    int capsLock = (flags & NSEventModifierFlagCapsLock) ? 1 : 0;
+    int numPad = (flags & NSEventModifierFlagNumericPad) ? 1 : 0;
+    int fnKey = (flags & NSEventModifierFlagFunction) ? 1 : 0;
 
-    go_on_modifier_change((int)[self.window windowNumber], shift, ctrl, alt, cmd);
+    go_on_modifier_change((int)[self.window windowNumber], shift, ctrl, alt, cmd, capsLock, numPad, fnKey);
 }
 
 - (void)mouseDown:(NSEvent *)event {
