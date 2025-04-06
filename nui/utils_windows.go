@@ -239,14 +239,6 @@ func GetNativeWindowByHandle(hwnd syscall.Handle) *NativeWindow {
 	return nil
 }
 
-func GetRGBATestImage() *image.RGBA {
-	rgba, err := loadPngFromBytes(TestPng)
-	if err != nil {
-		panic(err)
-	}
-	return rgba
-}
-
 func getHDCSize(hdc uintptr) (width int32, height int32) {
 	var r rect
 	procGetClipBox.Call(hdc, uintptr(unsafe.Pointer(&r)))
