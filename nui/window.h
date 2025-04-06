@@ -17,6 +17,8 @@ void StartTimer(int windowId, double intervalMilliseconds);
 void StopTimer(int windowId);
 void UpdateWindow(int windowId);
 
+void SetMacCursor(int cursorType);
+
 int GetWindowPositionX(int windowId);
 int GetWindowPositionY(int windowId);
 

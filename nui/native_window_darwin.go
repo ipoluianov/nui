@@ -119,7 +119,30 @@ func (c *NativeWindow) SetAppIcon(img image.Image) {
 }
 
 func (c *NativeWindow) SetMouseCursor(cursor MouseCursor) {
-	// TODO:
+	c.currentCursor = cursor
+	c.macSetMouseCursor(c.currentCursor)
+}
+
+func (c *NativeWindow) macSetMouseCursor(cursor MouseCursor) {
+	if c.lastSetCursor == cursor {
+		return
+	}
+	c.lastSetCursor = cursor
+	var macCursor C.int
+	macCursor = 0
+	switch c.currentCursor {
+	case MouseCursorArrow:
+		macCursor = 1
+	case MouseCursorPointer:
+		macCursor = 2
+	case MouseCursorResizeHor:
+		macCursor = 3
+	case MouseCursorResizeVer:
+		macCursor = 4
+	case MouseCursorIBeam:
+		macCursor = 5
+	}
+	C.SetMacCursor(macCursor)
 }
 
 /////////////////////////////////////////////////////

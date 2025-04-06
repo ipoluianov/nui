@@ -457,3 +457,27 @@ int GetScreenWidth() {
 int GetScreenHeight() {
     return (int)[[NSScreen mainScreen] frame].size.height;
 }
+
+void SetMacCursor(int cursorType) {
+    switch (cursorType) {
+        case 1: // Arrow
+            [[NSCursor arrowCursor] set];
+            break;
+        case 2: // Pointer (hand)
+            [[NSCursor pointingHandCursor] set];
+            break;
+        case 3: // Resize horizontal
+            [[NSCursor resizeLeftRightCursor] set];
+            break;
+        case 4: // Resize vertical
+            [[NSCursor resizeUpDownCursor] set];
+            break;
+        case 5: // I-beam
+            [[NSCursor IBeamCursor] set];
+            break;
+        default:
+            // Можно сбросить в Arrow или оставить как есть
+            [[NSCursor arrowCursor] set];
+            break;
+    }
+}

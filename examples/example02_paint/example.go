@@ -190,6 +190,22 @@ func Run() {
 
 	wnd.OnKeyDown = func(key nui.Key, mods nui.KeyModifiers) {
 		log("Key down: " + key.String() + " " + mods.String())
+
+		if key == nui.Key1 {
+			wnd.SetMouseCursor(nui.MouseCursorArrow)
+		}
+		if key == nui.Key2 {
+			wnd.SetMouseCursor(nui.MouseCursorIBeam)
+		}
+		if key == nui.Key3 {
+			wnd.SetMouseCursor(nui.MouseCursorPointer)
+		}
+		if key == nui.Key4 {
+			wnd.SetMouseCursor(nui.MouseCursorResizeHor)
+		}
+		if key == nui.Key5 {
+			wnd.SetMouseCursor(nui.MouseCursorResizeVer)
+		}
 	}
 
 	wnd.OnKeyUp = func(key nui.Key, mods nui.KeyModifiers) {

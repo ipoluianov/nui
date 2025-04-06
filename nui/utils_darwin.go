@@ -114,6 +114,7 @@ func go_on_mouse_up(hwnd C.int, button, x, y C.int) {
 func go_on_mouse_move(hwnd C.int, x, y C.int) {
 	if win, ok := hwnds[int(hwnd)]; ok {
 		win.windowMouseMove(int(x), int(y))
+		win.macSetMouseCursor(win.currentCursor)
 	}
 }
 
@@ -131,6 +132,7 @@ func go_on_mouse_enter(hwnd C.int) {
 		if win.OnMouseEnter != nil {
 			win.OnMouseEnter()
 		}
+		win.macSetMouseCursor(win.currentCursor)
 	}
 }
 
@@ -141,6 +143,7 @@ func go_on_mouse_leave(hwnd C.int) {
 		if win.OnMouseLeave != nil {
 			win.OnMouseLeave()
 		}
+		win.macSetMouseCursor(MouseCursorArrow)
 	}
 }
 
@@ -459,18 +462,21 @@ func (c *NativeWindow) windowMouseButtonDown(button MouseButton, x, y int) {
 	if c.OnMouseButtonDown != nil {
 		c.OnMouseButtonDown(button, x, y)
 	}
+	c.macSetMouseCursor(c.currentCursor)
 }
 
 func (c *NativeWindow) windowMouseButtonUp(button MouseButton, x, y int) {
 	if c.OnMouseButtonUp != nil {
 		c.OnMouseButtonUp(button, x, y)
 	}
+	c.macSetMouseCursor(c.currentCursor)
 }
 
 func (c *NativeWindow) windowMouseButtonDblClick(button MouseButton, x, y int) {
 	if c.OnMouseButtonDblClick != nil {
 		c.OnMouseButtonDblClick(button, x, y)
 	}
+	c.macSetMouseCursor(c.currentCursor)
 }
 
 func (c *NativeWindow) windowMoved(x, y int) {
