@@ -10,6 +10,7 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
+	"unicode"
 	"unsafe"
 )
 
@@ -433,6 +434,10 @@ func (c *NativeWindow) windowPaint(rgba *image.RGBA) {
 }
 
 func (c *NativeWindow) windowChar(char rune) {
+	if !unicode.IsPrint(char) {
+		return
+	}
+
 	if c.OnChar != nil {
 		c.OnChar(char)
 	}
