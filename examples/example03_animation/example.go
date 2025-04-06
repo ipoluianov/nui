@@ -22,7 +22,6 @@ func Run() {
 	totalCounter := 0
 	counter := 0
 	speed := float64(0)
-	nui.Init()
 	wnd := nui.CreateWindow()
 	wnd.Show()
 	wnd.OnPaint = func(rgba *image.RGBA) {

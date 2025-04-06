@@ -35,7 +35,6 @@ func log(s string) {
 }
 
 func Run() {
-	nui.Init()
 	wnd := nui.CreateWindow()
 
 	log("started")

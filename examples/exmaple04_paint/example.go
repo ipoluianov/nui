@@ -11,7 +11,6 @@ import (
 )
 
 func Run() {
-	nui.Init()
 	doc := image.NewRGBA(image.Rect(0, 0, 1800, 1600))
 
 	buttonPressed := false
