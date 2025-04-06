@@ -139,7 +139,12 @@ static void InitWindowMap() {
 }
 
 - (void)mouseDragged:(NSEvent *)event {
-    [self mouseMoved:event]; // тот же вызов
+    [self mouseMoved:event];
+}
+
+- (void)rightMouseDragged:(NSEvent *)event {
+    NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
+    go_on_mouse_move((int)[self.window windowNumber], (int)p.x, (int)p.y);
 }
 
 - (void)scrollWheel:(NSEvent *)event {
