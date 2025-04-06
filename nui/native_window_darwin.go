@@ -126,6 +126,14 @@ func (c *NativeWindow) Move(x, y int) {
 	C.SetWindowPosition(C.int(c.hwnd), C.int(x), C.int(y))
 }
 
+func (c *NativeWindow) MoveToCenterOfScreen() {
+	screenWidth, screenHeight := GetScreenSize()
+	windowWidth, windowHeight := c.Size()
+	x := (screenWidth - windowWidth) / 2
+	y := (screenHeight - windowHeight) / 2
+	c.Move(int(x), int(y))
+}
+
 func (c *NativeWindow) Resize(width, height int) {
 	C.SetWindowSize(C.int(c.hwnd), C.int(width), C.int(height))
 }

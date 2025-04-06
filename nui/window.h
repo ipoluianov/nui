@@ -20,6 +20,9 @@ void UpdateWindow(int windowId);
 int GetWindowPositionX(int windowId);
 int GetWindowPositionY(int windowId);
 
+int GetScreenWidth();
+int GetScreenHeight();
+
 void go_on_paint(int hwnd, void* buffer, int width, int height);
 void go_on_key_down(int hwnd, int keycode);
 void go_on_key_up(int hwnd, int keycode);

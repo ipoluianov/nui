@@ -167,3 +167,9 @@ func go_on_timer(hwnd C.int) {
 		}
 	}
 }
+
+func GetScreenSize() (width, height int) {
+	width = int(C.GetScreenWidth())
+	height = int(C.GetScreenHeight())
+	return
+}

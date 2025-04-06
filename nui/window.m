@@ -448,3 +448,12 @@ void UpdateWindow(int windowId) {
         [view setNeedsDisplay:YES];
     }
 }
+
+
+int GetScreenWidth() {
+    return (int)[[NSScreen mainScreen] frame].size.width;
+}
+
+int GetScreenHeight() {
+    return (int)[[NSScreen mainScreen] frame].size.height;
+}
