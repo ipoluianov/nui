@@ -127,11 +127,6 @@ func (c *NativeWindow) Show() {
 	procUpdateWindow.Call(uintptr(c.hwnd))
 }
 
-func (c *NativeWindow) Hide() {
-	// Hide the window
-	procShowWindow.Call(uintptr(c.hwnd), SW_HIDE)
-}
-
 func (c *NativeWindow) Update() {
 	// Update the window
 	procInvalidateRect.Call(uintptr(c.hwnd), 0, 0)

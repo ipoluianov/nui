@@ -35,7 +35,6 @@ OnTimer        func()
 // Change window
 CreateWindow()
 Show()
-Hide()
 Update()
 EventLoop()
 Close()
