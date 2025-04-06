@@ -75,6 +75,10 @@ func CreateWindow() *NativeWindow {
 	c.windowPosX = int(x)
 	c.windowPosY = int(y)
 
+	w, h := c.requestWindowSize()
+	c.windowWidth = int(w)
+	c.windowHeight = int(h)
+
 	hwnds[c.hwnd] = &c
 	c.startTimer(1)
 	return &c

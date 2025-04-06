@@ -408,6 +408,18 @@ int GetWindowPositionY(int windowId) {
     return (int)win.frame.origin.y;
 }
 
+int GetWindowWidth(int windowId) {
+    NSWindow *win = windowMap[@(windowId)];
+    if (!win) return -1;
+    return (int)win.frame.size.width;
+}
+
+int GetWindowHeight(int windowId) {
+    NSWindow *win = windowMap[@(windowId)];
+    if (!win) return -1;
+    return (int)win.frame.size.height;
+}
+
 void timerCallback(NSTimer *timer) {
     NSNumber *key = timer.userInfo;
     if (key) {

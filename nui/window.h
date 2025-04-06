@@ -21,6 +21,8 @@ void SetMacCursor(int cursorType);
 
 int GetWindowPositionX(int windowId);
 int GetWindowPositionY(int windowId);
+int GetWindowWidth(int windowId);
+int GetWindowHeight(int windowId);
 
 int GetScreenWidth();
 int GetScreenHeight();

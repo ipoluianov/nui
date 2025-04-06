@@ -1,9 +1,9 @@
 package main
 
 import (
-	example02paint "github.com/ipoluianov/nui/examples/example02_paint"
+	example00demo "github.com/ipoluianov/nui/examples/example00_demo"
 )
 
 func main() {
-	example02paint.Run()
+	example00demo.Run()
 }

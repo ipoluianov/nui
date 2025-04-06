@@ -492,3 +492,9 @@ func (c *NativeWindow) requestWindowPosition() (int, int) {
 	y := int(C.GetWindowPositionY(C.int(c.hwnd)))
 	return x, y
 }
+
+func (c *NativeWindow) requestWindowSize() (int, int) {
+	w := int(C.GetWindowWidth(C.int(c.hwnd)))
+	h := int(C.GetWindowHeight(C.int(c.hwnd)))
+	return w, h
+}
