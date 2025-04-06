@@ -83,6 +83,7 @@ func go_on_window_move(hwnd C.int, x C.int, y C.int) {
 	if win, ok := hwnds[int(hwnd)]; ok {
 		win.windowMoved(int(x), int(y))
 	}
+
 }
 
 //export go_on_declare_draw_time
@@ -127,23 +128,15 @@ func go_on_mouse_scroll(hwnd C.int, deltaX C.float, deltaY C.float) {
 
 //export go_on_mouse_enter
 func go_on_mouse_enter(hwnd C.int) {
-	//fmt.Println("Mouse entered")
 	if win, ok := hwnds[int(hwnd)]; ok {
-		if win.OnMouseEnter != nil {
-			win.OnMouseEnter()
-		}
-		win.macSetMouseCursor(win.currentCursor)
+		win.windowMouseEnter()
 	}
 }
 
 //export go_on_mouse_leave
 func go_on_mouse_leave(hwnd C.int) {
-	//fmt.Println("Mouse left")
 	if win, ok := hwnds[int(hwnd)]; ok {
-		if win.OnMouseLeave != nil {
-			win.OnMouseLeave()
-		}
-		win.macSetMouseCursor(MouseCursorArrow)
+		win.windowMouseLeave()
 	}
 }
 
@@ -357,6 +350,21 @@ func (c *NativeWindow) windowMouseWheel(deltaX, deltaY float64) {
 	if c.OnMouseWheel != nil {
 		c.OnMouseWheel(deltaXInt, deltaYInt)
 	}
+}
+
+func (c *NativeWindow) windowMouseEnter() {
+	if c.OnMouseEnter != nil {
+		c.OnMouseEnter()
+	}
+	c.macSetMouseCursor(c.currentCursor)
+}
+
+func (c *NativeWindow) windowMouseLeave() {
+	fmt.Println("Mouse leave")
+	if c.OnMouseLeave != nil {
+		c.OnMouseLeave()
+	}
+	c.macSetMouseCursor(MouseCursorArrow)
 }
 
 // key modifiers

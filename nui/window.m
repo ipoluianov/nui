@@ -40,6 +40,7 @@ static void InitWindowMap() {
 @end
 
 @interface GoPaintView : NSView
+@property (strong) NSTrackingArea *trackingArea;
 @end
 
 @implementation GoPaintView
@@ -159,23 +160,26 @@ static void InitWindowMap() {
 }
 
 - (void)mouseExited:(NSEvent *)event {
+    fprintf(stderr, "Exited: \n");
     go_on_mouse_leave((int)[self.window windowNumber]);
 }
 
 - (void)updateTrackingAreas {
     [super updateTrackingAreas];
 
-    NSTrackingArea *trackingArea = [[NSTrackingArea alloc] initWithRect:self.bounds
+    if (self.trackingArea) {
+        [self removeTrackingArea:self.trackingArea];
+    }
+// NSTrackingArea *
+    self.trackingArea = [[NSTrackingArea alloc] initWithRect:self.bounds
                                                                 options:(NSTrackingMouseEnteredAndExited |
                                                                          NSTrackingMouseMoved |
                                                                          NSTrackingActiveAlways |
                                                                          NSTrackingInVisibleRect)
                                                                   owner:self
                                                                userInfo:nil];
-    [self addTrackingArea:trackingArea];
+    [self addTrackingArea:self.trackingArea];
 }
-
-
 
 - (BOOL)isFlipped { return NO; }
 
