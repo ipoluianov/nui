@@ -35,6 +35,9 @@ type NativeWindow struct {
 
 	keyModifiers KeyModifiers
 
+	dtLastUpdateCalled time.Time
+	needUpdateInTimer  bool
+
 	windowPosX   int
 	windowPosY   int
 	windowWidth  int
@@ -189,6 +192,12 @@ func (c *NativeWindow) Hide() {
 }
 
 func (c *NativeWindow) Update() {
+	if time.Since(c.dtLastUpdateCalled) < 40*time.Millisecond {
+		c.needUpdateInTimer = true
+		return
+	}
+	c.dtLastUpdateCalled = time.Now()
+
 	C.XClearArea(
 		c.display,
 		c.window,
@@ -253,7 +262,7 @@ func (c *NativeWindow) EventLoop() {
 						c.drawImageRGBA(c.display, c.window, img)
 						paintTime := time.Since(dtLastPaint)
 						_ = paintTime
-						//fmt.Println("PaintTime:", paintTime.Microseconds())
+						fmt.Println("PaintTime:", paintTime.Microseconds())
 
 						c.drawTimes[c.drawTimesIndex] = time.Since(dtBeginPaint).Microseconds()
 						c.drawTimesIndex++
@@ -428,6 +437,10 @@ func (c *NativeWindow) EventLoop() {
 		case <-ticker.C:
 			{
 				//fmt.Println("Timer event: 10ms tick")
+				if c.needUpdateInTimer {
+					c.Update()
+					c.needUpdateInTimer = false
+				}
 				if c.OnTimer != nil {
 					c.OnTimer()
 					c.Update()
