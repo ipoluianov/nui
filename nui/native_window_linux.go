@@ -161,22 +161,14 @@ func CreateWindow() *NativeWindow {
 		C.ulong(mask),    // valuemask
 		&attrs,           // attributes pointer (не значение!)
 	)
-	/*cwa := C.XSetWindowAttributes{}
-	cwa.background_pixmap = C.None*/
-
-	/*c.window = C.XCreateSimpleWindow(
-		c.display,
-		C.XRootWindow(c.display, c.screen),
-		100, 100,
-		800, 600,
-		1,
-		C.XBlackPixel(c.display, c.screen),
-		C.XWhitePixel(c.display, c.screen),
-	)*/
 
 	C.XSelectInput(c.display, c.window, C.ExposureMask|C.PropertyChangeMask|C.StructureNotifyMask|C.KeyPressMask|C.KeyReleaseMask|C.EnterWindowMask|C.LeaveWindowMask|C.ButtonPressMask|C.ButtonReleaseMask|C.PointerMotionMask)
 
 	C.XMapWindow(c.display, c.window)
+
+	var getAttr C.XWindowAttributes
+	C.XGetWindowAttributes(c.display, c.window, &getAttr)
+	c.windowWidth, c.windowHeight = int(getAttr.width), int(getAttr.height)
 
 	// Store the window handle
 	hwnds[c.window] = &c
@@ -459,7 +451,7 @@ func (c *NativeWindow) Move(x, y int) {
 	C.XMoveWindow(c.display, c.window, C.int(x), C.int(y))
 }
 
-func GetScreenSize() (width, height int) {
+func getScreenSize() (width, height int) {
 	display := C.XOpenDisplay(nil)
 	screen := C.XDefaultScreen(display)
 	width = int(C.XDisplayWidth(display, screen))
@@ -469,6 +461,11 @@ func GetScreenSize() (width, height int) {
 }
 
 func (c *NativeWindow) MoveToCenterOfScreen() {
+	screenWidth, screenHeight := getScreenSize()
+	windowWidth, windowHeight := c.Size()
+	x := (screenWidth - windowWidth) / 2
+	y := (screenHeight - windowHeight) / 2
+	c.Move(int(x), int(y))
 }
 
 func (c *NativeWindow) Resize(width, height int) {
@@ -524,36 +521,89 @@ func (c *NativeWindow) SetMouseCursor(cursor MouseCursor) {
 	c.changeMouseCursor(cursor)
 }
 
-func (c *NativeWindow) changeMouseCursor(cursor MouseCursor) bool {
-	return false
+func (c *NativeWindow) changeMouseCursor(mouseCursor MouseCursor) bool {
+	var cursorShape uint
+
+	const (
+		CursorArrow = 132
+		CursorCross = 34
+		CursorWait  = 150
+		CursorIBeam = 152
+		CursorHand  = 58
+		CursorBlank = 0
+
+		CursorResizeVertical   = 116 // XC_sb_v_double_arrow
+		CursorResizeHorizontal = 108 // XC_sb_h_double_arrow
+	)
+
+	switch mouseCursor {
+	case MouseCursorNotDefined:
+	case MouseCursorArrow:
+		cursorShape = CursorArrow
+	case MouseCursorPointer:
+		cursorShape = CursorHand
+	case MouseCursorResizeHor:
+		cursorShape = CursorResizeHorizontal
+	case MouseCursorResizeVer:
+		cursorShape = CursorResizeVertical
+	case MouseCursorIBeam:
+		cursorShape = CursorIBeam
+	}
+
+	cursor := C.XCreateFontCursor(c.display, C.uint(cursorShape))
+	C.XDefineCursor(c.display, c.window, cursor)
+	C.XFlush(c.display)
+	return true
 }
 
 func (c *NativeWindow) MinimizeWindow() {
-	/*wmState := C.XInternAtom(c.display, C.CString("_NET_WM_STATE"), C.False)
-	  wmHidden := C.XInternAtom(c.display, C.CString("_NET_WM_STATE_HIDDEN"), C.False)
-
-	  var xev C.XEvent
-	  xev._type = C.ClientMessage
-	  xev.xclient.type = C.ClientMessage
-	  xev.xclient.window = c.window
-	  xev.xclient.message_type = wmState
-	  xev.xclient.format = 32
-	  xev.xclient.data.set(0, 1)
-	  xev.xclient.data.set(1, wmHidden)
-
-	  root := C.XDefaultRootWindow(c.display)
-	  C.XSendEvent(c.display, root, C.False,
-	      C.SubstructureNotifyMask|C.SubstructureRedirectMask,
-	      &xev)	*/
+	C.minimizeWindow(c.display, c.window)
 }
 
 func (c *NativeWindow) MaximizeWindow() {
-}
-
-func (c *NativeWindow) RestoreWindow() {
+	C.maximizeWindow(c.display, c.window)
 }
 
 func (c *NativeWindow) SetAppIcon(icon *image.RGBA) {
+	width := icon.Bounds().Dx()
+	height := icon.Bounds().Dy()
+
+	// _NET_WM_ICON: [width, height, pixels...]
+	dataLen := 2 + width*height
+	data := make([]C.ulong, dataLen)
+	data[0] = C.ulong(width)
+	data[1] = C.ulong(height)
+
+	// Конвертировать RGBA в ARGB
+	i := 2
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			offset := icon.PixOffset(x, y)
+			r := icon.Pix[offset]
+			g := icon.Pix[offset+1]
+			b := icon.Pix[offset+2]
+			a := icon.Pix[offset+3]
+
+			argb := (uint32(a) << 24) | (uint32(r) << 16) | (uint32(g) << 8) | uint32(b)
+			data[i] = C.ulong(argb)
+			i++
+		}
+	}
+
+	atom := C.XInternAtom(c.display, C.CString("_NET_WM_ICON"), C.False)
+	typ := C.Atom(C.XA_CARDINAL)
+	format := 32
+
+	C.XChangeProperty(
+		c.display,
+		c.window,
+		atom,
+		typ,
+		C.int(format),
+		C.PropModeReplace,
+		(*C.uchar)(unsafe.Pointer(&data[0])),
+		C.int(len(data)),
+	)
 }
 
 func (c *NativeWindow) drawImageRGBA(display *C.Display, window C.Window, img image.Image) {
