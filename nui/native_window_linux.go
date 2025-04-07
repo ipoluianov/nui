@@ -33,30 +33,29 @@ type NativeWindow struct {
 	currentCursor MouseCursor
 	lastSetCursor MouseCursor
 
+	keyModifiers KeyModifiers
+
 	windowPosX   int
 	windowPosY   int
 	windowWidth  int
 	windowHeight int
 
+	drawTimes      [32]int64
+	drawTimesIndex int
+
 	// Keyboard events
-	OnKeyDown func(keyCode Key)
-	OnKeyUp   func(keyCode Key)
+	OnKeyDown func(keyCode Key, mods KeyModifiers)
+	OnKeyUp   func(keyCode Key, mods KeyModifiers)
 	OnChar    func(char rune)
 
 	// Mouse events
-	OnMouseEnter                   func()
-	OnMouseLeave                   func()
-	OnMouseMove                    func(x, y int)
-	OnMouseDownLeftButton          func(x, y int)
-	OnMouseUpLeftButton            func(x, y int)
-	OnMouseDownRightButton         func(x, y int)
-	OnMouseUpRightButton           func(x, y int)
-	OnMouseDownMiddleButton        func(x, y int)
-	OnMouseUpMiddleButton          func(x, y int)
-	OnMouseWheel                   func(deltaX float64, deltaY float64)
-	OnMouseDoubleClickLeftButton   func(x, y int)
-	OnMouseDoubleClickRightButton  func(x, y int)
-	OnMouseDoubleClickMiddleButton func(x, y int)
+	OnMouseEnter          func()
+	OnMouseLeave          func()
+	OnMouseMove           func(x, y int)
+	OnMouseButtonDown     func(button MouseButton, x, y int)
+	OnMouseButtonUp       func(button MouseButton, x, y int)
+	OnMouseButtonDblClick func(button MouseButton, x, y int)
+	OnMouseWheel          func(deltaX int, deltaY int)
 
 	// Window events
 	OnCreated      func()
@@ -100,14 +99,6 @@ func GetNativeWindowByHandle(hwnd C.Window) *NativeWindow {
 		return w
 	}
 	return nil
-}
-
-func GetRGBATestImage() *image.RGBA {
-	rgba, err := loadPngFromBytes(TestPng)
-	if err != nil {
-		panic(err)
-	}
-	return rgba
 }
 
 func getHDCSize(hdc uintptr) (width int32, height int32) {
@@ -224,14 +215,6 @@ var posY C.uint
 var width C.uint
 var height C.uint*/
 
-//go:embed test.png
-var pngContent []byte
-
-func loadImageFromEmbed() (image.Image, error) {
-	img, err := png.Decode(bytes.NewReader(pngContent))
-	return img, err
-}
-
 func (c *NativeWindow) EventLoop() {
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
@@ -248,6 +231,7 @@ func (c *NativeWindow) EventLoop() {
 			case C.Expose:
 				{
 					{
+						dtBeginPaint := time.Now()
 						dtLastPaint = time.Now()
 						hdcWidth, hdcHeight := c.windowWidth, c.windowHeight
 						if hdcWidth > maxCanvasWidth {
@@ -276,6 +260,13 @@ func (c *NativeWindow) EventLoop() {
 						paintTime := time.Since(dtLastPaint)
 						_ = paintTime
 						//fmt.Println("PaintTime:", paintTime.Microseconds())
+
+						c.drawTimes[c.drawTimesIndex] = time.Since(dtBeginPaint).Microseconds()
+						c.drawTimesIndex++
+						if c.drawTimesIndex >= len(c.drawTimes) {
+							c.drawTimesIndex = 0
+						}
+
 					}
 
 				}
@@ -306,26 +297,17 @@ func (c *NativeWindow) EventLoop() {
 			case C.ConfigureNotify:
 				configureEvent := (*C.XConfigureEvent)(unsafe.Pointer(&event))
 
-				needEventMove := false
-				if c.windowPosX != int(configureEvent.x) || c.windowPosY != int(configureEvent.y) {
-					needEventMove = true
+				if configureEvent.send_event == 1 && (c.windowPosX != int(configureEvent.x) || c.windowPosY != int(configureEvent.y)) {
+					c.windowPosX = int(configureEvent.x)
+					c.windowPosY = int(configureEvent.y)
+					if c.OnMove != nil {
+						c.OnMove(c.windowPosX, c.windowPosY)
+					}
 				}
 
-				needEventResize := false
-				if c.windowWidth != int(configureEvent.width) || c.windowHeight != int(configureEvent.height) {
-					needEventResize = true
-				}
-
-				c.windowPosX = int(configureEvent.x)
-				c.windowPosY = int(configureEvent.y)
-				c.windowWidth = int(configureEvent.width)
-				c.windowHeight = int(configureEvent.height)
-
-				if needEventMove {
-					// TODO: event window move
-				}
-
-				if needEventResize {
+				if configureEvent.send_event == 0 && (c.windowWidth != int(configureEvent.width) || c.windowHeight != int(configureEvent.height)) {
+					c.windowWidth = int(configureEvent.width)
+					c.windowHeight = int(configureEvent.height)
 					if c.OnResize != nil {
 						c.OnResize(c.windowWidth, c.windowHeight)
 					}
@@ -336,29 +318,45 @@ func (c *NativeWindow) EventLoop() {
 			case C.KeyPress:
 				keyEvent := (*C.XKeyEvent)(unsafe.Pointer(&event))
 				keySym := C.XLookupKeysym((*C.XKeyEvent)(unsafe.Pointer(&event)), 0)
-				fmt.Printf("Key pressed: KeySym = %d, KeyCode = %d\n", keySym, keyEvent.keycode)
+				fmt.Printf("Key pressed: KeySym = %d, KeyCode = 0x%x\n", keySym, keyEvent.keycode)
+				key := ConvertLinuxKeyToNuiKey(int(keyEvent.keycode))
 				if c.OnKeyDown != nil {
-					c.OnKeyDown(Key(0))
+					c.OnKeyDown(key, c.keyModifiers)
+				}
+				if key == KeyShift {
+					c.keyModifiers.Shift = true
+				}
+				if key == KeyCtrl {
+					c.keyModifiers.Ctrl = true
+				}
+				if key == KeyAlt {
+					c.keyModifiers.Alt = true
 				}
 
-				//resizeWindow(display, window, 600, 200)
-				//moveWindow(display, window, 100, 100)
-				//setWindowTitle(display, window, "HELLO")
 			case C.KeyRelease:
 				keyEvent := (*C.XKeyEvent)(unsafe.Pointer(&event))
 				keySym := C.XLookupKeysym(keyEvent, 0)
-				fmt.Printf("Key released: KeySym = %d, KeyCode = %d\n", keySym, keyEvent.keycode)
+				fmt.Printf("Key released: KeySym = %d, KeyCode = 0x%x\n", keySym, keyEvent.keycode)
+				key := ConvertLinuxKeyToNuiKey(int(keyEvent.keycode))
+				if key == KeyShift {
+					c.keyModifiers.Shift = false
+				}
+				if key == KeyCtrl {
+					c.keyModifiers.Ctrl = false
+				}
+				if key == KeyAlt {
+					c.keyModifiers.Alt = false
+				}
+				if c.OnKeyUp != nil {
+					c.OnKeyUp(key, c.keyModifiers)
+				}
 
 			case C.EnterNotify:
-				//enterEvent := (*C.XCrossingEvent)(unsafe.Pointer(&event))
-				//fmt.Printf("Cursor entered window at (%d, %d)\n", enterEvent.x, enterEvent.y)
 				if c.OnMouseEnter != nil {
 					c.OnMouseEnter()
 				}
 
 			case C.LeaveNotify:
-				//leaveEvent := (*C.XCrossingEvent)(unsafe.Pointer(&event))
-				//fmt.Printf("Cursor left window at (%d, %d)\n", leaveEvent.x, leaveEvent.y)
 				if c.OnMouseLeave != nil {
 					c.OnMouseLeave()
 				}
@@ -370,9 +368,6 @@ func (c *NativeWindow) EventLoop() {
 				}
 
 			case C.ButtonPress:
-				/*buttonEvent := (*C.XButtonEvent)(unsafe.Pointer(&event))
-				fmt.Printf("Mouse button %d pressed at (%d, %d)\n", buttonEvent.button, buttonEvent.x, buttonEvent.y)*/
-
 				buttonEvent := (*C.XButtonEvent)(unsafe.Pointer(&event))
 				fmt.Printf("Mouse button %d pressed at (%d, %d)\n", buttonEvent.button, buttonEvent.x, buttonEvent.y)
 
@@ -381,16 +376,16 @@ func (c *NativeWindow) EventLoop() {
 
 				switch buttonEvent.button {
 				case 1:
-					if c.OnMouseDownLeftButton != nil {
-						c.OnMouseDownLeftButton(x, y)
+					if c.OnMouseButtonDown != nil {
+						c.OnMouseButtonDown(MouseButtonLeft, x, y)
 					}
 				case 2:
-					if c.OnMouseDownMiddleButton != nil {
-						c.OnMouseDownMiddleButton(x, y)
+					if c.OnMouseButtonDown != nil {
+						c.OnMouseButtonDown(MouseButtonMiddle, x, y)
 					}
 				case 3:
-					if c.OnMouseDownRightButton != nil {
-						c.OnMouseDownRightButton(x, y)
+					if c.OnMouseButtonDown != nil {
+						c.OnMouseButtonDown(MouseButtonRight, x, y)
 					}
 				case 4:
 					if c.OnMouseWheel != nil {
@@ -419,16 +414,16 @@ func (c *NativeWindow) EventLoop() {
 
 				switch buttonEvent.button {
 				case 1:
-					if c.OnMouseUpLeftButton != nil {
-						c.OnMouseUpLeftButton(x, y)
+					if c.OnMouseButtonUp != nil {
+						c.OnMouseButtonUp(MouseButtonLeft, x, y)
 					}
 				case 2:
-					if c.OnMouseUpMiddleButton != nil {
-						c.OnMouseUpMiddleButton(x, y)
+					if c.OnMouseButtonUp != nil {
+						c.OnMouseButtonUp(MouseButtonMiddle, x, y)
 					}
 				case 3:
-					if c.OnMouseUpRightButton != nil {
-						c.OnMouseUpRightButton(x, y)
+					if c.OnMouseButtonUp != nil {
+						c.OnMouseButtonUp(MouseButtonRight, x, y)
 					}
 				}
 
@@ -480,8 +475,45 @@ func (c *NativeWindow) Resize(width, height int) {
 	C.XResizeWindow(c.display, c.window, C.uint(width), C.uint(height))
 }
 
+func (c *NativeWindow) PosX() int {
+	return c.windowPosX
+}
+
+func (c *NativeWindow) PosY() int {
+	return c.windowPosY
+}
+
 func (c *NativeWindow) Size() (width, height int) {
 	return c.windowWidth, c.windowHeight
+}
+
+func (c *NativeWindow) Width() int {
+	return c.windowWidth
+}
+
+func (c *NativeWindow) Height() int {
+	return c.windowHeight
+}
+
+func (c *NativeWindow) KeyModifiers() KeyModifiers {
+	return c.keyModifiers
+}
+
+func (c *NativeWindow) DrawTimeUs() int64 {
+	drawTimeAvg := int64(0)
+	count := 0
+	for _, t := range c.drawTimes {
+		if t == 0 {
+			continue
+		}
+		drawTimeAvg += t
+		count++
+	}
+	if count == 0 {
+		return 0
+	}
+	drawTimeAvg = drawTimeAvg / int64(count)
+	return drawTimeAvg
 }
 
 func (c *NativeWindow) SetMouseCursor(cursor MouseCursor) {

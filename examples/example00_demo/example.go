@@ -184,6 +184,7 @@ func Run() {
 		cnv.DrawFixedString(10, 350, "WinH: "+fmt.Sprint(winHeight), 2)
 		cnv.DrawFixedString(10, 370, "MouseWheelX: "+fmt.Sprint(mouseWheelX), 2)
 		cnv.DrawFixedString(10, 390, "MouseWheelY: "+fmt.Sprint(mouseWheelY), 2)
+		cnv.DrawFixedString(10, 410, "DrawTimeMs: "+fmt.Sprint(win.DrawTimeUs()/1000), 2)
 
 		cnv.DrawLine(5, 430, win.Width()-5, 430, 0.5)
 		cnv.DrawLine(390, 5, 390, 425, 0.5)
