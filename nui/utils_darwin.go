@@ -432,7 +432,20 @@ func (c *NativeWindow) windowKeyDown(keyCode Key) {
 
 func (c *NativeWindow) windowKeyUp(keyCode Key) {
 	if c.OnKeyUp != nil {
-		c.OnKeyUp(keyCode, c.keyModifiers)
+		keyModifiers := c.keyModifiers
+		if keyCode == KeyShift {
+			keyModifiers.Shift = false
+		}
+		if keyCode == KeyCtrl {
+			keyModifiers.Ctrl = false
+		}
+		if keyCode == KeyAlt {
+			keyModifiers.Alt = false
+		}
+		if keyCode == KeyCommand {
+			keyModifiers.Cmd = false
+		}
+		c.OnKeyUp(keyCode, keyModifiers)
 	}
 }
 
@@ -466,6 +479,7 @@ func (c *NativeWindow) windowChar(char rune) {
 
 func (c *NativeWindow) windowMouseButtonDown(button MouseButton, x, y int) {
 	if c.OnMouseButtonDown != nil {
+		y = c.windowHeight - y
 		c.OnMouseButtonDown(button, x, y)
 	}
 	c.macSetMouseCursor(c.currentCursor)
@@ -473,6 +487,7 @@ func (c *NativeWindow) windowMouseButtonDown(button MouseButton, x, y int) {
 
 func (c *NativeWindow) windowMouseButtonUp(button MouseButton, x, y int) {
 	if c.OnMouseButtonUp != nil {
+		y = c.windowHeight - y
 		c.OnMouseButtonUp(button, x, y)
 	}
 	c.macSetMouseCursor(c.currentCursor)
@@ -480,6 +495,7 @@ func (c *NativeWindow) windowMouseButtonUp(button MouseButton, x, y int) {
 
 func (c *NativeWindow) windowMouseButtonDblClick(button MouseButton, x, y int) {
 	if c.OnMouseButtonDblClick != nil {
+		y = c.windowHeight - y
 		c.OnMouseButtonDblClick(button, x, y)
 	}
 	c.macSetMouseCursor(c.currentCursor)
