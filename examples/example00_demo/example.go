@@ -82,9 +82,9 @@ func Run() {
 
 	win.OnTimer = func() {
 		timerCounter++
-		if time.Since(dtAnimation) > 250*time.Millisecond {
+		if time.Since(dtAnimation) > 50*time.Millisecond {
 			dtAnimation = time.Now()
-			animationOffset += 20
+			animationOffset += 1
 			if animationOffset > win.Width() {
 				animationOffset = 0
 			}
