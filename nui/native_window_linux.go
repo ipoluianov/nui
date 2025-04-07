@@ -177,6 +177,8 @@ func CreateWindow() *NativeWindow {
 	icon := image.NewRGBA(image.Rect(0, 0, 32, 32))
 	c.SetAppIcon(icon)
 
+	c.SetTitle(DefaultWindowTitle)
+
 	return &c
 }
 
