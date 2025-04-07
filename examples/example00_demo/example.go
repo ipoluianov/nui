@@ -33,6 +33,7 @@ func Run() {
 	var winPosX, winPosY = 0, 0
 	var winWidth, winHeight = 0, 0
 	var mouseWheelX, mouseWheelY = 0, 0
+	var animationOffset = 0
 
 	win.OnKeyDown = func(keyCode nui.Key, modifiers nui.KeyModifiers) {
 		modStr := modifiers.String()
@@ -60,7 +61,7 @@ func Run() {
 				iconImg := image.NewRGBA(image.Rect(0, 0, 16, 16))
 				cnv := nuicanvas.NewCanvas(iconImg)
 				cnv.SetColor(color.RGBA{0, 0, 0, 255})
-				cnv.FillRect(0, 0, 16, 16)
+				cnv.FillRect(0, 0, 16, 16, 1)
 				cnv.SetColor(color.RGBA{0, 150, 200, 255})
 				cnv.DrawFixedString(0, 4, "NUI", 1)
 				win.SetAppIcon(iconImg)
@@ -77,8 +78,17 @@ func Run() {
 		win.Update()
 	}
 
+	dtAnimation := time.Now()
+
 	win.OnTimer = func() {
 		timerCounter++
+		if time.Since(dtAnimation) > 250*time.Millisecond {
+			dtAnimation = time.Now()
+			animationOffset += 20
+			if animationOffset > win.Width() {
+				animationOffset = 0
+			}
+		}
 		win.Update()
 	}
 
@@ -174,6 +184,10 @@ func Run() {
 		cnv.DrawFixedString(10, 350, "WinH: "+fmt.Sprint(winHeight), 2)
 		cnv.DrawFixedString(10, 370, "MouseWheelX: "+fmt.Sprint(mouseWheelX), 2)
 		cnv.DrawFixedString(10, 390, "MouseWheelY: "+fmt.Sprint(mouseWheelY), 2)
+
+		cnv.DrawLine(5, 430, win.Width()-5, 430, 0.5)
+		cnv.DrawLine(390, 5, 390, 425, 0.5)
+		cnv.FillRect(float64(animationOffset), 440, 20, 20, 0.5)
 
 		cnv.DrawFixedString(400, 10, "Press Esc to clear log", 2)
 		for i, s := range logItems {
