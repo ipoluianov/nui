@@ -90,6 +90,52 @@ func createWindow(title string, width int, height int, center bool) *nativeWindo
 	return &c
 }
 
+func (c *nativeWindow) renderFrame() {
+
+	dtBegin := time.Now()
+
+	// Получаем контекст устройства (HDC) для окна
+	hdc, _, _ := procGetDC.Call(uintptr(c.hwnd))
+
+	// Определяем размер области отрисовки
+	hdcWidth, hdcHeight := getHDCSize(hdc)
+	if hdcWidth > maxCanvasWidth {
+		hdcWidth = maxCanvasWidth
+	}
+	if hdcHeight > maxCanvasHeight {
+		hdcHeight = maxCanvasHeight
+	}
+
+	// Подготавливаем image.RGBA, привязанную к canvasBuffer
+	img := &image.RGBA{
+		Pix:    canvasBuffer,
+		Stride: int(hdcWidth) * 4,
+		Rect:   image.Rect(0, 0, int(hdcWidth), int(hdcHeight)),
+	}
+
+	// Очистка canvas: заливаем фоновым буфером
+	canvasDataBufferSize := int(hdcWidth * hdcHeight * 4)
+	copy(canvasBuffer[:canvasDataBufferSize], canvasBufferBackground)
+
+	// Рисуем через callback
+	if c.onPaint != nil {
+		c.onPaint(img)
+	}
+
+	// Копируем результат в HDC
+	drawImageToHDC(img, hdc, hdcWidth, hdcHeight)
+
+	// Освобождаем контекст устройства
+	procReleaseDC.Call(uintptr(c.hwnd), hdc)
+
+	// Статистика отрисовки
+	c.drawTimes[c.drawTimesIndex] = time.Since(dtBegin).Microseconds()
+	c.drawTimesIndex++
+	if c.drawTimesIndex >= len(c.drawTimes) {
+		c.drawTimesIndex = 0
+	}
+}
+
 func (c *nativeWindow) Show() {
 	// Show the window
 	procShowWindow.Call(uintptr(c.hwnd), c_SW_SHOWDEFAULT)
@@ -98,35 +144,80 @@ func (c *nativeWindow) Show() {
 }
 
 func (c *nativeWindow) Update() {
+	var r rect
+	r.left = 0
+	r.top = 0
+	r.right = int32(c.windowWidth)
+	r.bottom = int32(c.windowHeight)
+	//procGetClipBox.Call(hdc, uintptr(unsafe.Pointer(&r)))
+
 	// Update the window
-	procInvalidateRect.Call(uintptr(c.hwnd), 0, 0)
+	procInvalidateRect.Call(uintptr(c.hwnd), uintptr(unsafe.Pointer(&r)), 0)
 	procUpdateWindow.Call(uintptr(c.hwnd))
+}
+
+func QueryPerformanceCounter(counter *int64) {
+	procQueryPerformanceCounter.Call(uintptr(unsafe.Pointer(counter)))
+}
+
+func QueryPerformanceFrequency(freq *int64) {
+	procQueryPerformanceFrequency.Call(uintptr(unsafe.Pointer(freq)))
+}
+
+func PeekMessage(msg *t_MSG, hwnd uintptr, msgFilterMin, msgFilterMax, removeMsg uint32) bool {
+	ret, _, _ := procPeekMessageW.Call(
+		uintptr(unsafe.Pointer(msg)),
+		hwnd,
+		uintptr(msgFilterMin),
+		uintptr(msgFilterMax),
+		uintptr(removeMsg),
+	)
+	return ret != 0
 }
 
 func (c *nativeWindow) EventLoop() {
 	var msg t_MSG
 
-	procSetTimer.Call(
-		uintptr(c.hwnd),
-		timerID1ms,
-		1,
-		0,
-	)
+	// Засекаем время
+	var freq, start, end int64
+	QueryPerformanceFrequency(&freq)
+	QueryPerformanceCounter(&start)
 
-	procInvalidateRect.Call(uintptr(c.hwnd), 0, 0)
-	for {
-		ret, _, err := procGetMessageW.Call(uintptr(unsafe.Pointer(&msg)), 0, 0, 0)
-		e := err.(syscall.Errno)
-		if e != 0 {
-			fmt.Println("Error:", e)
+	const targetFPS = int64(30)
+	const frameTime = int64(1e9 / targetFPS) // nanoseconds
+
+	running := true
+
+	for running {
+		for PeekMessage(&msg, uintptr(c.hwnd), 0, 0, PM_REMOVE) {
+			procTranslateMessage.Call(uintptr(unsafe.Pointer(&msg)))
+			procDispatchMessageW.Call(uintptr(unsafe.Pointer(&msg)))
+
+			if msg.message == WM_QUIT {
+				running = false
+			}
+			if msg.message == c_WM_CLOSE {
+				running = false
+			}
 		}
 
-		if ret == 0 {
-			fmt.Println("Exiting...")
-			break
+		// Засекаем текущее время
+		QueryPerformanceCounter(&end)
+		elapsed := (end - start) * 1_000_000_000 / freq
+
+		if elapsed >= frameTime {
+			// Время отрисовать кадр
+			start = end
+			c.renderFrame() // твоя функция отрисовки
+		} else {
+			// Подождать, чтобы не жрать CPU
+			time.Sleep(time.Millisecond)
 		}
-		procTranslateMessage.Call(uintptr(unsafe.Pointer(&msg)))
-		procDispatchMessageW.Call(uintptr(unsafe.Pointer(&msg)))
+
+		if c.onTimer != nil {
+			c.onTimer()
+		}
+
 	}
 }
 
