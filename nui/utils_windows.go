@@ -302,22 +302,20 @@ func drawImageToHDC(img *image.RGBA, hdc uintptr, width, height int32) {
 	}
 }
 
-const maxCanvasWidth = 10000
-const maxCanvasHeight = 5000
+const maxCanvasWidth = 6000
+const maxCanvasHeight = 4000
 
 var canvasBuffer = make([]byte, maxCanvasWidth*maxCanvasHeight*4)
 var canvasBufferBackground = make([]byte, maxCanvasWidth*maxCanvasHeight*4)
 
 func initCanvasBufferBackground(col color.Color) {
-	for y := 0; y < maxCanvasHeight; y++ {
-		for x := 0; x < maxCanvasWidth; x++ {
-			i := (y*maxCanvasWidth + x) * 4
-			r, g, b, a := col.RGBA()
-			canvasBufferBackground[i+0] = byte(b)
-			canvasBufferBackground[i+1] = byte(g)
-			canvasBufferBackground[i+2] = byte(r)
-			canvasBufferBackground[i+3] = byte(a)
-		}
+	dataSize := maxCanvasWidth * maxCanvasHeight * 4
+	r, g, b, a := col.RGBA()
+	for i := 0; i < dataSize; i += 4 {
+		canvasBufferBackground[i+0] = byte(r)
+		canvasBufferBackground[i+1] = byte(g)
+		canvasBufferBackground[i+2] = byte(b)
+		canvasBufferBackground[i+3] = byte(a)
 	}
 }
 
@@ -729,9 +727,22 @@ func createHICONFromRGBA(img *image.RGBA) syscall.Handle {
 	width := img.Bounds().Dx()
 	height := img.Bounds().Dy()
 
-	// В Windows иконки идут снизу вверх — инвертируем
 	pixels := make([]byte, 0, width*height*4)
-	for y := height - 1; y >= 0; y-- {
+
+	for y := 0; y < height; y++ {
+		rowStart := y * img.Stride
+		for x := 0; x < width; x++ {
+			i := rowStart + x*4
+			r := img.Pix[i]
+			g := img.Pix[i+1]
+			b := img.Pix[i+2]
+			a := img.Pix[i+3]
+
+			pixels = append(pixels, b, g, r, a)
+		}
+	}
+
+	/*for y := height - 1; y >= 0; y-- {
 		rowStart := y * img.Stride
 		for x := 0; x < width; x++ {
 			i := rowStart + x*4
@@ -743,7 +754,7 @@ func createHICONFromRGBA(img *image.RGBA) syscall.Handle {
 			// Windows ожидает BGRA
 			pixels = append(pixels, b, g, r, a)
 		}
-	}
+	}*/
 
 	hIcon, _, _ := procCreateIcon.Call(
 		0, // hInstance (0 = current)

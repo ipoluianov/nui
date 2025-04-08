@@ -122,6 +122,11 @@ func (c *NativeWindow) SetAppIcon(img image.Image) {
 	)
 }
 
+func (c *NativeWindow) SetBackgroundColor(color color.RGBA) {
+	initCanvasBufferBackground(color)
+	c.Update()
+}
+
 func (c *NativeWindow) SetMouseCursor(cursor MouseCursor) {
 	c.currentCursor = cursor
 	c.macSetMouseCursor(c.currentCursor)

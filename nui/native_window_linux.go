@@ -528,6 +528,11 @@ func (c *NativeWindow) DrawTimeUs() int64 {
 	return drawTimeAvg
 }
 
+func (c *NativeWindow) SetBackgroundColor(color color.RGBA) {
+	initCanvasBufferBackground(color)
+	c.Update()
+}
+
 func (c *NativeWindow) SetMouseCursor(cursor MouseCursor) {
 	if c.currentCursor == cursor {
 		return
@@ -589,7 +594,6 @@ func (c *NativeWindow) SetAppIcon(icon *image.RGBA) {
 	data[0] = C.ulong(width)
 	data[1] = C.ulong(height)
 
-	// Конвертировать RGBA в ARGB
 	i := 2
 	for y := 0; y < height; y++ {
 		for x := 0; x < width; x++ {

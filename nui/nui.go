@@ -45,6 +45,7 @@ Close()
 // Window appearance
 SetTitle(title string)
 SetAppIcon(icon *image.RGBA)
+SetBackgroundColor(color color.RGBA)
 SetMouseCursor(cursor MouseCursor)
 
 Move(width int, height int)

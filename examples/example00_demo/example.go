@@ -74,6 +74,16 @@ func Run() {
 			win.SetMouseCursor(nui.MouseCursorIBeam)
 		case nui.KeyF12:
 			win.Close()
+		case nui.Key1:
+			win.SetBackgroundColor(color.RGBA{0, 0, 0, 255})
+		case nui.Key2:
+			win.SetBackgroundColor(color.RGBA{255, 0, 0, 255})
+		case nui.Key3:
+			win.SetBackgroundColor(color.RGBA{0, 255, 0, 255})
+		case nui.Key4:
+			win.SetBackgroundColor(color.RGBA{0, 0, 255, 255})
+		case nui.Key5:
+			win.SetBackgroundColor(color.RGBA{255, 255, 255, 255})
 		}
 		win.Update()
 	}

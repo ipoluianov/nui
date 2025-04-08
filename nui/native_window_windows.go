@@ -186,6 +186,11 @@ func (c *NativeWindow) SetAppIcon(icon *image.RGBA) {
 	procSendMessageW.Call(uintptr(c.hwnd), WM_SETICON, ICON_SMALL, uintptr(hIcon))
 }
 
+func (c *NativeWindow) SetBackgroundColor(color color.RGBA) {
+	initCanvasBufferBackground(color)
+	c.Update()
+}
+
 func (c *NativeWindow) SetMouseCursor(cursor MouseCursor) {
 	if c.currentCursor == cursor {
 		return
