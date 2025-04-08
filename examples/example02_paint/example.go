@@ -9,6 +9,8 @@ import (
 
 	"github.com/ipoluianov/nui/nui"
 	"github.com/ipoluianov/nui/nuicanvas"
+	"github.com/ipoluianov/nui/nuikey"
+	"github.com/ipoluianov/nui/nuimouse"
 )
 
 func fullRectOnRGBA(rgba *image.RGBA, x, y, w, h int, c color.Color) {
@@ -35,7 +37,7 @@ func log(s string) {
 }
 
 func Run() {
-	wnd := nui.CreateWindow()
+	wnd := nui.CreateWindow("App", 800, 600, true)
 
 	log("started")
 
@@ -55,7 +57,7 @@ func Run() {
 	_ = mouseMiddleButtonStatus
 	_ = mouseRightButtonStatus
 
-	wnd.OnPaint = func(rgba *image.RGBA) {
+	wnd.OnPaint(func(rgba *image.RGBA) {
 		cnv := nuicanvas.NewCanvas(rgba)
 		_ = cnv
 
@@ -134,93 +136,93 @@ func Run() {
 		for i, s := range logItems {
 			cnv.DrawFixedString(600, float64(10+20*i), s, 2)
 		}
-	}
+	})
 
-	wnd.OnMove = func(x, y int) {
+	wnd.OnMove(func(x, y int) {
 		log("Window moved: " + strconv.FormatInt(int64(x), 10) + " " + strconv.FormatInt(int64(y), 10))
-	}
+	})
 
-	wnd.OnResize = func(w, h int) {
+	wnd.OnResize(func(w, h int) {
 		log("Window resized: " + strconv.FormatInt(int64(w), 10) + " " + strconv.FormatInt(int64(h), 10))
-	}
+	})
 
-	wnd.OnMouseLeave = func() {
+	wnd.OnMouseLeave(func() {
 		log("Mouse leave")
-	}
+	})
 
-	wnd.OnMouseEnter = func() {
+	wnd.OnMouseEnter(func() {
 		log("Mouse enter")
-	}
+	})
 
-	wnd.OnMouseWheel = func(deltaX int, deltaY int) {
+	wnd.OnMouseWheel(func(deltaX int, deltaY int) {
 		scrollPosX += float64(deltaX)
 		scrollPosY += float64(deltaY)
 		log("Mouse wheel: " + strconv.FormatInt(int64(deltaX), 10) + " " + strconv.FormatInt(int64(deltaY), 10))
 		fmt.Println("Draw Time:", wnd.DrawTimeUs()/1000)
-	}
+	})
 
-	wnd.OnMouseButtonDown = func(button nui.MouseButton, x, y int) {
+	wnd.OnMouseButtonDown(func(button nuimouse.MouseButton, x, y int) {
 		log("Mouse button down: " + button.String())
 		switch button {
-		case nui.MouseButtonLeft:
+		case nuimouse.MouseButtonLeft:
 			mouseLeftButtonStatus = true
-		case nui.MouseButtonMiddle:
+		case nuimouse.MouseButtonMiddle:
 			mouseMiddleButtonStatus = true
-		case nui.MouseButtonRight:
+		case nuimouse.MouseButtonRight:
 			mouseRightButtonStatus = true
 		}
-	}
+	})
 
-	wnd.OnMouseButtonUp = func(button nui.MouseButton, x, y int) {
+	wnd.OnMouseButtonUp(func(button nuimouse.MouseButton, x, y int) {
 		log("Mouse button up: " + button.String())
 		switch button {
-		case nui.MouseButtonLeft:
+		case nuimouse.MouseButtonLeft:
 			mouseLeftButtonStatus = false
-		case nui.MouseButtonMiddle:
+		case nuimouse.MouseButtonMiddle:
 			mouseMiddleButtonStatus = false
-		case nui.MouseButtonRight:
+		case nuimouse.MouseButtonRight:
 			mouseRightButtonStatus = false
 		}
-	}
+	})
 
-	wnd.OnChar = func(char rune) {
+	wnd.OnChar(func(char rune) {
 		log("Char: " + string(char))
-	}
+	})
 
-	wnd.OnKeyDown = func(key nui.Key, mods nui.KeyModifiers) {
+	wnd.OnKeyDown(func(key nuikey.Key, mods nuikey.KeyModifiers) {
 		log("Key down: " + key.String() + " " + mods.String())
 
-		if key == nui.Key1 {
-			wnd.SetMouseCursor(nui.MouseCursorArrow)
+		if key == nuikey.Key1 {
+			wnd.SetMouseCursor(nuimouse.MouseCursorArrow)
 		}
-		if key == nui.Key2 {
-			wnd.SetMouseCursor(nui.MouseCursorIBeam)
+		if key == nuikey.Key2 {
+			wnd.SetMouseCursor(nuimouse.MouseCursorIBeam)
 		}
-		if key == nui.Key3 {
-			wnd.SetMouseCursor(nui.MouseCursorPointer)
+		if key == nuikey.Key3 {
+			wnd.SetMouseCursor(nuimouse.MouseCursorPointer)
 		}
-		if key == nui.Key4 {
-			wnd.SetMouseCursor(nui.MouseCursorResizeHor)
+		if key == nuikey.Key4 {
+			wnd.SetMouseCursor(nuimouse.MouseCursorResizeHor)
 		}
-		if key == nui.Key5 {
-			wnd.SetMouseCursor(nui.MouseCursorResizeVer)
+		if key == nuikey.Key5 {
+			wnd.SetMouseCursor(nuimouse.MouseCursorResizeVer)
 		}
-	}
+	})
 
-	wnd.OnKeyUp = func(key nui.Key, mods nui.KeyModifiers) {
+	wnd.OnKeyUp(func(key nuikey.Key, mods nuikey.KeyModifiers) {
 		log("Key up: " + key.String() + " " + mods.String())
-	}
+	})
 
-	wnd.OnMouseMove = func(x, y int) {
+	wnd.OnMouseMove(func(x, y int) {
 		lastMousePosX = x
 		lastMousePosY = y
 		wnd.Update()
-	}
+	})
 
-	wnd.OnTimer = func() {
+	wnd.OnTimer(func() {
 		counter++
 		wnd.Update()
-	}
+	})
 
 	wnd.Show()
 	//wnd.MoveToCenterOfScreen()

@@ -9,6 +9,9 @@ import (
 	"syscall"
 	"time"
 	"unsafe"
+
+	"github.com/ipoluianov/nui/nuikey"
+	"github.com/ipoluianov/nui/nuimouse"
 )
 
 var (
@@ -51,83 +54,89 @@ var (
 	procCreateIcon   = user32.NewProc("CreateIcon")
 
 	procGetSystemMetrics = user32.NewProc("GetSystemMetrics")
+
+	modDwmapi                 = syscall.NewLazyDLL("dwmapi.dll")
+	procDwmSetWindowAttribute = modDwmapi.NewProc("DwmSetWindowAttribute")
 )
 
 const (
-	WS_OVERLAPPEDWINDOW = 0x00CF0000
-	WS_VISIBLE          = 0x10000000
-	CW_USEDEFAULT       = 0x80000000
-	SW_SHOWDEFAULT      = 10
+	c_WS_OVERLAPPEDWINDOW = 0x00CF0000
+	c_WS_VISIBLE          = 0x10000000
+	c_CW_USEDEFAULT       = 0x80000000
+	c_SW_SHOWDEFAULT      = 10
 
-	SW_HIDE          = 0
-	SW_SHOWNORMAL    = 1
-	SW_SHOWMINIMIZED = 2
-	SW_SHOWMAXIMIZED = 3
-	SW_RESTORE       = 9
+	c_SW_HIDE          = 0
+	c_SW_SHOWNORMAL    = 1
+	c_SW_SHOWMINIMIZED = 2
+	c_SW_SHOWMAXIMIZED = 3
+	c_SW_RESTORE       = 9
 
-	SM_CXSCREEN = 0
-	SM_CYSCREEN = 1
+	c_SM_CXSCREEN = 0
+	c_SM_CYSCREEN = 1
 
-	SWP_NOSIZE     = 0x0001
-	SWP_NOMOVE     = 0x0002
-	SWP_NOZORDER   = 0x0004
-	SWP_NOACTIVATE = 0x0010
+	c_SWP_NOSIZE     = 0x0001
+	c_SWP_NOMOVE     = 0x0002
+	c_SWP_NOZORDER   = 0x0004
+	c_SWP_NOACTIVATE = 0x0010
 
-	WM_SETICON      = 0x0080
-	ICON_SMALL      = 0
-	ICON_BIG        = 1
-	IMAGE_ICON      = 1
-	LR_DEFAULTCOLOR = 0x0000
+	c_WM_SETICON      = 0x0080
+	c_ICON_SMALL      = 0
+	c_ICON_BIG        = 1
+	c_IMAGE_ICON      = 1
+	c_LR_DEFAULTCOLOR = 0x0000
 
-	IDC_ARROW  = uintptr(32512)
-	IDC_HAND   = uintptr(32649)
-	IDC_SIZEWE = uintptr(32644)
-	IDC_SIZENS = uintptr(32645)
-	IDC_IBEAM  = uintptr(32513)
+	c_IDC_ARROW  = uintptr(32512)
+	c_IDC_HAND   = uintptr(32649)
+	c_IDC_SIZEWE = uintptr(32644)
+	c_IDC_SIZENS = uintptr(32645)
+	c_IDC_IBEAM  = uintptr(32513)
 
-	CS_DBLCLKS = 0x0008
-	CS_OWNDC   = 0x0020
+	c_CS_DBLCLKS = 0x0008
+	c_CS_OWNDC   = 0x0020
 
-	WM_MOVE = 0x0003
-	WM_SIZE = 0x0005
+	c_WM_MOVE = 0x0003
+	c_WM_SIZE = 0x0005
 
-	WM_CLOSE   = 0x0010
-	WM_DESTROY = 0x0002
+	c_WM_CLOSE   = 0x0010
+	c_WM_DESTROY = 0x0002
 
-	WM_KEYDOWN = 0x0100
-	WM_KEYUP   = 0x0101
-	WM_CHAR    = 0x0102
+	c_WM_KEYDOWN = 0x0100
+	c_WM_KEYUP   = 0x0101
+	c_WM_CHAR    = 0x0102
 
-	WM_SYSKEYDOWN = 0x0104
-	WM_SYSKEYUP   = 0x0105
-	WM_SYSCHAR    = 0x0106
+	c_WM_SYSKEYDOWN = 0x0104
+	c_WM_SYSKEYUP   = 0x0105
+	c_WM_SYSCHAR    = 0x0106
 
-	WM_LBUTTONDOWN = 0x0201
-	WM_LBUTTONUP   = 0x0202
-	WM_MOUSEMOVE   = 0x0200
-	WM_RBUTTONDOWN = 0x0204
-	WM_RBUTTONUP   = 0x0205
-	WM_MBUTTONDOWN = 0x0207
-	WM_MBUTTONUP   = 0x0208
-	WM_MOUSEWHEEL  = 0x020A // Dec: 522
-	WM_XBUTTONDOWN = 0x020B
-	WM_XBUTTONUP   = 0x020C
+	c_WM_LBUTTONDOWN = 0x0201
+	c_WM_LBUTTONUP   = 0x0202
+	c_WM_MOUSEMOVE   = 0x0200
+	c_WM_RBUTTONDOWN = 0x0204
+	c_WM_RBUTTONUP   = 0x0205
+	c_WM_MBUTTONDOWN = 0x0207
+	c_WM_MBUTTONUP   = 0x0208
+	c_WM_MOUSEWHEEL  = 0x020A // Dec: 522
+	c_WM_XBUTTONDOWN = 0x020B
+	c_WM_XBUTTONUP   = 0x020C
 
 	// dec 132 to hex is 0x84
 
-	WM_LBUTTONDBLCLK = 0x0203
-	WM_RBUTTONDBLCLK = 0x0206
-	WM_MBUTTONDBLCLK = 0x0209
+	c_WM_LBUTTONDBLCLK = 0x0203
+	c_WM_RBUTTONDBLCLK = 0x0206
+	c_WM_MBUTTONDBLCLK = 0x0209
 
-	WM_MOUSELEAVE = 0x02A3
+	c_WM_MOUSELEAVE = 0x02A3
 
-	TME_LEAVE = 0x00000002
+	c_TME_LEAVE = 0x00000002
 
-	WM_TIMER   = 0x0113
-	timerID1ms = 1 // любой уникальный ID
+	c_WM_TIMER = 0x0113
+	timerID1ms = 1 // any unique ID
+
+	c_DWMWA_USE_IMMERSIVE_DARK_MODE_OLD = 19
+	c_DWMWA_USE_IMMERSIVE_DARK_MODE     = 20
 )
 
-type WNDCLASSEXW struct {
+type t_WNDCLASSEXW struct {
 	cbSize        uint32
 	style         uint32
 	lpfnWndProc   uintptr
@@ -142,7 +151,7 @@ type WNDCLASSEXW struct {
 	hIconSm       syscall.Handle
 }
 
-type PAINTSTRUCT struct {
+type t_PAINTSTRUCT struct {
 	hdc         syscall.Handle
 	fErase      int32
 	rcPaint     struct{ left, top, right, bottom int32 }
@@ -151,7 +160,7 @@ type PAINTSTRUCT struct {
 	rgbReserved [32]byte
 }
 
-type MSG struct {
+type t_MSG struct {
 	hwnd    syscall.Handle
 	message uint32
 	wParam  uintptr
@@ -160,7 +169,7 @@ type MSG struct {
 	pt      struct{ x, y int32 }
 }
 
-type BITMAPINFOHEADER struct {
+type t_BITMAPINFOHEADER struct {
 	Size          uint32
 	Width         int32
 	Height        int32
@@ -174,19 +183,19 @@ type BITMAPINFOHEADER struct {
 	ClrImportant  uint32
 }
 
-type RGBQUAD struct {
+type t_RGBQUAD struct {
 	Blue     byte
 	Green    byte
 	Red      byte
 	Reserved byte
 }
 
-type BITMAPINFO struct {
-	Header BITMAPINFOHEADER
-	Colors [3]RGBQUAD
+type t_BITMAPINFO struct {
+	Header t_BITMAPINFOHEADER
+	Colors [3]t_RGBQUAD
 }
 
-type TRACKMOUSEEVENT struct {
+type t_TRACKMOUSEEVENT struct {
 	cbSize      uint32
 	dwFlags     uint32
 	hwndTrack   syscall.Handle
@@ -194,7 +203,7 @@ type TRACKMOUSEEVENT struct {
 }
 
 const (
-	WM_PAINT = 0x000F
+	c_WM_PAINT = 0x000F
 )
 
 var (
@@ -202,14 +211,14 @@ var (
 )
 
 const (
-	HORZRES   = 8
-	VERTRES   = 10
-	BITSPIXEL = 12
-	PLANES    = 14
+	c_HORZRES   = 8
+	c_VERTRES   = 10
+	c_BITSPIXEL = 12
+	c_PLANES    = 14
 
-	OBJ_DC        = 1
-	OBJ_MEMDC     = 10
-	OBJ_ENHMETADC = 12
+	c_OBJ_DC        = 1
+	c_OBJ_MEMDC     = 10
+	c_OBJ_ENHMETADC = 12
 )
 
 type rect struct {
@@ -232,8 +241,8 @@ func loadPngFromBytes(bs []byte) (*image.RGBA, error) {
 	return rgba, nil
 }
 
-func GetNativeWindowByHandle(hwnd syscall.Handle) *NativeWindow {
-	if w, ok := hwnds[hwnd]; ok {
+func getNativeWindowByHandle(hwnd windowId) *nativeWindow {
+	if w, ok := app.windows[hwnd]; ok {
 		return w
 	}
 	return nil
@@ -245,13 +254,10 @@ func getHDCSize(hdc uintptr) (width int32, height int32) {
 	return r.right - r.left, r.bottom - r.top
 }
 
-const chunkHeight = 300
+const chunkHeight = 100
 const maxWidth = 10000
 
 var pixBuffer = make([]byte, 4*chunkHeight*maxWidth)
-
-//go:noescape
-func RgbaToBgraSIMD(data []byte)
 
 func drawImageToHDC(img *image.RGBA, hdc uintptr, width, height int32) {
 	imgStride := img.Stride
@@ -263,9 +269,9 @@ func drawImageToHDC(img *image.RGBA, hdc uintptr, width, height int32) {
 			h = totalHeight - y
 		}
 
-		bi := BITMAPINFO{
-			Header: BITMAPINFOHEADER{
-				Size:        uint32(unsafe.Sizeof(BITMAPINFOHEADER{})),
+		bi := t_BITMAPINFO{
+			Header: t_BITMAPINFOHEADER{
+				Size:        uint32(unsafe.Sizeof(t_BITMAPINFOHEADER{})),
 				Width:       width,
 				Height:      -int32(h),
 				Planes:      1,
@@ -282,7 +288,17 @@ func drawImageToHDC(img *image.RGBA, hdc uintptr, width, height int32) {
 		copy(pixBuffer[:dataSize], img.Pix[srcOffset:srcOffset+dataSize])
 
 		// Convert RGBA to BGRA
-		RgbaToBgraSIMD(pixBuffer[:dataSize])
+		//RgbaToBgraSIMD(pixBuffer[:dataSize])
+		for i := 0; i < dataSize; i += 4 {
+			b := pixBuffer[i+0]
+			g := pixBuffer[i+1]
+			r := pixBuffer[i+2]
+			a := pixBuffer[i+3]
+			pixBuffer[i+0] = r
+			pixBuffer[i+1] = g
+			pixBuffer[i+2] = b
+			pixBuffer[i+3] = a
+		}
 
 		ptr := uintptr(unsafe.Pointer(&pixBuffer[0]))
 
@@ -322,14 +338,14 @@ func initCanvasBufferBackground(col color.Color) {
 func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 	//fmt.Println("Message:", native.MessageName(msg))
 
-	win := GetNativeWindowByHandle(hwnd)
+	win := getNativeWindowByHandle(windowId(hwnd))
 
 	switch msg {
-	case WM_PAINT:
+	case c_WM_PAINT:
 
 		dtBegin := time.Now()
 
-		var ps PAINTSTRUCT
+		var ps t_PAINTSTRUCT
 		hdc, _, _ := procBeginPaint.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&ps)))
 
 		hdcWidth, hdcHeight := getHDCSize(hdc)
@@ -351,8 +367,8 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 		canvasDataBufferSize := int(hdcWidth * hdcHeight * 4)
 		copy(canvasBuffer[:canvasDataBufferSize], canvasBufferBackground)
 
-		if win != nil && win.OnPaint != nil {
-			win.OnPaint(img)
+		if win != nil && win.onPaint != nil {
+			win.onPaint(img)
 		}
 
 		drawImageToHDC(img, hdc, hdcWidth, hdcHeight)
@@ -367,189 +383,189 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 
 		return 0
 
-	case WM_DESTROY:
+	case c_WM_DESTROY:
 		procKillTimer.Call(uintptr(hwnd), timerID1ms)
 		procPostQuitMessage.Call(0)
 		return 0
 
-	case WM_KEYDOWN:
+	case c_WM_KEYDOWN:
 		scanCode := uint32(wParam)
 
 		needGenEvent := true
 
-		k := Key(scanCode)
+		k := nuikey.Key(scanCode)
 		if scanCode == 0x5B || scanCode == 0x5C {
-			k = KeyWin
+			k = nuikey.KeyWin
 		}
 
-		if k == KeyShift {
+		if k == nuikey.KeyShift {
 			if win.keyModifiers.Shift {
 				needGenEvent = false
 			}
 			win.keyModifiers.Shift = true
-		} else if k == KeyCtrl {
+		} else if k == nuikey.KeyCtrl {
 			if win.keyModifiers.Ctrl {
 				needGenEvent = false
 			}
 			win.keyModifiers.Ctrl = true
-		} else if k == KeyAlt {
+		} else if k == nuikey.KeyAlt {
 			if win.keyModifiers.Alt {
 				needGenEvent = false
 			}
 			win.keyModifiers.Alt = true
-		} else if k == KeyCommand {
+		} else if k == nuikey.KeyCommand {
 			if win.keyModifiers.Cmd {
 				needGenEvent = false
 			}
 			win.keyModifiers.Cmd = true
 		}
 
-		if win != nil && win.OnKeyDown != nil && needGenEvent {
-			win.OnKeyDown(k, win.keyModifiers)
+		if win != nil && win.onKeyDown != nil && needGenEvent {
+			win.onKeyDown(k, win.keyModifiers)
 		}
 		return 0
 
-	case WM_KEYUP:
+	case c_WM_KEYUP:
 		scanCode := uint32(wParam)
 
 		needGenEvent := true
-		k := Key(scanCode)
+		k := nuikey.Key(scanCode)
 		if scanCode == 0x5B || scanCode == 0x5C {
-			k = KeyWin
+			k = nuikey.KeyWin
 		}
 
-		if k == KeyShift {
+		if k == nuikey.KeyShift {
 			if !win.keyModifiers.Shift {
 				needGenEvent = false
 			}
 			win.keyModifiers.Shift = false
-		} else if k == KeyCtrl {
+		} else if k == nuikey.KeyCtrl {
 			if !win.keyModifiers.Ctrl {
 				needGenEvent = false
 			}
 			win.keyModifiers.Ctrl = false
-		} else if k == KeyAlt {
+		} else if k == nuikey.KeyAlt {
 			if !win.keyModifiers.Alt {
 				needGenEvent = false
 			}
 			win.keyModifiers.Alt = false
-		} else if k == KeyCommand {
+		} else if k == nuikey.KeyCommand {
 			if !win.keyModifiers.Cmd {
 				needGenEvent = false
 			}
 			win.keyModifiers.Cmd = false
 		}
 
-		if win != nil && win.OnKeyUp != nil && needGenEvent {
-			win.OnKeyUp(k, win.keyModifiers)
+		if win != nil && win.onKeyUp != nil && needGenEvent {
+			win.onKeyUp(k, win.keyModifiers)
 		}
 		return 0
 
-	case WM_SYSKEYDOWN:
+	case c_WM_SYSKEYDOWN:
 		scanCode := uint32(wParam)
 
 		needGenEvent := true
 
-		k := Key(scanCode)
+		k := nuikey.Key(scanCode)
 		if scanCode == 0x5B || scanCode == 0x5C {
-			k = KeyWin
+			k = nuikey.KeyWin
 		}
 
-		if k == KeyShift {
+		if k == nuikey.KeyShift {
 			if win.keyModifiers.Shift {
 				needGenEvent = false
 			}
 			win.keyModifiers.Shift = true
-		} else if k == KeyCtrl {
+		} else if k == nuikey.KeyCtrl {
 			if win.keyModifiers.Ctrl {
 				needGenEvent = false
 			}
 			win.keyModifiers.Ctrl = true
-		} else if k == KeyAlt {
+		} else if k == nuikey.KeyAlt {
 			if win.keyModifiers.Alt {
 				needGenEvent = false
 			}
 			win.keyModifiers.Alt = true
-		} else if k == KeyCommand {
+		} else if k == nuikey.KeyCommand {
 			if win.keyModifiers.Cmd {
 				needGenEvent = false
 			}
 			win.keyModifiers.Cmd = true
 		}
 
-		if win != nil && win.OnKeyDown != nil && needGenEvent {
-			win.OnKeyDown(k, win.keyModifiers)
+		if win != nil && win.onKeyDown != nil && needGenEvent {
+			win.onKeyDown(k, win.keyModifiers)
 		}
 		return 0
 
-	case WM_SYSKEYUP:
+	case c_WM_SYSKEYUP:
 		scanCode := uint32(wParam)
 
 		needGenEvent := true
 
-		k := Key(scanCode)
+		k := nuikey.Key(scanCode)
 		if scanCode == 0x5B || scanCode == 0x5C {
-			k = KeyWin
+			k = nuikey.KeyWin
 		}
 
-		if k == KeyShift {
+		if k == nuikey.KeyShift {
 			if !win.keyModifiers.Shift {
 				needGenEvent = false
 			}
 			win.keyModifiers.Shift = false
-		} else if k == KeyCtrl {
+		} else if k == nuikey.KeyCtrl {
 			if !win.keyModifiers.Ctrl {
 				needGenEvent = false
 			}
 			win.keyModifiers.Ctrl = false
-		} else if k == KeyAlt {
+		} else if k == nuikey.KeyAlt {
 			if !win.keyModifiers.Alt {
 				needGenEvent = false
 			}
 			win.keyModifiers.Alt = false
-		} else if k == KeyCommand {
+		} else if k == nuikey.KeyCommand {
 			if !win.keyModifiers.Cmd {
 				needGenEvent = false
 			}
 			win.keyModifiers.Cmd = false
 		}
 
-		if win != nil && win.OnKeyUp != nil && needGenEvent {
-			win.OnKeyUp(k, win.keyModifiers)
+		if win != nil && win.onKeyUp != nil && needGenEvent {
+			win.onKeyUp(k, win.keyModifiers)
 		}
 		return 0
 
-	case WM_SYSCHAR:
+	case c_WM_SYSCHAR:
 		println("SysChar typed:", rune(wParam), "=", string(rune(wParam)))
 		return 0
 
-	case WM_CHAR:
+	case c_WM_CHAR:
 		println("Char typed:", rune(wParam), "=", string(rune(wParam)))
 
-		if win != nil && win.OnChar != nil && wParam >= 32 {
-			win.OnChar(rune(wParam))
+		if win != nil && win.onChar != nil && wParam >= 32 {
+			win.onChar(rune(wParam))
 		}
 		return 0
 
-	case WM_MOUSEMOVE:
+	case c_WM_MOUSEMOVE:
 		x := int16(lParam & 0xFFFF)
 		y := int16((lParam >> 16) & 0xFFFF)
-		if win != nil && win.OnMouseMove != nil {
-			win.OnMouseMove(int(x), int(y))
+		if win != nil && win.onMouseMove != nil {
+			win.onMouseMove(int(x), int(y))
 		}
 
 		if !win.mouseInside {
 			win.mouseInside = true
 			if win != nil {
-				win.lastSetCursor = MouseCursorNotDefined
+				win.lastSetCursor = nuimouse.MouseCursorNotDefined
 			}
-			if win != nil && win.OnMouseEnter != nil {
-				win.OnMouseEnter()
+			if win != nil && win.onMouseEnter != nil {
+				win.onMouseEnter()
 			}
 
-			tme := TRACKMOUSEEVENT{
-				cbSize:    uint32(unsafe.Sizeof(TRACKMOUSEEVENT{})),
-				dwFlags:   TME_LEAVE,
+			tme := t_TRACKMOUSEEVENT{
+				cbSize:    uint32(unsafe.Sizeof(t_TRACKMOUSEEVENT{})),
+				dwFlags:   c_TME_LEAVE,
 				hwndTrack: hwnd,
 			}
 			procTrackMouseEvent.Call(uintptr(unsafe.Pointer(&tme)))
@@ -558,116 +574,116 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 		win.changeMouseCursor(win.currentCursor)
 		return 0
 
-	case WM_LBUTTONDOWN:
-		if win != nil && win.OnMouseButtonDown != nil {
+	case c_WM_LBUTTONDOWN:
+		if win != nil && win.onMouseButtonDown != nil {
 			x := int16(lParam & 0xFFFF)
 			y := int16((lParam >> 16) & 0xFFFF)
-			win.OnMouseButtonDown(MouseButtonLeft, int(x), int(y))
+			win.onMouseButtonDown(nuimouse.MouseButtonLeft, int(x), int(y))
 		}
 		return 0
 
-	case WM_LBUTTONUP:
-		if win != nil && win.OnMouseButtonUp != nil {
+	case c_WM_LBUTTONUP:
+		if win != nil && win.onMouseButtonUp != nil {
 			x := int16(lParam & 0xFFFF)
 			y := int16((lParam >> 16) & 0xFFFF)
-			win.OnMouseButtonUp(MouseButtonLeft, int(x), int(y))
+			win.onMouseButtonUp(nuimouse.MouseButtonLeft, int(x), int(y))
 		}
 		return 0
 
-	case WM_RBUTTONDOWN:
-		if win != nil && win.OnMouseButtonDown != nil {
+	case c_WM_RBUTTONDOWN:
+		if win != nil && win.onMouseButtonDown != nil {
 			x := int16(lParam & 0xFFFF)
 			y := int16((lParam >> 16) & 0xFFFF)
-			win.OnMouseButtonDown(MouseButtonRight, int(x), int(y))
+			win.onMouseButtonDown(nuimouse.MouseButtonRight, int(x), int(y))
 		}
 		return 0
 
-	case WM_RBUTTONUP:
-		if win != nil && win.OnMouseButtonUp != nil {
+	case c_WM_RBUTTONUP:
+		if win != nil && win.onMouseButtonUp != nil {
 			x := int16(lParam & 0xFFFF)
 			y := int16((lParam >> 16) & 0xFFFF)
-			win.OnMouseButtonUp(MouseButtonRight, int(x), int(y))
+			win.onMouseButtonUp(nuimouse.MouseButtonRight, int(x), int(y))
 		}
 		return 0
 
-	case WM_MBUTTONDOWN:
-		if win != nil && win.OnMouseButtonDown != nil {
+	case c_WM_MBUTTONDOWN:
+		if win != nil && win.onMouseButtonDown != nil {
 			x := int16(lParam & 0xFFFF)
 			y := int16((lParam >> 16) & 0xFFFF)
-			win.OnMouseButtonDown(MouseButtonMiddle, int(x), int(y))
+			win.onMouseButtonDown(nuimouse.MouseButtonMiddle, int(x), int(y))
 		}
 		return 0
 
-	case WM_MBUTTONUP:
-		if win != nil && win.OnMouseButtonUp != nil {
+	case c_WM_MBUTTONUP:
+		if win != nil && win.onMouseButtonUp != nil {
 			x := int16(lParam & 0xFFFF)
 			y := int16((lParam >> 16) & 0xFFFF)
-			win.OnMouseButtonUp(MouseButtonMiddle, int(x), int(y))
+			win.onMouseButtonUp(nuimouse.MouseButtonMiddle, int(x), int(y))
 		}
 		return 0
 
-	case WM_MOUSEWHEEL:
+	case c_WM_MOUSEWHEEL:
 		deltaY := int16((wParam >> 16) & 0xFFFF)
-		if win != nil && win.OnMouseWheel != nil {
-			win.OnMouseWheel(0, int(deltaY/120))
+		if win != nil && win.onMouseWheel != nil {
+			win.onMouseWheel(0, int(deltaY/120))
 		}
 		return 0
 
-	case WM_LBUTTONDBLCLK:
-		if win != nil && win.OnMouseButtonDblClick != nil {
+	case c_WM_LBUTTONDBLCLK:
+		if win != nil && win.onMouseButtonDblClick != nil {
 			x := int16(lParam & 0xFFFF)
 			y := int16((lParam >> 16) & 0xFFFF)
-			win.OnMouseButtonDblClick(MouseButtonLeft, int(x), int(y))
+			win.onMouseButtonDblClick(nuimouse.MouseButtonLeft, int(x), int(y))
 		}
 		return 0
 
-	case WM_RBUTTONDBLCLK:
-		if win != nil && win.OnMouseButtonDblClick != nil {
+	case c_WM_RBUTTONDBLCLK:
+		if win != nil && win.onMouseButtonDblClick != nil {
 			x := int16(lParam & 0xFFFF)
 			y := int16((lParam >> 16) & 0xFFFF)
-			win.OnMouseButtonDblClick(MouseButtonRight, int(x), int(y))
+			win.onMouseButtonDblClick(nuimouse.MouseButtonRight, int(x), int(y))
 		}
 		return 0
 
-	case WM_MBUTTONDBLCLK:
-		if win != nil && win.OnMouseButtonDblClick != nil {
+	case c_WM_MBUTTONDBLCLK:
+		if win != nil && win.onMouseButtonDblClick != nil {
 			x := int16(lParam & 0xFFFF)
 			y := int16((lParam >> 16) & 0xFFFF)
-			win.OnMouseButtonDblClick(MouseButtonMiddle, int(x), int(y))
+			win.onMouseButtonDblClick(nuimouse.MouseButtonMiddle, int(x), int(y))
 		}
 		return 0
 
-	case WM_MOUSELEAVE:
+	case c_WM_MOUSELEAVE:
 		win.mouseInside = false
-		if win != nil && win.OnMouseLeave != nil {
-			win.OnMouseLeave()
+		if win != nil && win.onMouseLeave != nil {
+			win.onMouseLeave()
 		}
 		return 0
 
-	case WM_SIZE:
+	case c_WM_SIZE:
 		width := int16(lParam & 0xFFFF)
 		height := int16((lParam >> 16) & 0xFFFF)
-		if win != nil && win.OnResize != nil {
-			win.OnResize(int(width), int(height))
+		if win != nil && win.onResize != nil {
+			win.onResize(int(width), int(height))
 		}
 		win.windowWidth = int(width)
 		win.windowHeight = int(height)
 		procInvalidateRect.Call(uintptr(hwnd), 0, 0)
 		return 0
 
-	case WM_MOVE:
+	case c_WM_MOVE:
 		x := int16(lParam & 0xFFFF)
 		y := int16((lParam >> 16) & 0xFFFF)
 		win.windowPosX = int(x)
 		win.windowPosY = int(y)
-		if win != nil && win.OnMove != nil {
-			win.OnMove(int(x), int(y))
+		if win != nil && win.onMove != nil {
+			win.onMove(int(x), int(y))
 		}
 		return 0
 
-	case WM_CLOSE:
-		if win != nil && win.OnCloseRequest != nil {
-			allow := win.OnCloseRequest()
+	case c_WM_CLOSE:
+		if win != nil && win.onCloseRequest != nil {
+			allow := win.onCloseRequest()
 			if !allow {
 				return 0
 			}
@@ -675,10 +691,10 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 		procDefWindowProcW.Call(uintptr(hwnd), uintptr(msg), wParam, lParam)
 		return 0
 
-	case WM_TIMER:
+	case c_WM_TIMER:
 		if wParam == timerID1ms {
-			if win != nil && win.OnTimer != nil {
-				win.OnTimer()
+			if win != nil && win.onTimer != nil {
+				win.onTimer()
 			}
 		}
 		return 0
@@ -689,24 +705,24 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 	}
 }
 
-func (c *NativeWindow) changeMouseCursor(cursor MouseCursor) bool {
+func (c *nativeWindow) changeMouseCursor(cursor nuimouse.MouseCursor) bool {
 	var cursorID uintptr
 
-	if c.lastSetCursor == cursor && c.lastSetCursor != MouseCursorNotDefined {
+	if c.lastSetCursor == cursor && c.lastSetCursor != nuimouse.MouseCursorNotDefined {
 		return true
 	}
 
 	switch cursor {
-	case MouseCursorArrow:
-		cursorID = IDC_ARROW
-	case MouseCursorPointer:
-		cursorID = IDC_HAND
-	case MouseCursorResizeHor:
-		cursorID = IDC_SIZEWE
-	case MouseCursorResizeVer:
-		cursorID = IDC_SIZENS
-	case MouseCursorIBeam:
-		cursorID = IDC_IBEAM
+	case nuimouse.MouseCursorArrow:
+		cursorID = c_IDC_ARROW
+	case nuimouse.MouseCursorPointer:
+		cursorID = c_IDC_HAND
+	case nuimouse.MouseCursorResizeHor:
+		cursorID = c_IDC_SIZEWE
+	case nuimouse.MouseCursorResizeVer:
+		cursorID = c_IDC_SIZENS
+	case nuimouse.MouseCursorIBeam:
+		cursorID = c_IDC_IBEAM
 	default:
 		return false
 	}
@@ -770,7 +786,32 @@ func createHICONFromRGBA(img *image.RGBA) syscall.Handle {
 }
 
 func getScreenSize() (width, height int) {
-	w, _, _ := procGetSystemMetrics.Call(SM_CXSCREEN)
-	h, _, _ := procGetSystemMetrics.Call(SM_CYSCREEN)
+	w, _, _ := procGetSystemMetrics.Call(c_SM_CXSCREEN)
+	h, _, _ := procGetSystemMetrics.Call(c_SM_CYSCREEN)
 	return int(w), int(h)
+}
+
+func setDarkMode(hwnd uintptr, enable bool) {
+	var useDark uint32
+	if enable {
+		useDark = 1
+	}
+
+	// Сначала пробуем с 20
+	ret, _, _ := procDwmSetWindowAttribute.Call(
+		hwnd,
+		uintptr(c_DWMWA_USE_IMMERSIVE_DARK_MODE),
+		uintptr(unsafe.Pointer(&useDark)),
+		unsafe.Sizeof(useDark),
+	)
+
+	// Если не сработало — пробуем 19
+	if ret != 0 {
+		procDwmSetWindowAttribute.Call(
+			hwnd,
+			uintptr(c_DWMWA_USE_IMMERSIVE_DARK_MODE_OLD),
+			uintptr(unsafe.Pointer(&useDark)),
+			unsafe.Sizeof(useDark),
+		)
+	}
 }

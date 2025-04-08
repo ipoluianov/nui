@@ -8,6 +8,7 @@ import (
 
 	"github.com/ipoluianov/nui/nui"
 	"github.com/ipoluianov/nui/nuicanvas"
+	"github.com/ipoluianov/nui/nuimouse"
 )
 
 func Run() {
@@ -15,30 +16,30 @@ func Run() {
 
 	buttonPressed := false
 
-	wnd := nui.CreateWindow()
+	wnd := nui.CreateWindow("App", 800, 600, true)
 
-	wnd.OnPaint = func(rgba *image.RGBA) {
+	wnd.OnPaint(func(rgba *image.RGBA) {
 		rect := rgba.Rect
 		fmt.Println("OnPaint", rect)
 		cnv := nuicanvas.NewCanvas(rgba)
 		draw.Draw(rgba, rgba.Rect, doc, image.Point{}, draw.Src)
 		cnv.SetColor(color.RGBA{0, 255, 0, 255})
 		cnv.DrawRect(0, 0, 100, 100)
-	}
+	})
 
 	lastX, lastY := 0, 0
 
-	wnd.OnMouseButtonDown = func(button nui.MouseButton, x, y int) {
+	wnd.OnMouseButtonDown(func(button nuimouse.MouseButton, x, y int) {
 		//doc.Set(x, y, color.RGBA{255, 0, 0, 255})
 		lastX, lastY = x, y
 		buttonPressed = true
-	}
+	})
 
-	wnd.OnMouseButtonUp = func(button nui.MouseButton, x, y int) {
+	wnd.OnMouseButtonUp(func(button nuimouse.MouseButton, x, y int) {
 		buttonPressed = false
-	}
+	})
 
-	wnd.OnMouseMove = func(x, y int) {
+	wnd.OnMouseMove(func(x, y int) {
 		if buttonPressed {
 			//doc.Set(x, y, color.RGBA{255, 0, 0, 255})
 			cc := nuicanvas.NewCanvas(doc)
@@ -48,7 +49,7 @@ func Run() {
 		lastX, lastY = x, y
 		wnd.Update()
 
-	}
+	})
 
 	wnd.SetTitle("Example 04 - Paint")
 	wnd.Show()

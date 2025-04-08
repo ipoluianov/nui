@@ -8,6 +8,7 @@ import (
 
 	"github.com/ipoluianov/nui/nui"
 	"github.com/ipoluianov/nui/nuicanvas"
+	"github.com/ipoluianov/nui/nuikey"
 )
 
 func fullRectOnRGBA(rgba *image.RGBA, x, y, w, h int, c color.Color) {
@@ -22,9 +23,9 @@ func Run() {
 	totalCounter := 0
 	counter := 0
 	speed := float64(0)
-	wnd := nui.CreateWindow()
+	wnd := nui.CreateWindow("App", 800, 600, true)
 	wnd.Show()
-	wnd.OnPaint = func(rgba *image.RGBA) {
+	wnd.OnPaint(func(rgba *image.RGBA) {
 		posX := 2 * int(time.Now().UnixMilli()%10000) / 20
 		fullRectOnRGBA(rgba, posX, 10, 100, 100, color.RGBA{255, 0, 0, 255})
 		cnv := nuicanvas.NewCanvas(rgba)
@@ -33,13 +34,13 @@ func Run() {
 		cnv.DrawFixedString(10, 120, counterStr, 2)
 		speedStr := "Speed: " + strconv.FormatFloat(speed, 'f', 2, 64)
 		cnv.DrawFixedString(10, 140, speedStr, 2)
-	}
-	wnd.OnKeyDown = func(keyCode nui.Key, keyModifiers nui.KeyModifiers) {
+	})
+	wnd.OnKeyDown(func(keyCode nuikey.Key, keyModifiers nuikey.KeyModifiers) {
 		wnd.Resize(800, 600)
-	}
+	})
 	dtBegin := time.Now()
 	lastTotalCounter := 0
-	wnd.OnTimer = func() {
+	wnd.OnTimer(func() {
 		counter++
 		totalCounter++
 		if counter > 100 {
@@ -55,6 +56,6 @@ func Run() {
 			dtBegin = time.Now()
 		}
 		wnd.Update()
-	}
+	})
 	wnd.EventLoop()
 }

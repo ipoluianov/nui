@@ -11,12 +11,12 @@ func (c *Canvas) DrawRect(x, y, w, h float64) {
 	}
 }
 
-func (c *Canvas) FillRect(x, y, w, h float64, alpha float64) {
+func (c *Canvas) FillRect(x, y, w, h int, alpha float64) {
 	col := c.CurrentState().col
 	col.A = uint8(alpha * 255)
-	for j := float64(0); j < h; j++ {
-		for i := float64(0); i < w; i++ {
-			c.BlendPixel(int(x+i), int(y+j), col)
+	for j := 0; j < h; j++ {
+		for i := 0; i < w; i++ {
+			c.BlendPixel(x+i, y+j, col)
 		}
 	}
 }

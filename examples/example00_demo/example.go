@@ -8,6 +8,8 @@ import (
 
 	"github.com/ipoluianov/nui/nui"
 	"github.com/ipoluianov/nui/nuicanvas"
+	"github.com/ipoluianov/nui/nuikey"
+	"github.com/ipoluianov/nui/nuimouse"
 )
 
 var logItems = make([]string, 0)
@@ -26,7 +28,7 @@ func log(s string) {
 }
 
 func Run() {
-	win := nui.CreateWindow()
+	win := nui.CreateWindow("App", 800, 600, true)
 
 	var timerCounter = 0
 	var mousePosX, mousePosY = 0, 0
@@ -35,28 +37,28 @@ func Run() {
 	var mouseWheelX, mouseWheelY = 0, 0
 	var animationOffset = 0
 
-	win.OnKeyDown = func(keyCode nui.Key, modifiers nui.KeyModifiers) {
+	win.OnKeyDown(func(keyCode nuikey.Key, modifiers nuikey.KeyModifiers) {
 		modStr := modifiers.String()
 		if len(modStr) > 0 {
 			modStr = " + " + modStr
 		}
 		log("OnKeyDown: " + keyCode.String() + modStr)
 		switch keyCode {
-		case nui.KeyEsc:
+		case nuikey.KeyEsc:
 			logItems = nil
-		case nui.KeyF1:
+		case nuikey.KeyF1:
 			win.MaximizeWindow()
-		case nui.KeyF2:
+		case nuikey.KeyF2:
 			win.MinimizeWindow()
-		case nui.KeyF3:
+		case nuikey.KeyF3:
 			win.SetTitle("Title: " + time.Now().Format("15:04:05"))
-		case nui.KeyF4:
+		case nuikey.KeyF4:
 			win.Resize(640, 480)
-		case nui.KeyF5:
+		case nuikey.KeyF5:
 			win.Move(100, 100)
-		case nui.KeyF6:
+		case nuikey.KeyF6:
 			win.MoveToCenterOfScreen()
-		case nui.KeyF7:
+		case nuikey.KeyF7:
 			{
 				iconImg := image.NewRGBA(image.Rect(0, 0, 16, 16))
 				cnv := nuicanvas.NewCanvas(iconImg)
@@ -66,31 +68,31 @@ func Run() {
 				cnv.DrawFixedString(0, 4, "NUI", 1)
 				win.SetAppIcon(iconImg)
 			}
-		case nui.KeyF8:
-			win.SetMouseCursor(nui.MouseCursorArrow)
-		case nui.KeyF9:
-			win.SetMouseCursor(nui.MouseCursorPointer)
-		case nui.KeyF10:
-			win.SetMouseCursor(nui.MouseCursorIBeam)
-		case nui.KeyF12:
+		case nuikey.KeyF8:
+			win.SetMouseCursor(nuimouse.MouseCursorArrow)
+		case nuikey.KeyF9:
+			win.SetMouseCursor(nuimouse.MouseCursorPointer)
+		case nuikey.KeyF10:
+			win.SetMouseCursor(nuimouse.MouseCursorIBeam)
+		case nuikey.KeyF12:
 			win.Close()
-		case nui.Key1:
+		case nuikey.Key1:
 			win.SetBackgroundColor(color.RGBA{0, 0, 0, 255})
-		case nui.Key2:
+		case nuikey.Key2:
 			win.SetBackgroundColor(color.RGBA{255, 0, 0, 255})
-		case nui.Key3:
+		case nuikey.Key3:
 			win.SetBackgroundColor(color.RGBA{0, 255, 0, 255})
-		case nui.Key4:
+		case nuikey.Key4:
 			win.SetBackgroundColor(color.RGBA{0, 0, 255, 255})
-		case nui.Key5:
+		case nuikey.Key5:
 			win.SetBackgroundColor(color.RGBA{255, 255, 255, 255})
 		}
 		win.Update()
-	}
+	})
 
 	dtAnimation := time.Now()
 
-	win.OnTimer = func() {
+	win.OnTimer(func() {
 		timerCounter++
 		if time.Since(dtAnimation) > 50*time.Millisecond {
 			dtAnimation = time.Now()
@@ -100,75 +102,75 @@ func Run() {
 			}
 		}
 		win.Update()
-	}
+	})
 
-	win.OnKeyUp = func(keyCode nui.Key, modifiers nui.KeyModifiers) {
+	win.OnKeyUp(func(keyCode nuikey.Key, modifiers nuikey.KeyModifiers) {
 		modStr := modifiers.String()
 		if len(modStr) > 0 {
 			modStr = " + " + modStr
 		}
 		log("OnKeyUp: " + keyCode.String() + modStr)
 		win.Update()
-	}
+	})
 
-	win.OnChar = func(char rune) {
+	win.OnChar(func(char rune) {
 		log("OnChar: " + string(char))
 		win.Update()
-	}
+	})
 
-	win.OnMouseLeave = func() {
+	win.OnMouseLeave(func() {
 		log("OnMouseLeave")
 		win.Update()
-	}
+	})
 
-	win.OnMouseEnter = func() {
+	win.OnMouseEnter(func() {
 		log("OnMouseEnter")
 		win.Update()
-	}
+	})
 
-	win.OnMouseMove = func(x, y int) {
+	win.OnMouseMove(func(x, y int) {
 		mousePosX = x
 		mousePosY = y
 		win.Update()
-	}
+	})
 
-	win.OnMouseButtonDblClick = func(button nui.MouseButton, x, y int) {
+	win.OnMouseButtonDblClick(func(button nuimouse.MouseButton, x, y int) {
 		log(fmt.Sprintf("OnMouseButtonDblClick: %s (%d, %d)", button.String(), x, y))
 		win.Update()
-	}
+	})
 
-	win.OnMouseButtonDown = func(button nui.MouseButton, x, y int) {
+	win.OnMouseButtonDown(func(button nuimouse.MouseButton, x, y int) {
 		log(fmt.Sprintf("OnMouseButtonDown: %s (%d, %d)", button.String(), x, y))
 		win.Update()
-	}
+	})
 
-	win.OnMouseButtonUp = func(button nui.MouseButton, x, y int) {
+	win.OnMouseButtonUp(func(button nuimouse.MouseButton, x, y int) {
 		log(fmt.Sprintf("OnMouseButtonUp: %s (%d, %d)", button.String(), x, y))
 		win.Update()
-	}
+	})
 
-	win.OnMouseWheel = func(deltaX, deltaY int) {
+	win.OnMouseWheel(func(deltaX, deltaY int) {
 		log(fmt.Sprintf("OnMouseWheel: %d %d", deltaX, deltaY))
 		mouseWheelX += deltaX
 		mouseWheelY += deltaY
 		win.Update()
-	}
+	})
 
-	win.OnMove = func(x, y int) {
+	win.OnMove(func(x, y int) {
 		winPosX = x
 		winPosY = y
 		log(fmt.Sprintf("OnMove: %d %d", x, y))
 		win.Update()
-	}
+	})
 
-	win.OnResize = func(width, height int) {
+	win.OnResize(func(width, height int) {
 		winWidth = width
 		winHeight = height
 		log(fmt.Sprintf("OnResize: %d %d", width, height))
 		win.Update()
-	}
+	})
 
-	win.OnPaint = func(rgba *image.RGBA) {
+	win.OnPaint(func(rgba *image.RGBA) {
 		cnv := nuicanvas.NewCanvas(rgba)
 		cnv.SetColor(color.RGBA{0, 255, 0, 255})
 
@@ -198,13 +200,13 @@ func Run() {
 
 		cnv.DrawLine(5, 430, win.Width()-5, 430, 0.5)
 		cnv.DrawLine(390, 5, 390, 425, 0.5)
-		cnv.FillRect(float64(animationOffset), 440, 20, 20, 0.5)
+		cnv.FillRect(animationOffset, 440, 20, 20, 0.5)
 
 		cnv.DrawFixedString(400, 10, "Press Esc to clear log", 2)
 		for i, s := range logItems {
 			cnv.DrawFixedString(400, 20+float64(10+20*i), s, 2)
 		}
-	}
+	})
 
 	win.Show()
 	win.MoveToCenterOfScreen()

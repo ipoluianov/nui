@@ -1,4 +1,4 @@
-package nui
+package nuikey
 
 type Key int
 
