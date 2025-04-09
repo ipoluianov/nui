@@ -11,27 +11,36 @@ import (
 	"image/color"
 	"image/draw"
 	"unsafe"
+
+	"github.com/ipoluianov/nui/nuikey"
+	"github.com/ipoluianov/nui/nuimouse"
 )
 
-type NativeWindow struct {
+type windowId int
+type nativeWindowPlatform struct {
+	lastCapsLockState bool
+	lastNumLockState  bool
+}
+
+/*type NativeWindow struct {
 	hwnd int
 
-	currentCursor MouseCursor
-	lastSetCursor MouseCursor
+	currentCursor nuimouse.MouseCursor
+	lastSetCursor nuimouse.MouseCursor
 
 	windowPosX   int
 	windowPosY   int
 	windowWidth  int
 	windowHeight int
 
-	keyModifiers KeyModifiers
+	keyModifiers nuikey.KeyModifiers
 
 	lastCapsLockState bool
 	lastNumLockState  bool
 
 	// Keyboard events
-	OnKeyDown func(keyCode Key, modifiers KeyModifiers)
-	OnKeyUp   func(keyCode Key, modifiers KeyModifiers)
+	OnKeyDown func(keyCode nuikey.Key, modifiers nuikey.KeyModifiers)
+	OnKeyUp   func(keyCode nuikey.Key, modifiers nuikey.KeyModifiers)
 	OnChar    func(char rune)
 
 	drawTimes      [32]int64
@@ -41,9 +50,9 @@ type NativeWindow struct {
 	OnMouseEnter          func()
 	OnMouseLeave          func()
 	OnMouseMove           func(x, y int)
-	OnMouseButtonDown     func(button MouseButton, x, y int)
-	OnMouseButtonUp       func(button MouseButton, x, y int)
-	OnMouseButtonDblClick func(button MouseButton, x, y int)
+	OnMouseButtonDown     func(button nuimouse.MouseButton, x, y int)
+	OnMouseButtonUp       func(button nuimouse.MouseButton, x, y int)
+	OnMouseButtonDblClick func(button nuimouse.MouseButton, x, y int)
 	OnMouseWheel          func(deltaX int, deltaY int)
 
 	// Window events
@@ -53,23 +62,23 @@ type NativeWindow struct {
 	OnResize       func(width, height int)
 	OnCloseRequest func() bool
 	OnTimer        func()
-}
+}*/
 
-var hwnds map[int]*NativeWindow
+var hwnds map[windowId]*nativeWindow
 
 func init() {
-	hwnds = make(map[int]*NativeWindow)
+	hwnds = make(map[windowId]*nativeWindow)
 }
 
 /////////////////////////////////////////////////////
 // Window creation and management
 
-func CreateWindow() *NativeWindow {
-	var c NativeWindow
+func createWindow(title string, width int, height int, center bool) *nativeWindow {
+	var c nativeWindow
 
 	initCanvasBufferBackground(color.RGBA{0, 50, 0, 255})
 
-	c.hwnd = int(C.InitWindow())
+	c.hwnd = windowId(C.InitWindow())
 
 	x, y := c.requestWindowPosition()
 	c.windowPosX = int(x)
@@ -84,36 +93,36 @@ func CreateWindow() *NativeWindow {
 	return &c
 }
 
-func (c *NativeWindow) Show() {
+func (c *nativeWindow) Show() {
 	C.ShowWindow(C.int(c.hwnd))
 }
 
-func (c *NativeWindow) Update() {
+func (c *nativeWindow) Update() {
 	C.UpdateWindow(C.int(c.hwnd))
 }
 
-func (c *NativeWindow) EventLoop() {
+func (c *nativeWindow) EventLoop() {
 	C.RunEventLoop()
 }
 
-func (c *NativeWindow) Close() {
+func (c *nativeWindow) Close() {
 	C.CloseWindowById(C.int(c.hwnd))
 }
 
 ///////////////////////////////////////////////////
 // Window appearance
 
-func (c *NativeWindow) SetTitle(title string) {
+func (c *nativeWindow) SetTitle(title string) {
 	C.SetWindowTitle(C.int(c.hwnd), C.CString(title))
 }
 
-func (c *NativeWindow) SetAppIcon(img image.Image) {
-	bounds := img.Bounds()
+func (c *nativeWindow) SetAppIcon(icon *image.RGBA) {
+	bounds := icon.Bounds()
 	width := bounds.Dx()
 	height := bounds.Dy()
 
 	rgba := image.NewRGBA(bounds)
-	draw.Draw(rgba, bounds, img, bounds.Min, draw.Src)
+	draw.Draw(rgba, bounds, icon, bounds.Min, draw.Src)
 
 	C.SetAppIconFromRGBA(
 		(*C.char)(unsafe.Pointer(&rgba.Pix[0])),
@@ -122,17 +131,17 @@ func (c *NativeWindow) SetAppIcon(img image.Image) {
 	)
 }
 
-func (c *NativeWindow) SetBackgroundColor(color color.RGBA) {
+func (c *nativeWindow) SetBackgroundColor(color color.RGBA) {
 	initCanvasBufferBackground(color)
 	c.Update()
 }
 
-func (c *NativeWindow) SetMouseCursor(cursor MouseCursor) {
+func (c *nativeWindow) SetMouseCursor(cursor nuimouse.MouseCursor) {
 	c.currentCursor = cursor
 	c.macSetMouseCursor(c.currentCursor)
 }
 
-func (c *NativeWindow) macSetMouseCursor(cursor MouseCursor) {
+func (c *nativeWindow) macSetMouseCursor(cursor nuimouse.MouseCursor) {
 	if c.lastSetCursor == cursor {
 		return
 	}
@@ -140,15 +149,15 @@ func (c *NativeWindow) macSetMouseCursor(cursor MouseCursor) {
 	var macCursor C.int
 	macCursor = 0
 	switch c.currentCursor {
-	case MouseCursorArrow:
+	case nuimouse.MouseCursorArrow:
 		macCursor = 1
-	case MouseCursorPointer:
+	case nuimouse.MouseCursorPointer:
 		macCursor = 2
-	case MouseCursorResizeHor:
+	case nuimouse.MouseCursorResizeHor:
 		macCursor = 3
-	case MouseCursorResizeVer:
+	case nuimouse.MouseCursorResizeVer:
 		macCursor = 4
-	case MouseCursorIBeam:
+	case nuimouse.MouseCursorIBeam:
 		macCursor = 5
 	}
 	C.SetMacCursor(macCursor)
@@ -157,11 +166,11 @@ func (c *NativeWindow) macSetMouseCursor(cursor MouseCursor) {
 /////////////////////////////////////////////////////
 // Window position and size
 
-func (c *NativeWindow) Move(x, y int) {
+func (c *nativeWindow) Move(x, y int) {
 	C.SetWindowPosition(C.int(c.hwnd), C.int(x), C.int(y))
 }
 
-func (c *NativeWindow) MoveToCenterOfScreen() {
+func (c *nativeWindow) MoveToCenterOfScreen() {
 	screenWidth, screenHeight := GetScreenSize()
 	windowWidth, windowHeight := c.Size()
 	x := (screenWidth - windowWidth) / 2
@@ -169,50 +178,50 @@ func (c *NativeWindow) MoveToCenterOfScreen() {
 	c.Move(int(x), int(y))
 }
 
-func (c *NativeWindow) Resize(width, height int) {
+func (c *nativeWindow) Resize(width, height int) {
 	C.SetWindowSize(C.int(c.hwnd), C.int(width), C.int(height))
 }
 
-func (c *NativeWindow) MinimizeWindow() {
+func (c *nativeWindow) MinimizeWindow() {
 	C.MinimizeWindow(C.int(c.hwnd))
 }
 
-func (c *NativeWindow) MaximizeWindow() {
+func (c *nativeWindow) MaximizeWindow() {
 	C.MaximizeWindow(C.int(c.hwnd))
 }
 
 //////////////////////////////////////////////////
 // Window information
 
-func (c *NativeWindow) Size() (width, height int) {
+func (c *nativeWindow) Size() (width, height int) {
 	return c.windowWidth, c.windowHeight
 }
 
-func (c *NativeWindow) Pos() (x, y int) {
+func (c *nativeWindow) Pos() (x, y int) {
 	return c.windowPosX, c.windowPosY
 }
 
-func (c *NativeWindow) PosX() int {
+func (c *nativeWindow) PosX() int {
 	return c.windowPosX
 }
 
-func (c *NativeWindow) PosY() int {
+func (c *nativeWindow) PosY() int {
 	return c.windowPosY
 }
 
-func (c *NativeWindow) Width() int {
+func (c *nativeWindow) Width() int {
 	return c.windowWidth
 }
 
-func (c *NativeWindow) Height() int {
+func (c *nativeWindow) Height() int {
 	return c.windowHeight
 }
 
-func (c *NativeWindow) KeyModifiers() KeyModifiers {
+func (c *nativeWindow) KeyModifiers() nuikey.KeyModifiers {
 	return c.keyModifiers
 }
 
-func (c *NativeWindow) DrawTimeUs() int64 {
+func (c *nativeWindow) DrawTimeUs() int64 {
 	drawTimeAvg := int64(0)
 	count := 0
 	for _, t := range c.drawTimes {
