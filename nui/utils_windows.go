@@ -28,6 +28,9 @@ var (
 	procShowWindow       = user32.NewProc("ShowWindow")
 	procUpdateWindow     = user32.NewProc("UpdateWindow")
 
+	procSetCapture     = user32.NewProc("SetCapture")
+	procReleaseCapture = user32.NewProc("ReleaseCapture")
+
 	procGetModuleHandleW = kernel32.NewProc("GetModuleHandleW")
 	procPostQuitMessage  = user32.NewProc("PostQuitMessage")
 
@@ -575,6 +578,7 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 		return 0
 
 	case c_WM_LBUTTONDOWN:
+		procSetCapture.Call(uintptr(hwnd))
 		if win != nil && win.onMouseButtonDown != nil {
 			x := int16(lParam & 0xFFFF)
 			y := int16((lParam >> 16) & 0xFFFF)
@@ -583,6 +587,7 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 		return 0
 
 	case c_WM_LBUTTONUP:
+		procReleaseCapture.Call()
 		if win != nil && win.onMouseButtonUp != nil {
 			x := int16(lParam & 0xFFFF)
 			y := int16((lParam >> 16) & 0xFFFF)
