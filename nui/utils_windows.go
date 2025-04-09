@@ -7,6 +7,7 @@ import (
 	"image/color"
 	"image/png"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"github.com/ipoluianov/nui/nuikey"
@@ -26,11 +27,6 @@ var (
 	procTranslateMessage = user32.NewProc("TranslateMessage")
 	procShowWindow       = user32.NewProc("ShowWindow")
 	procUpdateWindow     = user32.NewProc("UpdateWindow")
-
-	procQueryPerformanceCounter   = kernel32.NewProc("QueryPerformanceCounter")
-	procQueryPerformanceFrequency = kernel32.NewProc("QueryPerformanceFrequency")
-
-	procPeekMessageW = user32.NewProc("PeekMessageW")
 
 	procGetModuleHandleW = kernel32.NewProc("GetModuleHandleW")
 	procPostQuitMessage  = user32.NewProc("PostQuitMessage")
@@ -61,9 +57,6 @@ var (
 
 	modDwmapi                 = syscall.NewLazyDLL("dwmapi.dll")
 	procDwmSetWindowAttribute = modDwmapi.NewProc("DwmSetWindowAttribute")
-
-	procGetDC     = user32.NewProc("GetDC")
-	procReleaseDC = user32.NewProc("ReleaseDC")
 )
 
 const (
@@ -91,10 +84,6 @@ const (
 	c_ICON_BIG        = 1
 	c_IMAGE_ICON      = 1
 	c_LR_DEFAULTCOLOR = 0x0000
-
-	PM_REMOVE = 0x0001
-
-	WM_QUIT = 0x0012
 
 	c_IDC_ARROW  = uintptr(32512)
 	c_IDC_HAND   = uintptr(32649)
@@ -354,9 +343,7 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 	switch msg {
 	case c_WM_PAINT:
 
-		win.renderFrame()
-
-		/*dtBegin := time.Now()
+		dtBegin := time.Now()
 
 		var ps t_PAINTSTRUCT
 		hdc, _, _ := procBeginPaint.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&ps)))
@@ -392,7 +379,7 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 		win.drawTimesIndex++
 		if win.drawTimesIndex >= len(win.drawTimes) {
 			win.drawTimesIndex = 0
-		}*/
+		}
 
 		return 0
 
