@@ -694,7 +694,10 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 	case c_WM_TIMER:
 		if wParam == timerID1ms {
 			if win != nil && win.onTimer != nil {
-				win.onTimer()
+				if time.Since(win.timerLastDT) > time.Millisecond*10 {
+					win.onTimer()
+					win.timerLastDT = time.Now()
+				}
 			}
 		}
 		return 0

@@ -2,6 +2,7 @@ package nui
 
 import (
 	"image"
+	"time"
 
 	"github.com/ipoluianov/nui/nuikey"
 	"github.com/ipoluianov/nui/nuimouse"
@@ -26,6 +27,8 @@ type nativeWindow struct {
 
 	drawTimes      [32]int64
 	drawTimesIndex int
+
+	timerLastDT time.Time
 
 	onKeyDown func(keyCode nuikey.Key, mods nuikey.KeyModifiers)
 	onKeyUp   func(keyCode nuikey.Key, mods nuikey.KeyModifiers)

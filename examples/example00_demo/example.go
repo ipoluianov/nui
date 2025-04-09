@@ -36,6 +36,7 @@ func Run() {
 	var winWidth, winHeight = 0, 0
 	var mouseWheelX, mouseWheelY = 0, 0
 	var animationOffset = 0
+	var timerPeriodMs = 0
 
 	win.OnKeyDown(func(keyCode nuikey.Key, modifiers nuikey.KeyModifiers) {
 		modStr := modifiers.String()
@@ -90,16 +91,20 @@ func Run() {
 		win.Update()
 	})
 
-	dtAnimation := time.Now()
+	dtLastTimer := time.Now()
 
 	win.OnTimer(func() {
 		timerCounter++
-		if time.Since(dtAnimation) > 50*time.Millisecond {
-			dtAnimation = time.Now()
-			animationOffset += 1
-			if animationOffset > win.Width() {
-				animationOffset = 0
-			}
+		if timerCounter > 100 {
+			timerCounter = 0
+			elapsedTimeMs := time.Since(dtLastTimer).Milliseconds()
+			timerPeriodMs = int(elapsedTimeMs) / 100
+			dtLastTimer = time.Now()
+		}
+
+		animationOffset += 1
+		if animationOffset > win.Width() {
+			animationOffset = 0
 		}
 		win.Update()
 	})
@@ -197,8 +202,9 @@ func Run() {
 		cnv.DrawFixedString(10, 370, "MouseWheelX: "+fmt.Sprint(mouseWheelX), 2)
 		cnv.DrawFixedString(10, 390, "MouseWheelY: "+fmt.Sprint(mouseWheelY), 2)
 		cnv.DrawFixedString(10, 410, "DrawTimeMs: "+fmt.Sprint(win.DrawTimeUs()/1000), 2)
+		cnv.DrawFixedString(10, 430, "TimerPeriodMs: "+fmt.Sprint(timerPeriodMs), 2)
 
-		cnv.DrawLine(5, 430, win.Width()-5, 430, 0.5)
+		cnv.DrawLine(5, 450, win.Width()-5, 450, 0.5)
 		cnv.DrawLine(390, 5, 390, 425, 0.5)
 		cnv.FillRect(animationOffset, 440, 20, 20, 0.5)
 
