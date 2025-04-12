@@ -9,6 +9,9 @@ import (
 	"image/png"
 	"time"
 	"unsafe"
+
+	"github.com/ipoluianov/nui/nuikey"
+	"github.com/ipoluianov/nui/nuimouse"
 )
 
 /*
@@ -25,7 +28,18 @@ import "C"
 func init() {
 }
 
-type NativeWindow struct {
+type windowId C.Window
+
+type nativeWindowPlatform struct {
+	display *C.Display
+	window  C.Window
+	screen  C.int
+
+	dtLastUpdateCalled time.Time
+	needUpdateInTimer  bool
+}
+
+/*type NativeWindow struct {
 	display *C.Display
 	window  C.Window
 	screen  C.int
@@ -67,7 +81,7 @@ type NativeWindow struct {
 	OnResize       func(width, height int)
 	OnCloseRequest func() bool
 	OnTimer        func()
-}
+}*/
 
 var mouseInside bool = false
 
@@ -91,14 +105,14 @@ func loadPngFromBytes(bs []byte) (*image.RGBA, error) {
 	return rgba, nil
 }
 
-var hwnds map[C.Window]*NativeWindow
+var hwnds map[windowId]*nativeWindow
 
 func init() {
-	hwnds = make(map[C.Window]*NativeWindow)
+	hwnds = make(map[windowId]*nativeWindow)
 }
 
-func GetNativeWindowByHandle(hwnd C.Window) *NativeWindow {
-	if w, ok := hwnds[hwnd]; ok {
+func GetNativeWindowByHandle(hwnd C.Window) *nativeWindow {
+	if w, ok := hwnds[windowId(hwnd)]; ok {
 		return w
 	}
 	return nil
@@ -135,28 +149,28 @@ func initCanvasBufferBackground(col color.Color) {
 
 ///////////////////////////////////////////////////////////////////
 
-func CreateWindow() *NativeWindow {
-	var c NativeWindow
+func createWindow(title string, width int, height int, center bool) *nativeWindow {
+	var c nativeWindow
 	initCanvasBufferBackground(color.RGBA{0, 50, 0, 255})
 
-	c.display = C.XOpenDisplay(nil)
-	if c.display == nil {
+	c.platform.display = C.XOpenDisplay(nil)
+	if c.platform.display == nil {
 		panic("Unable to open X display")
 	}
 	//defer C.XCloseDisplay(c.display)
 
-	c.screen = C.XDefaultScreen(c.display)
+	c.platform.screen = C.XDefaultScreen(c.platform.display)
 
 	attrs := C.XSetWindowAttributes{}
 	attrs.background_pixmap = C.None
 
 	mask := C.CWBackPixmap
 
-	c.window = C.XCreateWindow(
-		c.display,
-		C.XRootWindow(c.display, c.screen),
+	c.platform.window = C.XCreateWindow(
+		c.platform.display,
+		C.XRootWindow(c.platform.display, c.platform.screen),
 		100, 100, // x, y
-		800, 600, // width, height
+		C.uint(width), C.uint(height), // width, height
 		1,                // border width
 		C.CopyFromParent, // depth
 		C.InputOutput,    // class
@@ -165,47 +179,47 @@ func CreateWindow() *NativeWindow {
 		&attrs,           // attributes pointer (не значение!)
 	)
 
-	C.XSelectInput(c.display, c.window, C.ExposureMask|C.PropertyChangeMask|C.StructureNotifyMask|C.KeyPressMask|C.KeyReleaseMask|C.EnterWindowMask|C.LeaveWindowMask|C.ButtonPressMask|C.ButtonReleaseMask|C.PointerMotionMask)
+	C.XSelectInput(c.platform.display, c.platform.window, C.ExposureMask|C.PropertyChangeMask|C.StructureNotifyMask|C.KeyPressMask|C.KeyReleaseMask|C.EnterWindowMask|C.LeaveWindowMask|C.ButtonPressMask|C.ButtonReleaseMask|C.PointerMotionMask)
 
-	C.XMapWindow(c.display, c.window)
+	C.XMapWindow(c.platform.display, c.platform.window)
 
 	var getAttr C.XWindowAttributes
-	C.XGetWindowAttributes(c.display, c.window, &getAttr)
+	C.XGetWindowAttributes(c.platform.display, c.platform.window, &getAttr)
 	c.windowWidth, c.windowHeight = int(getAttr.width), int(getAttr.height)
 
 	// Store the window handle
-	hwnds[c.window] = &c
+	hwnds[windowId(c.platform.window)] = &c
 
 	// Set default icon
 	icon := image.NewRGBA(image.Rect(0, 0, 32, 32))
 	c.SetAppIcon(icon)
 
-	c.SetTitle(DefaultWindowTitle)
+	c.SetTitle(title)
 
 	return &c
 }
 
-func (c *NativeWindow) Show() {
+func (c *nativeWindow) Show() {
 }
 
-func (c *NativeWindow) Hide() {
+func (c *nativeWindow) Hide() {
 }
 
-func (c *NativeWindow) Update() {
-	if time.Since(c.dtLastUpdateCalled) < 40*time.Millisecond {
-		c.needUpdateInTimer = true
+func (c *nativeWindow) Update() {
+	if time.Since(c.platform.dtLastUpdateCalled) < 40*time.Millisecond {
+		c.platform.needUpdateInTimer = true
 		return
 	}
-	c.dtLastUpdateCalled = time.Now()
+	c.platform.dtLastUpdateCalled = time.Now()
 
 	C.XClearArea(
-		c.display,
-		c.window,
+		c.platform.display,
+		c.platform.window,
 		0, 0,
 		0, 0,
 		1, // last parameter is `exposures`: if True — generate Expose event
 	)
-	C.XFlush(c.display)
+	C.XFlush(c.platform.display)
 	//C.XClearWindow(c.display, c.window)
 }
 
@@ -218,16 +232,16 @@ var posY C.uint
 var width C.uint
 var height C.uint*/
 
-func (c *NativeWindow) EventLoop() {
+func (c *nativeWindow) EventLoop() {
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
 
 	dtLastPaint := time.Now()
 
 	for {
-		for C.XPending(c.display) > 0 {
+		for C.XPending(c.platform.display) > 0 {
 			var event C.XEvent
-			C.XNextEvent(c.display, &event)
+			C.XNextEvent(c.platform.display, &event)
 
 			switch eventType(event) {
 
@@ -255,11 +269,11 @@ func (c *NativeWindow) EventLoop() {
 						canvasDataBufferSize := int(hdcWidth * hdcHeight * 4)
 						copy(canvasBuffer[:canvasDataBufferSize], canvasBufferBackground)
 
-						if c.OnPaint != nil {
-							c.OnPaint(img)
+						if c.onPaint != nil {
+							c.onPaint(img)
 						}
 
-						c.drawImageRGBA(c.display, c.window, img)
+						c.drawImageRGBA(c.platform.display, c.platform.window, img)
 						paintTime := time.Since(dtLastPaint)
 						_ = paintTime
 						fmt.Println("PaintTime:", paintTime.Microseconds())
@@ -303,16 +317,16 @@ func (c *NativeWindow) EventLoop() {
 				if configureEvent.send_event == 1 && (c.windowPosX != int(configureEvent.x) || c.windowPosY != int(configureEvent.y)) {
 					c.windowPosX = int(configureEvent.x)
 					c.windowPosY = int(configureEvent.y)
-					if c.OnMove != nil {
-						c.OnMove(c.windowPosX, c.windowPosY)
+					if c.onMove != nil {
+						c.onMove(c.windowPosX, c.windowPosY)
 					}
 				}
 
 				if configureEvent.send_event == 0 && (c.windowWidth != int(configureEvent.width) || c.windowHeight != int(configureEvent.height)) {
 					c.windowWidth = int(configureEvent.width)
 					c.windowHeight = int(configureEvent.height)
-					if c.OnResize != nil {
-						c.OnResize(c.windowWidth, c.windowHeight)
+					if c.onResize != nil {
+						c.onResize(c.windowWidth, c.windowHeight)
 					}
 				}
 
@@ -323,16 +337,16 @@ func (c *NativeWindow) EventLoop() {
 				keySym := C.XLookupKeysym((*C.XKeyEvent)(unsafe.Pointer(&event)), 0)
 				fmt.Printf("Key pressed: KeySym = %d, KeyCode = 0x%x\n", keySym, keyEvent.keycode)
 				key := ConvertLinuxKeyToNuiKey(int(keyEvent.keycode))
-				if c.OnKeyDown != nil {
-					c.OnKeyDown(key, c.keyModifiers)
+				if c.onKeyDown != nil {
+					c.onKeyDown(key, c.keyModifiers)
 				}
-				if key == KeyShift {
+				if key == nuikey.KeyShift {
 					c.keyModifiers.Shift = true
 				}
-				if key == KeyCtrl {
+				if key == nuikey.KeyCtrl {
 					c.keyModifiers.Ctrl = true
 				}
-				if key == KeyAlt {
+				if key == nuikey.KeyAlt {
 					c.keyModifiers.Alt = true
 				}
 
@@ -341,33 +355,33 @@ func (c *NativeWindow) EventLoop() {
 				keySym := C.XLookupKeysym(keyEvent, 0)
 				fmt.Printf("Key released: KeySym = %d, KeyCode = 0x%x\n", keySym, keyEvent.keycode)
 				key := ConvertLinuxKeyToNuiKey(int(keyEvent.keycode))
-				if key == KeyShift {
+				if key == nuikey.KeyShift {
 					c.keyModifiers.Shift = false
 				}
-				if key == KeyCtrl {
+				if key == nuikey.KeyCtrl {
 					c.keyModifiers.Ctrl = false
 				}
-				if key == KeyAlt {
+				if key == nuikey.KeyAlt {
 					c.keyModifiers.Alt = false
 				}
-				if c.OnKeyUp != nil {
-					c.OnKeyUp(key, c.keyModifiers)
+				if c.onKeyUp != nil {
+					c.onKeyUp(key, c.keyModifiers)
 				}
 
 			case C.EnterNotify:
-				if c.OnMouseEnter != nil {
-					c.OnMouseEnter()
+				if c.onMouseEnter != nil {
+					c.onMouseEnter()
 				}
 
 			case C.LeaveNotify:
-				if c.OnMouseLeave != nil {
-					c.OnMouseLeave()
+				if c.onMouseLeave != nil {
+					c.onMouseLeave()
 				}
 
 			case C.MotionNotify:
 				motionEvent := (*C.XMotionEvent)(unsafe.Pointer(&event))
-				if c.OnMouseMove != nil {
-					c.OnMouseMove(int(motionEvent.x), int(motionEvent.y))
+				if c.onMouseMove != nil {
+					c.onMouseMove(int(motionEvent.x), int(motionEvent.y))
 				}
 
 			case C.ButtonPress:
@@ -379,32 +393,32 @@ func (c *NativeWindow) EventLoop() {
 
 				switch buttonEvent.button {
 				case 1:
-					if c.OnMouseButtonDown != nil {
-						c.OnMouseButtonDown(MouseButtonLeft, x, y)
+					if c.onMouseButtonDown != nil {
+						c.onMouseButtonDown(nuimouse.MouseButtonLeft, x, y)
 					}
 				case 2:
-					if c.OnMouseButtonDown != nil {
-						c.OnMouseButtonDown(MouseButtonMiddle, x, y)
+					if c.onMouseButtonDown != nil {
+						c.onMouseButtonDown(nuimouse.MouseButtonMiddle, x, y)
 					}
 				case 3:
-					if c.OnMouseButtonDown != nil {
-						c.OnMouseButtonDown(MouseButtonRight, x, y)
+					if c.onMouseButtonDown != nil {
+						c.onMouseButtonDown(nuimouse.MouseButtonRight, x, y)
 					}
 				case 4:
-					if c.OnMouseWheel != nil {
-						c.OnMouseWheel(1, 0)
+					if c.onMouseWheel != nil {
+						c.onMouseWheel(1, 0)
 					}
 				case 5:
-					if c.OnMouseWheel != nil {
-						c.OnMouseWheel(-1, 0)
+					if c.onMouseWheel != nil {
+						c.onMouseWheel(-1, 0)
 					}
 				case 6:
-					if c.OnMouseWheel != nil {
-						c.OnMouseWheel(0, 1)
+					if c.onMouseWheel != nil {
+						c.onMouseWheel(0, 1)
 					}
 				case 7:
-					if c.OnMouseWheel != nil {
-						c.OnMouseWheel(0, -1)
+					if c.onMouseWheel != nil {
+						c.onMouseWheel(0, -1)
 					}
 				}
 
@@ -417,16 +431,16 @@ func (c *NativeWindow) EventLoop() {
 
 				switch buttonEvent.button {
 				case 1:
-					if c.OnMouseButtonUp != nil {
-						c.OnMouseButtonUp(MouseButtonLeft, x, y)
+					if c.onMouseButtonUp != nil {
+						c.onMouseButtonUp(nuimouse.MouseButtonLeft, x, y)
 					}
 				case 2:
-					if c.OnMouseButtonUp != nil {
-						c.OnMouseButtonUp(MouseButtonMiddle, x, y)
+					if c.onMouseButtonUp != nil {
+						c.onMouseButtonUp(nuimouse.MouseButtonMiddle, x, y)
 					}
 				case 3:
-					if c.OnMouseButtonUp != nil {
-						c.OnMouseButtonUp(MouseButtonRight, x, y)
+					if c.onMouseButtonUp != nil {
+						c.onMouseButtonUp(nuimouse.MouseButtonRight, x, y)
 					}
 				}
 
@@ -437,12 +451,12 @@ func (c *NativeWindow) EventLoop() {
 		case <-ticker.C:
 			{
 				//fmt.Println("Timer event: 10ms tick")
-				if c.needUpdateInTimer {
+				if c.platform.needUpdateInTimer {
 					c.Update()
-					c.needUpdateInTimer = false
+					c.platform.needUpdateInTimer = false
 				}
-				if c.OnTimer != nil {
-					c.OnTimer()
+				if c.onTimer != nil {
+					c.onTimer()
 					c.Update()
 				}
 			}
@@ -451,19 +465,19 @@ func (c *NativeWindow) EventLoop() {
 	}
 }
 
-func (c *NativeWindow) Close() {
-	C.XDestroyWindow(c.display, c.window)
-	C.XCloseDisplay(c.display)
+func (c *nativeWindow) Close() {
+	C.XDestroyWindow(c.platform.display, c.platform.window)
+	C.XCloseDisplay(c.platform.display)
 }
 
-func (c *NativeWindow) SetTitle(title string) {
+func (c *nativeWindow) SetTitle(title string) {
 	cstr := C.CString(title)
 	defer C.free(unsafe.Pointer(cstr))
-	C.XStoreName(c.display, c.window, cstr)
+	C.XStoreName(c.platform.display, c.platform.window, cstr)
 }
 
-func (c *NativeWindow) Move(x, y int) {
-	C.XMoveWindow(c.display, c.window, C.int(x), C.int(y))
+func (c *nativeWindow) Move(x, y int) {
+	C.XMoveWindow(c.platform.display, c.platform.window, C.int(x), C.int(y))
 }
 
 func getScreenSize() (width, height int) {
@@ -475,7 +489,7 @@ func getScreenSize() (width, height int) {
 	return
 }
 
-func (c *NativeWindow) MoveToCenterOfScreen() {
+func (c *nativeWindow) MoveToCenterOfScreen() {
 	screenWidth, screenHeight := getScreenSize()
 	windowWidth, windowHeight := c.Size()
 	x := (screenWidth - windowWidth) / 2
@@ -483,35 +497,39 @@ func (c *NativeWindow) MoveToCenterOfScreen() {
 	c.Move(int(x), int(y))
 }
 
-func (c *NativeWindow) Resize(width, height int) {
-	C.XResizeWindow(c.display, c.window, C.uint(width), C.uint(height))
+func (c *nativeWindow) Resize(width, height int) {
+	C.XResizeWindow(c.platform.display, c.platform.window, C.uint(width), C.uint(height))
 }
 
-func (c *NativeWindow) PosX() int {
+func (c *nativeWindow) PosX() int {
 	return c.windowPosX
 }
 
-func (c *NativeWindow) PosY() int {
+func (c *nativeWindow) PosY() int {
 	return c.windowPosY
 }
 
-func (c *NativeWindow) Size() (width, height int) {
+func (c *nativeWindow) Pos() (x, y int) {
+	return c.windowPosX, c.windowPosY
+}
+
+func (c *nativeWindow) Size() (width, height int) {
 	return c.windowWidth, c.windowHeight
 }
 
-func (c *NativeWindow) Width() int {
+func (c *nativeWindow) Width() int {
 	return c.windowWidth
 }
 
-func (c *NativeWindow) Height() int {
+func (c *nativeWindow) Height() int {
 	return c.windowHeight
 }
 
-func (c *NativeWindow) KeyModifiers() KeyModifiers {
+func (c *nativeWindow) KeyModifiers() nuikey.KeyModifiers {
 	return c.keyModifiers
 }
 
-func (c *NativeWindow) DrawTimeUs() int64 {
+func (c *nativeWindow) DrawTimeUs() int64 {
 	drawTimeAvg := int64(0)
 	count := 0
 	for _, t := range c.drawTimes {
@@ -528,12 +546,12 @@ func (c *NativeWindow) DrawTimeUs() int64 {
 	return drawTimeAvg
 }
 
-func (c *NativeWindow) SetBackgroundColor(color color.RGBA) {
+func (c *nativeWindow) SetBackgroundColor(color color.RGBA) {
 	initCanvasBufferBackground(color)
 	c.Update()
 }
 
-func (c *NativeWindow) SetMouseCursor(cursor MouseCursor) {
+func (c *nativeWindow) SetMouseCursor(cursor nuimouse.MouseCursor) {
 	if c.currentCursor == cursor {
 		return
 	}
@@ -541,7 +559,7 @@ func (c *NativeWindow) SetMouseCursor(cursor MouseCursor) {
 	c.changeMouseCursor(cursor)
 }
 
-func (c *NativeWindow) changeMouseCursor(mouseCursor MouseCursor) bool {
+func (c *nativeWindow) changeMouseCursor(mouseCursor nuimouse.MouseCursor) bool {
 	var cursorShape uint
 
 	const (
@@ -557,34 +575,34 @@ func (c *NativeWindow) changeMouseCursor(mouseCursor MouseCursor) bool {
 	)
 
 	switch mouseCursor {
-	case MouseCursorNotDefined:
-	case MouseCursorArrow:
+	case nuimouse.MouseCursorNotDefined:
+	case nuimouse.MouseCursorArrow:
 		cursorShape = CursorArrow
-	case MouseCursorPointer:
+	case nuimouse.MouseCursorPointer:
 		cursorShape = CursorHand
-	case MouseCursorResizeHor:
+	case nuimouse.MouseCursorResizeHor:
 		cursorShape = CursorResizeHorizontal
-	case MouseCursorResizeVer:
+	case nuimouse.MouseCursorResizeVer:
 		cursorShape = CursorResizeVertical
-	case MouseCursorIBeam:
+	case nuimouse.MouseCursorIBeam:
 		cursorShape = CursorIBeam
 	}
 
-	cursor := C.XCreateFontCursor(c.display, C.uint(cursorShape))
-	C.XDefineCursor(c.display, c.window, cursor)
-	C.XFlush(c.display)
+	cursor := C.XCreateFontCursor(c.platform.display, C.uint(cursorShape))
+	C.XDefineCursor(c.platform.display, c.platform.window, cursor)
+	C.XFlush(c.platform.display)
 	return true
 }
 
-func (c *NativeWindow) MinimizeWindow() {
-	C.minimizeWindow(c.display, c.window)
+func (c *nativeWindow) MinimizeWindow() {
+	C.minimizeWindow(c.platform.display, c.platform.window)
 }
 
-func (c *NativeWindow) MaximizeWindow() {
-	C.maximizeWindow(c.display, c.window)
+func (c *nativeWindow) MaximizeWindow() {
+	C.maximizeWindow(c.platform.display, c.platform.window)
 }
 
-func (c *NativeWindow) SetAppIcon(icon *image.RGBA) {
+func (c *nativeWindow) SetAppIcon(icon *image.RGBA) {
 	width := icon.Bounds().Dx()
 	height := icon.Bounds().Dy()
 
@@ -609,13 +627,13 @@ func (c *NativeWindow) SetAppIcon(icon *image.RGBA) {
 		}
 	}
 
-	atom := C.XInternAtom(c.display, C.CString("_NET_WM_ICON"), C.False)
+	atom := C.XInternAtom(c.platform.display, C.CString("_NET_WM_ICON"), C.False)
 	typ := C.Atom(C.XA_CARDINAL)
 	format := 32
 
 	C.XChangeProperty(
-		c.display,
-		c.window,
+		c.platform.display,
+		c.platform.window,
 		atom,
 		typ,
 		C.int(format),
@@ -625,7 +643,7 @@ func (c *NativeWindow) SetAppIcon(icon *image.RGBA) {
 	)
 }
 
-func (c *NativeWindow) drawImageRGBA(display *C.Display, window C.Window, img image.Image) {
+func (c *nativeWindow) drawImageRGBA(display *C.Display, window C.Window, img image.Image) {
 	width := c.windowWidth
 	height := c.windowHeight
 
