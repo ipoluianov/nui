@@ -5,10 +5,8 @@ package nui
 */
 import "C"
 import (
-	"fmt"
 	"image"
 	"image/color"
-	"strconv"
 	"time"
 	"unicode"
 	"unsafe"
@@ -39,7 +37,6 @@ func go_on_resize(hwnd C.int, width C.int, height C.int) {
 
 //export go_on_key_down
 func go_on_key_down(hwnd C.int, code C.int) {
-	fmt.Println("Key down", strconv.FormatInt(int64(code), 16))
 	key := nuikey.Key(ConvertMacOSKeyToNuiKey(int(code)))
 	if win, ok := hwnds[windowId(hwnd)]; ok {
 		win.windowKeyDown(key)
@@ -63,7 +60,6 @@ func go_on_modifier_change(hwnd C.int, shift, ctrl, alt, cmd, caps, num, fnKey C
 
 //export go_on_char
 func go_on_char(hwnd C.int, codepoint C.int) {
-	//fmt.Printf("Char typed: '%c' (U+%04X)\n", rune(codepoint), codepoint)
 	if win, ok := hwnds[windowId(hwnd)]; ok {
 		win.windowChar(rune(codepoint))
 	}
@@ -363,7 +359,6 @@ func (c *nativeWindow) windowMouseEnter() {
 }
 
 func (c *nativeWindow) windowMouseLeave() {
-	fmt.Println("Mouse leave")
 	if c.onMouseLeave != nil {
 		c.onMouseLeave()
 	}

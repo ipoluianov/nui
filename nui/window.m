@@ -12,7 +12,6 @@ static NSMutableDictionary<NSNumber*, NSWindow*> *windowMap;
 static NSMutableDictionary<NSNumber*, NSTimer*> *timers;
 
 void Log(int code) {
-    fprintf(stderr, "LOG: %d\n", code);
 }
 
 __attribute__((constructor))

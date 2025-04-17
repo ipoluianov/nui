@@ -190,7 +190,7 @@ func Run() {
 	})
 
 	wnd.OnKeyDown(func(key nuikey.Key, mods nuikey.KeyModifiers) {
-		log("Key down: " + key.String() + " " + mods.String())
+		//log("Key down: " + key.String() + " " + mods.String())
 
 		if key == nuikey.Key1 {
 			wnd.SetMouseCursor(nuimouse.MouseCursorArrow)
