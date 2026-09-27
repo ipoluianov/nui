@@ -36,6 +36,7 @@ Short reference for `ui` controls. Code snippets are intentionally minimal—see
 ## Data & visualization
 
 - [Table](content/table.md)
+- [TreeView](content/treeview.md)
 - [ProgressBar](content/progressbar.md)
 - [Chart](content/chart.md)
 - [TimeChart](content/timechart.md)
