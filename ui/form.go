@@ -39,6 +39,9 @@ type Form struct {
 	hoverWidget   Widgeter
 	focusedWidget Widgeter
 
+	// menuBar is the main menu above topWidget, nil if none (see SetMenuBar)
+	menuBar *MenuBar
+
 	tooltip tooltipState
 
 	// Native windows of the open popup widgets, see form_popup.go
@@ -194,7 +197,8 @@ func (c *Form) ShowSaveFileDialog(opts platforms.SaveFileDialogOptions, onResult
 func (c *Form) UpdateLayout() {
 	if c != nil && c.Panel() != nil {
 		c.Panel().ClearLayoutCache()
-		c.Panel().updateLayout(0, 0, 0, 0)
+		// Lays out the panel too, below the menu bar
+		c.layoutMenuBar()
 		for _, popupWidget := range c.Panel().PopupWidgets {
 			if popupWidget != nil {
 				popupWidget.updateLayout(0, 0, 0, 0)
@@ -400,6 +404,39 @@ func (c *Form) Panel() *Panel {
 	return c.topWidget
 }
 
+// SetMenuBar shows the main menu at the top of the form, above Panel().
+// nil removes it.
+func (c *Form) SetMenuBar(bar *MenuBar) {
+	if c.menuBar != nil {
+		c.closePopups()
+		c.menuBar.attachToForm(c.menuBar, nil)
+	}
+	c.menuBar = bar
+	if bar != nil {
+		bar.attachToForm(bar, c)
+	}
+	c.layoutMenuBar()
+	c.Update()
+}
+
+func (c *Form) MenuBar() *MenuBar {
+	return c.menuBar
+}
+
+// layoutMenuBar places the menu bar at the top of the client area and the
+// top widget in the rest of it.
+func (c *Form) layoutMenuBar() {
+	barHeight := 0
+	if c.menuBar != nil {
+		barHeight = min(c.menuBar.barHeight(), c.height)
+		c.menuBar.SetPosition(0, 0)
+		c.menuBar.SetSize(c.width, barHeight)
+		c.menuBar.rebuildVisualElements()
+	}
+	c.topWidget.SetPosition(0, barHeight)
+	c.topWidget.SetSize(c.width, c.height-barHeight)
+}
+
 func (c *Form) createWindow(maximized bool) {
 	// No explicit position and no parent to center on (ShowModal already
 	// resolves posX/posY via centerOnForm before this runs) - center on the
@@ -564,7 +601,16 @@ func (c *Form) applyTheme() {
 func (c *Form) processPaint(rgba *image.RGBA) {
 	cnv := NewCanvas(rgba)
 	cnv.SetDirectTranslateAndClip(0, 0, c.width, c.height)
+	if c.menuBar != nil {
+		cnv.Save()
+		cnv.TranslateAndClip(c.menuBar.X(), c.menuBar.Y(), c.menuBar.Width(), c.menuBar.Height())
+		c.menuBar.ProcessPaint(cnv)
+		cnv.Restore()
+	}
+	cnv.Save()
+	cnv.TranslateAndClip(c.topWidget.X(), c.topWidget.Y(), c.topWidget.Width(), c.topWidget.Height())
 	c.topWidget.ProcessPaint(cnv)
+	cnv.Restore()
 	c.tooltipPaint(cnv)
 	if c.hoverWidget != nil {
 		//c.DrawWidgetDebugInfo(c.hoverWidget, cnv)
@@ -613,9 +659,9 @@ func (c *Form) DrawWidgetDebugInfo(w Widgeter, cnv *Canvas) {
 }
 
 func (c *Form) processResize(width, height int) {
-	c.topWidget.SetSize(width, height)
 	c.width = width
 	c.height = height
+	c.layoutMenuBar()
 	c.forceUpdate()
 }
 
@@ -630,11 +676,14 @@ func (c *Form) processMouseDown(button MouseButton, x int, y int) {
 		return
 	}
 	c.mouseDownPopup = c.popupUnderMouse
+	target, targetX, targetY := c.mouseTarget(c.popupUnderMouse, x, y)
 	widgetAtCoords := c.widgetUnderMouse(x, y)
 	if c.mouseLeftButtonPressed {
 		c.mouseLeftButtonPressedWidget = widgetAtCoords
 	}
-	if widgetAtCoords != nil {
+	// A click on the menu bar keeps the focus, so the chosen menu item acts
+	// on the focused widget
+	if widgetAtCoords != nil && target != Widgeter(c.menuBar) {
 		if widgetAtCoords.IsCanBeFocused() {
 			widgetAtCoords.Focus()
 		} else {
@@ -643,7 +692,6 @@ func (c *Form) processMouseDown(button MouseButton, x int, y int) {
 			}
 		}
 	}
-	target, targetX, targetY := c.mouseTarget(c.popupUnderMouse, x, y)
 	target.ProcessMouseDown(button, targetX, targetY, c.lastKeyboardModifiers)
 	c.Update()
 }
@@ -658,14 +706,14 @@ func (c *Form) processMouseDblClick(button MouseButton, x int, y int) {
 		return
 	}
 	c.mouseDownPopup = c.popupUnderMouse
+	target, targetX, targetY := c.mouseTarget(c.popupUnderMouse, x, y)
 	widgetAtCoords := c.widgetUnderMouse(x, y)
 	if c.mouseLeftButtonPressed {
 		c.mouseLeftButtonPressedWidget = widgetAtCoords
 	}
-	if widgetAtCoords != nil {
+	if widgetAtCoords != nil && target != Widgeter(c.menuBar) {
 		widgetAtCoords.Focus()
 	}
-	target, targetX, targetY := c.mouseTarget(c.popupUnderMouse, x, y)
 	target.ProcessMouseDblClick(button, targetX, targetY, c.lastKeyboardModifiers)
 	c.Update()
 }
@@ -688,8 +736,17 @@ func (c *Form) processMouseUp(button MouseButton, x int, y int) {
 		c.Update() // the press closed that popup
 		return
 	}
-	target, targetX, targetY := c.mouseTarget(downPopup, x, y)
-	target.ProcessMouseUp(button, targetX, targetY, c.lastKeyboardModifiers, mouseLeftButtonPressedWidgetId)
+	if downPopup != nil {
+		target, targetX, targetY := c.mouseTarget(downPopup, x, y)
+		target.ProcessMouseUp(button, targetX, targetY, c.lastKeyboardModifiers, mouseLeftButtonPressedWidgetId)
+	} else {
+		// Wherever the mouse is now, both get it: only the pressed widget
+		// handles it (see onlyForWidgetId)
+		if c.menuBar != nil {
+			c.menuBar.ProcessMouseUp(button, x-c.menuBar.X(), y-c.menuBar.Y(), c.lastKeyboardModifiers, mouseLeftButtonPressedWidgetId)
+		}
+		c.topWidget.ProcessMouseUp(button, x-c.topWidget.X(), y-c.topWidget.Y(), c.lastKeyboardModifiers, mouseLeftButtonPressedWidgetId)
+	}
 
 	c.Update()
 }
@@ -758,6 +815,9 @@ func (c *Form) updateHover() {
 }
 
 func (c *Form) processMouseLeave() {
+	if c.menuBar != nil {
+		c.menuBar.ProcessMouseLeave()
+	}
 	c.topWidget.ProcessMouseLeave()
 	c.tooltipHide()
 
@@ -770,6 +830,9 @@ func (c *Form) processMouseLeave() {
 }
 
 func (c *Form) processMouseEnter() {
+	if c.menuBar != nil {
+		c.menuBar.ProcessMouseEnter()
+	}
 	c.topWidget.ProcessMouseEnter()
 }
 
@@ -901,7 +964,7 @@ func (c *Form) processMouseWheel(deltaX int, deltaY int) {
 	if c.lastKeyboardModifiers.Shift {
 		deltaX, deltaY = deltaY, deltaX // Swap for horizontal scrolling
 	}
-	target, _, _ := c.mouseTarget(c.popupUnderMouse, 0, 0)
+	target, _, _ := c.mouseTarget(c.popupUnderMouse, c.lastMouseX, c.lastMouseY)
 	target.ProcessMouseWheel(deltaX, deltaY)
 	// The content under the mouse may have scrolled
 	c.updateHover()
@@ -948,6 +1011,9 @@ func (c *Form) processTimer() {
 		c.lastFreeMemoryTime = time.Now()
 	}
 
+	if c.menuBar != nil {
+		c.menuBar.ProcessTimer()
+	}
 	c.topWidget.ProcessTimer()
 	c.tooltipProcessTimer()
 

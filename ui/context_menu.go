@@ -8,6 +8,11 @@ type ContextMenu struct {
 	CloseEvent func()
 	parentMenu *ContextMenu
 	onShow     func()
+
+	// dropDown is set when the menu drops down from a rectangle (a MenuBar
+	// title) instead of opening at a point, see dropDownFrom
+	dropDown                                    bool
+	anchorX, anchorY, anchorWidth, anchorHeight int
 }
 
 // Adaptive width bounds: the menu shrinks to fit short item text and grows
@@ -42,6 +47,20 @@ func (c *ContextMenu) SetOnShow(f func()) {
 }
 
 func (c *ContextMenu) ShowMenu(x int, y int) {
+	c.dropDown = false
+	c.show(x, y)
+}
+
+// dropDownFrom opens the menu below the rectangle (x, y, width, height) in
+// the form's client coordinates, or above it when it doesn't fit below.
+func (c *ContextMenu) dropDownFrom(x, y, width, height int) {
+	c.dropDown = true
+	c.anchorX, c.anchorY, c.anchorWidth, c.anchorHeight = x, y, width, height
+	c.show(x, y+height)
+}
+
+func (c *ContextMenu) show(x int, y int) {
+	c.parentMenu = nil
 	if c.onShow != nil {
 		c.onShow()
 	}
@@ -54,6 +73,7 @@ func (c *ContextMenu) ShowMenu(x int, y int) {
 func (c *ContextMenu) showMenu(x int, y int, parentMenu *ContextMenu) {
 	c.CloseAfterPopupWidget(parentMenu)
 	c.parentMenu = parentMenu
+	c.dropDown = false
 	if c.onShow != nil {
 		c.onShow()
 	}
@@ -64,11 +84,14 @@ func (c *ContextMenu) showMenu(x int, y int, parentMenu *ContextMenu) {
 }
 
 // PopupFlipped opens a menu that doesn't fit on the screen to the left of
-// (or above) the point it was opened at, and a submenu to the left of its
-// parent menu.
+// (or above) the point it was opened at, a submenu to the left of its
+// parent menu, and a drop-down menu above its title.
 func (c *ContextMenu) PopupFlipped() (int, int) {
 	if c.parentMenu != nil {
 		return c.parentMenu.X() - c.Width(), c.Y()
+	}
+	if c.dropDown {
+		return c.anchorX + c.anchorWidth - c.Width(), c.anchorY - c.Height()
 	}
 	return c.X() - c.Width(), c.Y() - c.Height()
 }

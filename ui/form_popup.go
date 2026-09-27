@@ -196,12 +196,16 @@ func (c *Form) updatePopupWindows() {
 
 // mouseTarget returns the widget that gets a mouse event at the client point
 // (x, y), and the point in its coordinates: the popup widget of the window
-// the event came from, or the form's top widget for the form's own window.
+// the event came from, or, for the form's own window, the menu bar or the
+// form's top widget below it.
 func (c *Form) mouseTarget(host *popupHost, x, y int) (Widgeter, int, int) {
 	if host != nil {
 		return host.widget, x - host.widget.X(), y - host.widget.Y()
 	}
-	return c.topWidget, x, y
+	if c.menuBar != nil && y < c.topWidget.Y() {
+		return c.menuBar, x - c.menuBar.X(), y - c.menuBar.Y()
+	}
+	return c.topWidget, x - c.topWidget.X(), y - c.topWidget.Y()
 }
 
 // widgetUnderMouse finds the widget at the client point (x, y) in the window

@@ -131,10 +131,16 @@ func (c *Form) applyLanguage() {
 	// Lay out once, after all the texts changed
 	c.layoutingBlockStack++
 	applyLanguageTree(c.topWidget)
+	if c.menuBar != nil {
+		applyLanguageTree(c.menuBar)
+	}
 	if c.onLanguageChanged != nil {
 		c.onLanguageChanged()
 	}
 	applyThemeMetricsTree(c.topWidget)
+	if c.menuBar != nil {
+		applyThemeMetricsTree(c.menuBar)
+	}
 	c.layoutingBlockStack--
 
 	c.UpdateLayout()

@@ -12,6 +12,7 @@ import (
 	"github.com/ipoluianov/nui/examples/ex09custompopup"
 	"github.com/ipoluianov/nui/examples/ex10languages"
 	"github.com/ipoluianov/nui/examples/ex11i18n"
+	"github.com/ipoluianov/nui/examples/ex12menubar"
 	"github.com/ipoluianov/nui/ui"
 )
 
@@ -41,6 +42,7 @@ func Run() {
 		addButton("Example 09 - Custom Popup", ex09custompopup.NewExampleForm)
 		addButton("Example 10 - Languages", ex10languages.NewExampleForm)
 		addButton("Example 11 - Translations", ex11i18n.NewExampleForm)
+		addButton("Example 12 - Main Menu", ex12menubar.NewExampleForm)
 
 		form.Panel().AddWidget(form.Panel().NextGridRow(), 0, ui.NewVSpacer())
 		form.Panel().AddButton(form.Panel().NextGridRow(), 0, "Light Theme", func() {

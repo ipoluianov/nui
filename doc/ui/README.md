@@ -31,6 +31,7 @@ Short reference for `ui` controls. Code snippets are intentionally minimal—see
 - [RadioButton](content/radiobutton.md)
 - [ComboBox](content/combobox.md)
 - [ContextMenu](content/context_menu.md)
+- [MenuBar](content/menu_bar.md)
 
 ## Data & visualization
 

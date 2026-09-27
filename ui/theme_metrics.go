@@ -93,6 +93,9 @@ func (c *Form) applyFontSize() {
 	// Popups are sized when opened
 	c.closePopups()
 	applyThemeMetricsTree(c.topWidget)
+	if c.menuBar != nil {
+		applyThemeMetricsTree(c.menuBar)
+	}
 	c.UpdateLayout()
 	c.forceUpdate()
 }

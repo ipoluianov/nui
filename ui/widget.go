@@ -2332,6 +2332,12 @@ func (c *Widget) ParentWidget() Widgeter {
 func (c *Widget) RectClientAreaOnWindow() (x, y int) {
 	x = c.X()
 	y = c.Y()
+	// A popup widget is positioned in the form's client coordinates, not in
+	// those of the form's panel it's registered under (the panel is below
+	// the menu bar)
+	if c.isOpenPopupWidget() {
+		return x, y
+	}
 	parentWidget := c.ParentWidget()
 	if parentWidget != nil {
 		xx, yy := parentWidget.RectClientAreaOnWindow()
@@ -2343,6 +2349,18 @@ func (c *Widget) RectClientAreaOnWindow() (x, y int) {
 	}
 
 	return x, y
+}
+
+func (c *Widget) isOpenPopupWidget() bool {
+	if c.form == nil || c.form.topWidget == nil {
+		return false
+	}
+	for _, w := range c.form.topWidget.PopupWidgets {
+		if w.Id() == c.id {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *Widget) ClearLayoutCache() {
