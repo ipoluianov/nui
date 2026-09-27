@@ -1,0 +1,55 @@
+package examples
+
+import (
+	"github.com/ipoluianov/nui/examples/ex00gallery"
+	"github.com/ipoluianov/nui/examples/ex01base"
+	"github.com/ipoluianov/nui/examples/ex02messagebox"
+	"github.com/ipoluianov/nui/examples/ex04dialog"
+	"github.com/ipoluianov/nui/examples/ex05chart"
+	"github.com/ipoluianov/nui/examples/ex06timechart"
+	"github.com/ipoluianov/nui/examples/ex07tooltip"
+	"github.com/ipoluianov/nui/examples/ex08contextmenu"
+	"github.com/ipoluianov/nui/examples/ex09custompopup"
+	"github.com/ipoluianov/nui/examples/ex10languages"
+	"github.com/ipoluianov/nui/examples/ex11i18n"
+	"github.com/ipoluianov/nui/ui"
+)
+
+func Run() {
+	{
+		form := ui.NewForm()
+		form.SetTitle("Examples")
+		form.SetSize(1000, 800)
+
+		addButton := func(text string, newFormFunc func() *ui.Form) {
+			btn := ui.NewButton(text)
+			btn.SetOnClick(func() {
+				newForm := newFormFunc()
+				newForm.ShowModal(form)
+			})
+			form.Panel().AddWidget(form.Panel().NextGridRow(), 0, btn)
+		}
+
+		addButton("Example 00 - Gallery", ex00gallery.NewExampleForm)
+		addButton("Example 01 - Base Form", ex01base.NewExampleForm)
+		addButton("Example 02 - MessageBox", ex02messagebox.NewExampleForm)
+		addButton("Example 04 - Dialog", ex04dialog.NewExampleForm)
+		addButton("Example 05 - Chart", ex05chart.NewExampleForm)
+		addButton("Example 06 - TimeChart", ex06timechart.NewExampleForm)
+		addButton("Example 07 - Tooltips", ex07tooltip.NewExampleForm)
+		addButton("Example 08 - Context Menus", ex08contextmenu.NewExampleForm)
+		addButton("Example 09 - Custom Popup", ex09custompopup.NewExampleForm)
+		addButton("Example 10 - Languages", ex10languages.NewExampleForm)
+		addButton("Example 11 - Translations", ex11i18n.NewExampleForm)
+
+		form.Panel().AddWidget(form.Panel().NextGridRow(), 0, ui.NewVSpacer())
+		form.Panel().AddButton(form.Panel().NextGridRow(), 0, "Light Theme", func() {
+			ui.ApplyLightTheme()
+		})
+		form.Panel().AddButton(form.Panel().NextGridRow(), 0, "Dark Theme", func() {
+			ui.ApplyDarkTheme()
+		})
+		form.Show()
+		form.Exec()
+	}
+}
