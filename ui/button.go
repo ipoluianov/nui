@@ -158,11 +158,16 @@ func (c *Button) updateSizeFromText() {
 
 	c.applyThemeHeight()
 
-	// Fit the text; a minimum width set explicitly can only grow
-	minWidth := max(DefaultButtonMinWidth, textWidth+padding*2)
-	if c.minWidth == c.textMinWidth || minWidth > c.minWidth {
+	// Fit the text. The default width applies only to a minimum width not
+	// set explicitly: an explicit one (e.g. a narrow button) can only grow
+	// to fit the text
+	textFitWidth := textWidth + padding*2
+	if c.minWidth == c.textMinWidth {
+		minWidth := max(DefaultButtonMinWidth, textFitWidth)
 		c.SetMinWidth(minWidth)
 		c.textMinWidth = minWidth
+	} else if textFitWidth > c.minWidth {
+		c.SetMinWidth(textFitWidth)
 	}
 }
 
