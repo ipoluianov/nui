@@ -199,9 +199,10 @@ func Base(tag string) string {
 //	i18n.Plural("en", n, "file", "files")
 //	i18n.Plural("ru", n, "файл", "файла", "файлов")
 //
-// Russian, Ukrainian and Belarusian take three forms (1, 2-4, 5+), Chinese,
-// Japanese and Korean one, other languages two (1, the rest). A missing form
-// is replaced by the last one given.
+// Russian, Ukrainian, Belarusian, Serbian, Croatian and Bosnian take three
+// forms (1 and 21, 2-4 and 22-24, the rest), Polish three too (only 1, 2-4
+// and 22-24, the rest), Chinese, Japanese and Korean one, other languages two
+// (1, the rest). A missing form is replaced by the last one given.
 func Plural(lang string, n int, forms ...string) string {
 	if len(forms) == 0 {
 		return ""
@@ -211,9 +212,18 @@ func Plural(lang string, n int, forms ...string) string {
 	}
 	index := 1
 	switch Base(lang) {
-	case "ru", "uk", "be":
+	case "ru", "uk", "be", "sr", "hr", "bs":
 		switch {
 		case n%10 == 1 && n%100 != 11:
+			index = 0
+		case n%10 >= 2 && n%10 <= 4 && (n%100 < 12 || n%100 > 14):
+			index = 1
+		default:
+			index = 2
+		}
+	case "pl":
+		switch {
+		case n == 1:
 			index = 0
 		case n%10 >= 2 && n%10 <= 4 && (n%100 < 12 || n%100 > 14):
 			index = 1

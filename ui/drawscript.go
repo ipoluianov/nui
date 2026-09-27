@@ -3,6 +3,7 @@ package ui
 import (
 	"image"
 	"image/color"
+	"slices"
 )
 
 type DrawScriptHorLine struct {
@@ -18,17 +19,29 @@ type DrawScriptPoint struct {
 	C float64
 }
 
+// drawScriptOp is a plot or an append of a point, kept in the order made:
+// the points are merged only when needed, which is much cheaper than a map
+// updated on every pixel
+type drawScriptOp struct {
+	code int64
+	c    float64
+	// An appended point is added as is; a plotted one only while the
+	// pixel is not full yet
+	add bool
+}
+
 type DrawScript struct {
 	horLines []DrawScriptHorLine
-	points   map[int64]float64
-	Bounds   image.Rectangle
+	ops      []drawScriptOp
+	// ops are merged: one per pixel, sorted by code
+	merged bool
+	// The pixels, for hasPixel; nil - not built yet
+	pixels map[int64]struct{}
+	Bounds image.Rectangle
 }
 
 func NewDrawScript() *DrawScript {
-	var c DrawScript
-	c.horLines = make([]DrawScriptHorLine, 0)
-	c.points = make(map[int64]float64)
-	return &c
+	return &DrawScript{merged: true}
 }
 
 func (c *DrawScript) pointByCode(code int64) (int, int) {
@@ -56,57 +69,105 @@ func (c *DrawScript) codeByPoint(x int, y int) int64 {
 }
 
 func (c *DrawScript) plot(x int, y int, col float64) {
-	code := c.codeByPoint(x, y)
-	if _, ok := c.points[code]; ok {
-		if c.points[code] < 1 {
-			c.points[code] += col
-		}
-	} else {
-		c.points[code] = col
-	}
+	c.ops = append(c.ops, drawScriptOp{code: c.codeByPoint(x, y), c: col})
+	c.merged = false
+	c.pixels = nil
 }
 
 func (c *DrawScript) append(script *DrawScript) {
 	c.horLines = append(c.horLines, script.horLines...)
-	for k, v := range script.points {
-		c.points[k] += v
+	script.merge()
+	for _, op := range script.ops {
+		c.ops = append(c.ops, drawScriptOp{code: op.code, c: op.c, add: true})
 	}
+	c.merged = false
+	c.pixels = nil
+}
+
+// merge leaves one op per pixel with its intensity
+func (c *DrawScript) merge() {
+	if c.merged {
+		return
+	}
+	c.merged = true
+	// Stable: the ops of a pixel are merged in the order they were made
+	slices.SortStableFunc(c.ops, func(a, b drawScriptOp) int {
+		switch {
+		case a.code < b.code:
+			return -1
+		case a.code > b.code:
+			return 1
+		}
+		return 0
+	})
+	merged := c.ops[:0]
+	for _, op := range c.ops {
+		last := len(merged) - 1
+		if last < 0 || merged[last].code != op.code {
+			merged = append(merged, drawScriptOp{code: op.code, c: op.c})
+			continue
+		}
+		if op.add || merged[last].c < 1 {
+			merged[last].c += op.c
+		}
+	}
+	c.ops = merged
 }
 
 func (c *DrawScript) hasPixel(x int, y int) bool {
-	if _, ok := c.points[c.codeByPoint(x, y)]; ok {
-		return true
-	} else {
-		return false
+	if c.pixels == nil {
+		c.pixels = make(map[int64]struct{}, len(c.ops))
+		for _, op := range c.ops {
+			c.pixels[op.code] = struct{}{}
+		}
 	}
+	_, ok := c.pixels[c.codeByPoint(x, y)]
+	return ok
 }
 
 func (c *DrawScript) DrawToRGBA(img *image.RGBA, col color.Color) {
+	rgb := rgb8(col)
+
 	for _, line := range c.horLines {
 		for x := line.X1; x <= line.X2; x++ {
 			value := line.C
 			if value > 1 {
 				value = 1
 			}
-			c.MixPixel(img, x, line.Y, col, uint32(value*255))
+			c.mixPixel(img, x, line.Y, rgb, uint32(value*255))
 		}
 	}
 
-	for key, value := range c.points {
-		x, y := c.pointByCode(key)
+	c.merge()
+	for _, op := range c.ops {
+		x, y := c.pointByCode(op.code)
+		value := op.c
 		if value > 1 {
 			value = 1
 		}
-		c.MixPixel(img, x, y, col, uint32(value*255))
+		c.mixPixel(img, x, y, rgb, uint32(value*255))
 	}
 }
 
 func (c *DrawScript) MixPixel(img *image.RGBA, x int, y int, rgba color.Color, intensity uint32) {
+	c.mixPixel(img, x, y, rgb8(rgba), intensity)
+}
 
+// rgb8 returns the 8-bit components of the color
+func rgb8(col color.Color) [3]uint32 {
+	r, g, b, _ := col.RGBA()
+	return [3]uint32{r >> 8, g >> 8, b >> 8}
+}
+
+// mixPixel blends the color over the pixel with the intensity 0..255
+func (c *DrawScript) mixPixel(img *image.RGBA, x int, y int, rgb [3]uint32, intensity uint32) {
 	if x < c.Bounds.Min.X || x > c.Bounds.Max.X {
 		return
 	}
 	if y < c.Bounds.Min.Y || y > c.Bounds.Max.Y {
+		return
+	}
+	if !(image.Point{X: x, Y: y}).In(img.Rect) {
 		return
 	}
 
@@ -114,28 +175,12 @@ func (c *DrawScript) MixPixel(img *image.RGBA, x int, y int, rgba color.Color, i
 		return
 	}
 
-	cOld := img.At(x, y)
-	oR, oG, oB, _ := cOld.RGBA()
-	cR, cG, cB, _ := rgba.RGBA()
-	cR = cR >> 8
-	cG = cG >> 8
-	cB = cB >> 8
-
-	oR = oR >> 8
-	oG = oG >> 8
-	oB = oB >> 8
-
-	alpha := uint32(intensity)
+	alpha := intensity
 	antialpha := 255 - alpha
 
-	if intensity > 0 && intensity < 255 {
-		intensity += 1
+	pix := img.Pix[img.PixOffset(x, y):]
+	for i := range 3 {
+		pix[i] = uint8(((uint32(pix[i]) * antialpha) >> 8) + ((rgb[i] * alpha) >> 8))
 	}
-
-	//alpha, antialpha = antialpha, alpha
-	nR := uint8(((uint32(oR) * antialpha) >> 8) + ((cR * alpha) >> 8))
-	nG := uint8(((uint32(oG) * antialpha) >> 8) + ((cG * alpha) >> 8))
-	nB := uint8(((uint32(oB) * antialpha) >> 8) + ((cB * alpha) >> 8))
-
-	img.SetRGBA(x, y, color.RGBA{nR, nG, nB, 255})
+	pix[3] = 255
 }

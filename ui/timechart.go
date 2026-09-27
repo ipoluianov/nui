@@ -536,12 +536,18 @@ func (c *TimeChart) timeAtX(x int) time.Time {
 
 // xOfTime returns the X coordinate relative to the left edge of the plot.
 func (c *TimeChart) xOfTime(t time.Time) int {
+	return int(math.Round(c.xOfTimeF(t)))
+}
+
+// xOfTimeF returns the X coordinate relative to the left edge of the plot
+// with the fraction of a pixel: the lines drawn with it move smoothly when
+// the time range moves by less than a pixel.
+func (c *TimeChart) xOfTimeF(t time.Time) float64 {
 	if c.plotW < 2 {
 		return 0
 	}
 	x := float64(t.Sub(c.from)) / float64(c.span()) * float64(c.plotW-1)
-	x = math.Max(-1e6, math.Min(1e6, x))
-	return int(math.Round(x))
+	return math.Max(-1e6, math.Min(1e6, x))
 }
 
 func (c *TimeChart) clampToPlot(x int) int {
@@ -1092,25 +1098,26 @@ func (c *TimeChart) drawDateRibbon(cnv *Canvas, unit timeChartRibbon, y int, lin
 
 func (c *TimeChart) drawLine(cnv *Canvas, al *timeChartAreaLayout, points []TimeChartPoint, col color.Color) {
 	c.drawBadHatch(cnv, al, points)
+	// X with the fraction of a pixel, so the line does not jump by whole
+	// pixels as the chart scrolls; Y in whole pixels, so the flat parts of
+	// the line stay sharp
 	havePrev := false
-	prevX, prevY := 0, 0
+	var prevX, prevY float64
 	for _, p := range points {
 		if !p.HasValue() {
 			havePrev = false
 			continue
 		}
-		x := c.xOfTime(p.DT)
-		yHigh := al.yOf(p.High)
-		yLow := al.yOf(p.Low)
-		if yLow > yHigh {
-			cnv.DrawLine(x, yHigh, x, yLow+1, 1, col)
+		x := c.xOfTimeF(p.DT)
+		yHigh := float64(al.yOf(p.High))
+		yLow := float64(al.yOf(p.Low))
+		if yLow > yHigh || !havePrev {
+			cnv.DrawLineF(x, yHigh, x, yLow, col)
 		}
 		if havePrev {
-			cnv.DrawLine(prevX, prevY, x, al.yOf(p.First), 1, col)
-		} else if yLow == yHigh {
-			cnv.DrawLine(x, yHigh, x, yHigh+1, 1, col)
+			cnv.DrawLineF(prevX, prevY, x, float64(al.yOf(p.First)), col)
 		}
-		prevX, prevY = x, al.yOf(p.Last)
+		prevX, prevY = x, float64(al.yOf(p.Last))
 		havePrev = true
 	}
 }

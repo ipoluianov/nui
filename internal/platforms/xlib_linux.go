@@ -31,10 +31,14 @@ import (
 )
 
 const (
-	xNone               = 0
-	xCopyFromParent     = 0
-	xInputOutput        = 1
-	xCWBackPixmap       = 1 << 0
+	xNone           = 0
+	xCopyFromParent = 0
+	xInputOutput    = 1
+	xCWBackPixmap   = 1 << 0
+	xCWBackPixel    = 1 << 1
+	xCWBitGravity   = 1 << 4
+
+	xNorthWestGravity   = 1
 	xCWOverrideRedirect = 1 << 9
 	xCWSaveUnder        = 1 << 10
 
@@ -324,6 +328,8 @@ var (
 	xGetWindowAttributes  func(display, window uintptr, attrs unsafe.Pointer) int32
 	xMapWindow            func(display, window uintptr) int32
 	xFlush                func(display uintptr) int32
+	xConnectionNumber     func(display uintptr) int32
+	xSetWindowBackground  func(display, window uintptr, pixel uintptr) int32
 	xClearArea            func(display, window uintptr, x, y int32, width, height uint32, exposures int32) int32
 	xPending              func(display uintptr) int32
 	xNextEvent            func(display uintptr, event unsafe.Pointer) int32
@@ -346,7 +352,7 @@ var (
 	xTranslateCoordinates func(display, srcW, destW uintptr, srcX, srcY int32, destXReturn, destYReturn, childReturn unsafe.Pointer) int32
 	xCreateGC             func(display, drawable uintptr, valuemask uintptr, values uintptr) uintptr
 	xFreeGC               func(display, gc uintptr) int32
-	xCreateImage          func(display, visual uintptr, depth uint32, format, offset int32, data uintptr, width, height uint32, bitmapPad, bytesPerLine int32) uintptr
+	xCreateImage          func(display, visual uintptr, depth uint32, format, offset int32, data unsafe.Pointer, width, height uint32, bitmapPad, bytesPerLine int32) uintptr
 	xPutImage             func(display, drawable, gc, image uintptr, srcX, srcY, destX, destY int32, width, height uint32) int32
 	xDestroyImage         func(image uintptr) int32
 	xDefaultVisual        func(display uintptr, screen int32) uintptr
@@ -359,9 +365,8 @@ var (
 	xUnmapWindow          func(display, window uintptr) int32
 
 	libcSetlocale func(category int32, locale string) uintptr
-	libcMalloc    func(size uintptr) uintptr
+	libcMalloc    func(size uintptr) unsafe.Pointer
 	libcFree      func(ptr uintptr)
-	libcMemcpy    func(dst uintptr, src unsafe.Pointer, n uintptr) uintptr
 
 	// Xinerama is optional: it's present on virtually every X11 desktop but
 	// isn't a hard dependency the way libX11/libc are, so its absence just
@@ -417,6 +422,8 @@ func init() {
 	purego.RegisterLibFunc(&xGetWindowAttributes, libX11, "XGetWindowAttributes")
 	purego.RegisterLibFunc(&xMapWindow, libX11, "XMapWindow")
 	purego.RegisterLibFunc(&xFlush, libX11, "XFlush")
+	purego.RegisterLibFunc(&xConnectionNumber, libX11, "XConnectionNumber")
+	purego.RegisterLibFunc(&xSetWindowBackground, libX11, "XSetWindowBackground")
 	purego.RegisterLibFunc(&xClearArea, libX11, "XClearArea")
 	purego.RegisterLibFunc(&xPending, libX11, "XPending")
 	purego.RegisterLibFunc(&xNextEvent, libX11, "XNextEvent")
@@ -454,7 +461,6 @@ func init() {
 	purego.RegisterLibFunc(&libcSetlocale, libc, "setlocale")
 	purego.RegisterLibFunc(&libcMalloc, libc, "malloc")
 	purego.RegisterLibFunc(&libcFree, libc, "free")
-	purego.RegisterLibFunc(&libcMemcpy, libc, "memcpy")
 
 	libcSetlocale(xLCAll, "")
 	// Required before any Xlib call once multiple windows run their event loops on separate goroutines.

@@ -97,6 +97,18 @@ func TestPlural(t *testing.T) {
 			t.Errorf("en %d: %q, want %q", n, got, want)
 		}
 	}
+	pl := []string{"plik", "pliki", "plików"}
+	for n, want := range map[int]string{0: "plików", 1: "plik", 2: "pliki", 4: "pliki", 5: "plików", 12: "plików", 21: "plików", 22: "pliki", 101: "plików"} {
+		if got := Plural("pl", n, pl...); got != want {
+			t.Errorf("pl %d: %q, want %q", n, got, want)
+		}
+	}
+	sr := []string{"фајл", "фајла", "фајлова"}
+	for n, want := range map[int]string{1: "фајл", 3: "фајла", 5: "фајлова", 11: "фајлова", 21: "фајл", 23: "фајла"} {
+		if got := Plural("sr", n, sr...); got != want {
+			t.Errorf("sr %d: %q, want %q", n, got, want)
+		}
+	}
 	if got := Plural("zh", 5, "个文件"); got != "个文件" {
 		t.Errorf("zh: %q", got)
 	}

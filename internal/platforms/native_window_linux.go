@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 	"unicode/utf8"
 	"unsafe"
@@ -37,8 +38,15 @@ type nativeWindowPlatform struct {
 	lastMouseDownButton MouseButton
 	lastMouseDownTime   time.Time
 
-	dtLastUpdateCalled time.Time
-	needUpdateInTimer  bool
+	// The window is painted once all the pending events are handled, so a
+	// burst of Expose events or Update calls results in one paint. Atomic:
+	// Update may be called from another goroutine.
+	needPaint atomic.Bool
+
+	// The size of the last ConfigureNotify, applied (laid out) once all the
+	// pending events are handled: a window being resized gets many of them
+	pendingResize               bool
+	pendingWidth, pendingHeight int
 
 	wmProtocols    uintptr
 	wmDeleteWindow uintptr
@@ -142,12 +150,13 @@ func (c *nativeWindow) ensureCanvasBuffer(size int) []byte {
 
 // fillCanvasBuffer paints buf with this window's solid background color.
 func fillCanvasBuffer(buf []byte, col color.RGBA) {
-	r, g, b, a := col.B, col.G, col.R, col.A
-	for i := 0; i+3 < len(buf); i += 4 {
-		buf[i+0] = r
-		buf[i+1] = g
-		buf[i+2] = b
-		buf[i+3] = a
+	if len(buf) < 4 {
+		return
+	}
+	buf[0], buf[1], buf[2], buf[3] = col.B, col.G, col.R, col.A
+	// Doubling the filled part: a few large copies instead of a loop over the pixels
+	for filled := 4; filled < len(buf); filled *= 2 {
+		copy(buf[filled:], buf[:filled])
 	}
 }
 
@@ -169,19 +178,23 @@ func createWindow(title string, posX int, posY int, width int, height int, cente
 
 	c.platform.screen = xDefaultScreen(c.platform.display)
 
+	// While resizing, the X server keeps the old content in the top-left
+	// corner and fills only the new area with the background color until
+	// the window is painted again, instead of discarding it all
 	attrs := xSetWindowAttributes{}
-	attrs.BackgroundPixmap = xNone
+	attrs.BackgroundPixel = backgroundPixel(c.platform.bgColor)
+	attrs.BitGravity = xNorthWestGravity
 
 	c.platform.window = xCreateWindow(
 		c.platform.display,
 		xRootWindow(c.platform.display, c.platform.screen),
 		100, 100, // x, y
 		uint32(width), uint32(height), // width, height
-		1,               // border width
-		xCopyFromParent, // depth
-		xInputOutput,    // class
-		0,               // visual
-		xCWBackPixmap,   // valuemask
+		1,                          // border width
+		xCopyFromParent,            // depth
+		xInputOutput,               // class
+		0,                          // visual
+		xCWBackPixel|xCWBitGravity, // valuemask
 		unsafe.Pointer(&attrs),
 	)
 
@@ -249,21 +262,10 @@ func (c *nativeWindow) Show() {
 func (c *nativeWindow) Hide() {
 }
 
+// Update asks to paint the window: pumpEvents paints it once the pending
+// events are handled, within a timer tick
 func (c *nativeWindow) Update() {
-	if time.Since(c.platform.dtLastUpdateCalled) < 40*time.Millisecond {
-		c.platform.needUpdateInTimer = true
-		return
-	}
-	c.platform.dtLastUpdateCalled = time.Now()
-
-	xClearArea(
-		c.platform.display,
-		c.platform.window,
-		0, 0,
-		0, 0,
-		1, // last parameter is `exposures`: if True — generate Expose event
-	)
-	xFlush(c.platform.display)
+	c.platform.needPaint.Store(true)
 }
 
 // Exec blocks the calling goroutine until this window closes. The actual
@@ -277,10 +279,8 @@ func (c *nativeWindow) Exec() {
 // pumpEvents is the real XPending/XNextEvent loop, run on the goroutine
 // Show() spawns for the life of the window.
 func (c *nativeWindow) pumpEvents() {
-	ticker := time.NewTicker(10 * time.Millisecond)
-	defer ticker.Stop()
-
-	dtLastPaint := time.Now()
+	const tickInterval = 10 * time.Millisecond
+	nextTick := time.Now().Add(tickInterval)
 
 	for !c.platform.closed {
 		if atomic.LoadInt32(&c.platform.closeRequested) != 0 {
@@ -304,14 +304,14 @@ func (c *nativeWindow) pumpEvents() {
 				}
 			}
 
-			{
-				_, _, _, _, ok := c.getFrameExtents()
-				if ok {
-					if c.platform.prevSetPosX >= 0 && c.platform.prevSetPosY >= 0 {
-						c.Move(c.platform.prevSetPosX, c.platform.prevSetPosY)
-						c.platform.prevSetPosX = -1
-						c.platform.prevSetPosY = -1
-					}
+			// A Move made before the WM framed the window is repeated once
+			// the frame is known. Checked only while one is pending: it asks
+			// the X server and waits for the answer.
+			if c.platform.prevSetPosX >= 0 && c.platform.prevSetPosY >= 0 {
+				if _, _, _, _, ok := c.getFrameExtents(); ok {
+					c.Move(c.platform.prevSetPosX, c.platform.prevSetPosY)
+					c.platform.prevSetPosX = -1
+					c.platform.prevSetPosY = -1
 				}
 			}
 
@@ -331,47 +331,8 @@ func (c *nativeWindow) pumpEvents() {
 			switch event.eventType() {
 
 			case xExpose:
-				{
-					{
-						dtBeginPaint := time.Now()
-						dtLastPaint = time.Now()
-						hdcWidth, hdcHeight := c.windowWidth, c.windowHeight
-						if hdcWidth > maxCanvasWidth {
-							hdcWidth = maxCanvasWidth
-						}
-
-						if hdcHeight > maxCanvasHeight {
-							hdcHeight = maxCanvasHeight
-						}
-
-						canvasDataBufferSize := int(hdcWidth * hdcHeight * 4)
-						buf := c.ensureCanvasBuffer(canvasDataBufferSize)
-						fillCanvasBuffer(buf, c.platform.bgColor)
-
-						img := &image.RGBA{
-							Pix:    buf,
-							Stride: int(hdcWidth) * 4,
-							Rect:   image.Rect(0, 0, int(hdcWidth), int(hdcHeight)),
-						}
-
-						if c.onPaint != nil {
-							c.onPaint(img)
-						}
-
-						c.drawImageRGBA(c.platform.display, c.platform.window, img)
-						paintTime := time.Since(dtLastPaint)
-						_ = paintTime
-						//fmt.Println("PaintTime:", paintTime.Microseconds())
-
-						c.drawTimes[c.drawTimesIndex] = time.Since(dtBeginPaint).Microseconds()
-						c.drawTimesIndex++
-						if c.drawTimesIndex >= len(c.drawTimes) {
-							c.drawTimesIndex = 0
-						}
-
-					}
-
-				}
+				// The whole window is painted anyway: once, after the queue
+				c.platform.needPaint.Store(true)
 			case xMapNotify:
 				mapEvent := (*xMapEvent)(unsafe.Pointer(&event))
 				fmt.Printf("Window became visible. Window ID: %d\n", mapEvent.Window)
@@ -421,12 +382,10 @@ func (c *nativeWindow) pumpEvents() {
 					}
 				}
 
-				if configureEvent.SendEvent == 0 && (c.windowWidth != int(configureEvent.Width) || c.windowHeight != int(configureEvent.Height)) {
-					c.windowWidth = int(configureEvent.Width)
-					c.windowHeight = int(configureEvent.Height)
-					if c.onResize != nil {
-						c.onResize(c.windowWidth, c.windowHeight)
-					}
+				if configureEvent.SendEvent == 0 {
+					c.platform.pendingResize = true
+					c.platform.pendingWidth = int(configureEvent.Width)
+					c.platform.pendingHeight = int(configureEvent.Height)
 				}
 
 				c.Update()
@@ -646,23 +605,88 @@ func (c *nativeWindow) pumpEvents() {
 
 		}
 
-		if !c.platform.closed {
-			select {
-			case <-ticker.C:
-				{
-					if c.platform.needUpdateInTimer {
-						c.Update()
-						c.platform.needUpdateInTimer = false
-					}
-					if c.onTimer != nil {
-						c.onTimer()
-						c.Update()
-					}
+		if c.platform.closed {
+			break
+		}
+
+		// All the queued events are handled: lay out for the latest size once
+		if c.platform.pendingResize {
+			c.platform.pendingResize = false
+			if c.windowWidth != c.platform.pendingWidth || c.windowHeight != c.platform.pendingHeight {
+				c.windowWidth = c.platform.pendingWidth
+				c.windowHeight = c.platform.pendingHeight
+				if c.onResize != nil {
+					c.onResize(c.windowWidth, c.windowHeight)
 				}
-			default:
 			}
 		}
+
+		if now := time.Now(); !now.Before(nextTick) {
+			nextTick = now.Add(tickInterval)
+			if c.onTimer != nil {
+				c.onTimer()
+			}
+		}
+
+		if c.platform.needPaint.Swap(false) {
+			c.paint()
+		}
+
+		// Sleep until an event comes or the next tick, instead of spinning
+		if xPending(c.platform.display) == 0 {
+			waitForFd(int(xConnectionNumber(c.platform.display)), time.Until(nextTick))
+		}
 	}
+}
+
+// paint draws the whole window
+func (c *nativeWindow) paint() {
+	dtBeginPaint := time.Now()
+	hdcWidth, hdcHeight := c.windowWidth, c.windowHeight
+	if hdcWidth > maxCanvasWidth {
+		hdcWidth = maxCanvasWidth
+	}
+	if hdcHeight > maxCanvasHeight {
+		hdcHeight = maxCanvasHeight
+	}
+	if hdcWidth <= 0 || hdcHeight <= 0 {
+		return
+	}
+
+	buf := c.ensureCanvasBuffer(hdcWidth * hdcHeight * 4)
+	fillCanvasBuffer(buf, c.platform.bgColor)
+
+	img := &image.RGBA{
+		Pix:    buf,
+		Stride: hdcWidth * 4,
+		Rect:   image.Rect(0, 0, hdcWidth, hdcHeight),
+	}
+
+	if c.onPaint != nil {
+		c.onPaint(img)
+	}
+
+	putImageRGBA(c.platform.display, c.platform.window, img, hdcWidth, hdcHeight)
+
+	c.drawTimes[c.drawTimesIndex] = time.Since(dtBeginPaint).Microseconds()
+	c.drawTimesIndex++
+	if c.drawTimesIndex >= len(c.drawTimes) {
+		c.drawTimesIndex = 0
+	}
+}
+
+// waitForFd waits until fd has data to read or the timeout passes
+func waitForFd(fd int, timeout time.Duration) {
+	if timeout <= 0 {
+		return
+	}
+	var readFds syscall.FdSet
+	// The words of the set are 32 or 64 bits, depending on the architecture
+	bitsPerWord := int(unsafe.Sizeof(readFds.Bits[0])) * 8
+	readFds.Bits[fd/bitsPerWord] |= 1 << (fd % bitsPerWord)
+	tv := syscall.NsecToTimeval(timeout.Nanoseconds())
+	// EINTR (e.g. the Go runtime's preemption signals) only ends the wait early
+	_, _ = syscall.Select(fd+1, &readFds, nil, nil, &tv)
 }
 
 // Close requests the window to close and is safe to call from any goroutine
@@ -859,7 +883,13 @@ func (c *nativeWindow) DrawTimeUs() int64 {
 
 func (c *nativeWindow) SetBackgroundColor(color color.RGBA) {
 	c.platform.bgColor = color
+	xSetWindowBackground(c.platform.display, c.platform.window, backgroundPixel(color))
 	c.Update()
+}
+
+// backgroundPixel is the color as a pixel of the default 24-bit TrueColor visual
+func backgroundPixel(col color.RGBA) uintptr {
+	return uintptr(col.R)<<16 | uintptr(col.G)<<8 | uintptr(col.B)
 }
 
 func (c *nativeWindow) SetMouseCursor(cursor MouseCursor) {
@@ -1063,23 +1093,25 @@ func (c *nativeWindow) drawImageRGBA(display uintptr, window uintptr, img image.
 }
 
 // putImageRGBA copies the top-left width x height pixels of img to window.
-// Swaps img's channels to BGRA in place.
 func putImageRGBA(display uintptr, window uintptr, img *image.RGBA, width, height int) {
 	dataSize := width * height * 4
-
-	rgba := img.Pix
-
-	// RGBA->BGRA
-	pixelsCount := width * height
-	for i := 0; i < pixelsCount; i++ {
-		rgba[i*4], rgba[i*4+2] = rgba[i*4+2], rgba[i*4]
-	}
 
 	// XDestroyImage (via destroyXImage below) frees this buffer through
 	// libX11's own free(), so it has to come from the same libc malloc, not
 	// Go's allocator.
 	cBuffer := libcMalloc(uintptr(dataSize))
-	libcMemcpy(cBuffer, unsafe.Pointer(&rgba[0]), uintptr(dataSize))
+
+	// Copied converting RGBA to the BGRA of the X image in one pass, a
+	// pixel at a time as a little-endian uint32 (all the Linux targets are)
+	dst := unsafe.Slice((*uint32)(cBuffer), width*height)
+	for y := 0; y < height; y++ {
+		row := img.Pix[y*img.Stride : y*img.Stride+width*4]
+		src := unsafe.Slice((*uint32)(unsafe.Pointer(&row[0])), width)
+		out := dst[y*width : (y+1)*width]
+		for i, v := range src {
+			out[i] = v&0xFF00FF00 | (v&0xFF)<<16 | (v>>16)&0xFF
+		}
+	}
 
 	ximage := xCreateImage(
 		display,

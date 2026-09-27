@@ -258,6 +258,97 @@ func (c *Canvas) DrawLine(x1 int, y1 int, x2 int, y2 int, width int, color color
 	}
 }
 
+// DrawLineF draws an antialiased line one pixel wide between points with
+// fractional coordinates, both ends included. Integer coordinates are the
+// centers of the pixels, so a line between them is as sharp as DrawLine's;
+// a line between fractional ones is spread over the neighbor pixels, e.g.
+// for a chart that scrolls smoothly.
+func (c *Canvas) DrawLineF(x1, y1, x2, y2 float64, col color.Color) {
+	x1 += float64(c.state.translateX)
+	y1 += float64(c.state.translateY)
+	x2 += float64(c.state.translateX)
+	y2 += float64(c.state.translateY)
+
+	// Clipped with a margin of a pixel: the pixels at the edge get their share
+	left, top := float64(c.state.clipX-1), float64(c.state.clipY-1)
+	right, bottom := float64(c.state.clipX+c.state.clipW), float64(c.state.clipY+c.state.clipH)
+	x1, y1, x2, y2, visible := clipLineF(x1, y1, x2, y2, left, top, right, bottom)
+	if !visible {
+		return
+	}
+
+	script := NewDrawScript()
+	plotLineWuF(script, x1, y1, x2, y2)
+	script.Bounds = image.Rect(c.state.clipX, c.state.clipY, c.state.clipX+c.state.clipW-1, c.state.clipY+c.state.clipH-1)
+	script.DrawToRGBA(c.rgba, col)
+}
+
+// clipLineF clips the line to the rectangle (Liang-Barsky)
+func clipLineF(x1, y1, x2, y2, left, top, right, bottom float64) (float64, float64, float64, float64, bool) {
+	dx, dy := x2-x1, y2-y1
+	t0, t1 := 0.0, 1.0
+	for _, edge := range [4][2]float64{
+		{-dx, x1 - left},
+		{dx, right - x1},
+		{-dy, y1 - top},
+		{dy, bottom - y1},
+	} {
+		p, q := edge[0], edge[1]
+		if p == 0 {
+			if q < 0 {
+				return 0, 0, 0, 0, false // parallel to the edge and outside
+			}
+			continue
+		}
+		t := q / p
+		if p < 0 {
+			t0 = math.Max(t0, t)
+		} else {
+			t1 = math.Min(t1, t)
+		}
+		if t0 > t1 {
+			return 0, 0, 0, 0, false
+		}
+	}
+	return x1 + t0*dx, y1 + t0*dy, x1 + t1*dx, y1 + t1*dy, true
+}
+
+// plotLineWuF plots the line by Xiaolin Wu's algorithm with fractional ends:
+// along the major axis a pixel per step, split between the two pixels
+// across it by the distance to their centers. Unlike the classic algorithm
+// the end pixels are plotted in full, so the joints of a polyline drawn
+// segment by segment are not dimmer than the rest of it.
+func plotLineWuF(script *DrawScript, x1, y1, x2, y2 float64) {
+	steep := math.Abs(y2-y1) > math.Abs(x2-x1)
+	if steep {
+		x1, y1 = y1, x1
+		x2, y2 = y2, x2
+	}
+	if x1 > x2 {
+		x1, x2 = x2, x1
+		y1, y2 = y2, y1
+	}
+	plot := func(x, y int, c float64) {
+		if steep {
+			x, y = y, x
+		}
+		script.plot(x, y, c)
+	}
+
+	gradient := 0.0 // a point
+	if dx := x2 - x1; dx > 0 {
+		gradient = (y2 - y1) / dx
+	}
+
+	// The line at the center of every pixel column from the first to the last
+	xStart, xEnd := int(math.Round(x1)), int(math.Round(x2))
+	for x := xStart; x <= xEnd; x++ {
+		y := y1 + gradient*(float64(x)-x1)
+		plot(x, ipart(y), 1-fpart(y))
+		plot(x, ipart(y)+1, fpart(y))
+	}
+}
+
 func (c *Canvas) MakeScriptLine(x1, y1, x2, y2, width float64) *DrawScript {
 	x1 = math.Round(x1)
 	y1 = math.Round(y1)

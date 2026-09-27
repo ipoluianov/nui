@@ -7,6 +7,7 @@ type ContextMenu struct {
 	items      []*ContextMenuItem
 	CloseEvent func()
 	parentMenu *ContextMenu
+	onShow     func()
 }
 
 // Adaptive width bounds: the menu shrinks to fit short item text and grows
@@ -33,7 +34,17 @@ func (c *ContextMenu) drawBorder(cnv *Canvas) {
 	cnv.DrawRect(0, 0, c.Width(), c.Height())
 }
 
+// SetOnShow sets the function called every time before the menu is shown,
+// e.g. to hide the items that don't apply to what is selected now
+// (ContextMenuItem.SetVisible).
+func (c *ContextMenu) SetOnShow(f func()) {
+	c.onShow = f
+}
+
 func (c *ContextMenu) ShowMenu(x int, y int) {
+	if c.onShow != nil {
+		c.onShow()
+	}
 	c.SetPosition(x, y)
 	c.rebuildVisualElements()
 	c.form.Panel().AppendPopupWidget(c)
@@ -43,6 +54,9 @@ func (c *ContextMenu) ShowMenu(x int, y int) {
 func (c *ContextMenu) showMenu(x int, y int, parentMenu *ContextMenu) {
 	c.CloseAfterPopupWidget(parentMenu)
 	c.parentMenu = parentMenu
+	if c.onShow != nil {
+		c.onShow()
+	}
 	c.SetPosition(x, y)
 	c.rebuildVisualElements()
 	//c.Window().AppendPopup(c)
@@ -124,6 +138,12 @@ func (c *ContextMenu) rebuildVisualElements() {
 	for _, item := range c.items {
 		item.needToClosePopupMenu = c.needToClose
 		item.parentMenu = c
+		// A hidden item takes no place
+		if !item.IsVisible() {
+			item.SetPosition(0, yOffset)
+			item.SetSize(0, 0)
+			continue
+		}
 		item.SetPosition(0, yOffset)
 		item.SetSize(menuWidth, item.height())
 		yOffset += item.height()
@@ -136,7 +156,7 @@ func (c *ContextMenu) rebuildVisualElements() {
 // hasImages reports whether any item has an icon, so the menu reserves the icon column
 func (c *ContextMenu) hasImages() bool {
 	for _, item := range c.items {
-		if item.image != nil {
+		if item.image != nil && item.IsVisible() {
 			return true
 		}
 	}
@@ -149,7 +169,7 @@ func (c *ContextMenu) hasImages() bool {
 func (c *ContextMenu) contentWidth() int {
 	width := contextMenuMinWidth
 	for _, item := range c.items {
-		if item.separator {
+		if item.separator || !item.IsVisible() {
 			continue
 		}
 		textWidth, _, err := MeasureText(item.FontFamily(), item.FontSize(), item.text)
