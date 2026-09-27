@@ -16,6 +16,13 @@ type PopupPlacer interface {
 	PopupFlipped() (x, y int)
 }
 
+// PopupCanceler is implemented by popup widgets that undo what was done in
+// them when Escape closes them (a click outside keeps it), e.g. a color
+// picker's panel returning to the color it was opened with.
+type PopupCanceler interface {
+	CancelPopup()
+}
+
 // popupHost is the native window of an open popup widget. The widget keeps
 // its position in the form's client coordinates, which may be outside the
 // client area. Mouse events of the window are translated to those

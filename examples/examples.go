@@ -14,6 +14,7 @@ import (
 	"github.com/ipoluianov/nui/examples/ex11i18n"
 	"github.com/ipoluianov/nui/examples/ex12menubar"
 	"github.com/ipoluianov/nui/examples/ex13treeview"
+	"github.com/ipoluianov/nui/examples/ex14colorpicker"
 	"github.com/ipoluianov/nui/ui"
 )
 
@@ -45,6 +46,7 @@ func Run() {
 		addButton("Example 11 - Translations", ex11i18n.NewExampleForm)
 		addButton("Example 12 - Main Menu", ex12menubar.NewExampleForm)
 		addButton("Example 13 - TreeView", ex13treeview.NewExampleForm)
+		addButton("Example 14 - Color Picker", ex14colorpicker.NewExampleForm)
 
 		form.Panel().AddWidget(form.Panel().NextGridRow(), 0, ui.NewVSpacer())
 		form.Panel().AddButton(form.Panel().NextGridRow(), 0, "Light Theme", func() {

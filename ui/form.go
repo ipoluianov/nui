@@ -857,6 +857,9 @@ func (c *Form) processKeyDown(keyCode Key, mods KeyModifiers) bool {
 	// Escape closes the top popup (a submenu closes before its menu) instead
 	// of reaching the widgets or the form's cancel button
 	if keyCode == KeyEsc && len(c.topWidget.PopupWidgets) > 0 {
+		if canceler, ok := c.TopPopupWidget().(PopupCanceler); ok {
+			canceler.CancelPopup()
+		}
 		c.topWidget.CloseTopPopup()
 		c.Update()
 		return true

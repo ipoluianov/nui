@@ -30,6 +30,7 @@ Short reference for `ui` controls. Code snippets are intentionally minimal—see
 - [Checkbox](content/checkbox.md)
 - [RadioButton](content/radiobutton.md)
 - [ComboBox](content/combobox.md)
+- [ColorPicker](content/colorpicker.md)
 - [ContextMenu](content/context_menu.md)
 - [MenuBar](content/menu_bar.md)
 
