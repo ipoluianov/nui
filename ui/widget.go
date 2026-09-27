@@ -113,6 +113,10 @@ type Widget struct {
 
 	closeByClickOutside bool
 
+	// insetTop is extra space above the grid of children, e.g. for the
+	// title of a GroupBox
+	insetTop int
+
 	// callbacks
 	onCustomPaint   func(cnv *Canvas)
 	onPostPaint     func(cnv *Canvas)
@@ -422,11 +426,11 @@ func (c *Widget) MinHeight() int {
 
 	if calcFromChildren {
 		_, _, _, allCellPadding := c.makeRowsInfo(c.Height())
-		rowsInfo, _, _, _ := c.makeRowsInfo(c.Height() - (panelPadding + allCellPadding + panelPadding))
+		rowsInfo, _, _, _ := c.makeRowsInfo(c.Height() - (panelPadding + allCellPadding + panelPadding + c.insetTop))
 		for _, rowInfo := range rowsInfo {
 			result += rowInfo.minHeight
 		}
-		result += panelPadding + allCellPadding + panelPadding
+		result += panelPadding + allCellPadding + panelPadding + c.insetTop
 	}
 
 	c.layoutCacheMinHeightValid = true
@@ -1720,7 +1724,7 @@ func (c *Widget) updateLayout(oldWidth, oldHeight, newWidth, newHeight int) {
 		columnsInfo, _, _, _ := c.makeColumnsInfo(fullWidth - (panelPadding + allCellPaddingX + panelPadding))
 
 		_, minY, maxY, allCellPaddingY := c.makeRowsInfo(fullHeight)
-		rowsInfo, _, _, _ := c.makeRowsInfo(fullHeight - (panelPadding + allCellPaddingY + panelPadding))
+		rowsInfo, _, _, _ := c.makeRowsInfo(fullHeight - (panelPadding + allCellPaddingY + panelPadding + c.insetTop))
 
 		/*if strings.Contains(c.name, "Top") {
 			fmt.Println("RowsInfo:")
@@ -1735,7 +1739,7 @@ func (c *Widget) updateLayout(oldWidth, oldHeight, newWidth, newHeight int) {
 		xOffset := panelPadding //+ c.LeftBorderWidth()
 		for x := minX; x <= maxX; x++ {
 			if colInfo, ok := columnsInfo[x]; ok {
-				yOffset := panelPadding // + c.TopBorderWidth()
+				yOffset := panelPadding + c.insetTop
 				for y := minY; y <= maxY; y++ {
 					if rowInfo, ok := rowsInfo[y]; ok {
 						w := c.getWidgetInGridCell(x, y)

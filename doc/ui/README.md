@@ -13,6 +13,7 @@ Short reference for `ui` controls. Code snippets are intentionally minimal—see
 
 - [Panel](content/panel.md)
 - [Frame](content/frame.md)
+- [GroupBox](content/groupbox.md)
 - [ScrollArea](content/scrollarea.md)
 - [TabWidget](content/tabwidget.md)
 - [Splitter](content/splitter.md)
@@ -31,6 +32,12 @@ Short reference for `ui` controls. Code snippets are intentionally minimal—see
 - [RadioButton](content/radiobutton.md)
 - [ComboBox](content/combobox.md)
 - [ColorPicker](content/colorpicker.md)
+- [EditableComboBox](content/editable_combobox.md)
+- [Slider](content/slider.md)
+- [ToggleSwitch](content/toggleswitch.md)
+- [DatePicker and Calendar](content/datepicker.md)
+- [TimePicker](content/timepicker.md)
+- [Link](content/link.md)
 - [ContextMenu](content/context_menu.md)
 - [MenuBar](content/menu_bar.md)
 
