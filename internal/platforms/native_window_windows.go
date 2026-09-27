@@ -213,7 +213,17 @@ func (c *nativeWindow) pumpMessages() {
 // so a "closed" modal left a dead but still-visible/owned HWND behind and
 // the later SetForegroundWindow(owner) call was silently ignored by
 // Windows' foreground-lock rules, dropping the whole app to the background.
+//
+// DestroyWindow only works on the thread that created the window, so a Close
+// from any other goroutine is handed over to that thread (c_WM_NUI_CLOSE)
+// instead of failing silently and leaving the window open.
 func (c *nativeWindow) Close() bool {
+	windowThread, _, _ := procGetWindowThreadProcessId.Call(uintptr(c.hwnd), 0)
+	currentThread, _, _ := procGetCurrentThreadId.Call()
+	if windowThread != currentThread {
+		ok, _, _ := procPostMessageW.Call(uintptr(c.hwnd), c_WM_NUI_CLOSE, 0, 0)
+		return ok != 0
+	}
 	procDestroyWindow.Call(uintptr(c.hwnd))
 	return true
 }

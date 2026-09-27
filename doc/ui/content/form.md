@@ -16,7 +16,9 @@ form.Exec()
 - **`Panel() *ui.Panel`**: form root container.
 - **`SetMainWidget(w ui.Widgeter)`**: replace the root content with a single widget.
 - **`Exec()` / `ExecMaximized()`**: run the window event loop.
-- **`Close()`**: close the window.
+- **`Close()`**: close the window at once, without calling `OnClose`. Safe from any goroutine. A window with an open modal dialog closes as soon as the dialog does.
+- **`RequestClose() bool`**: close the window as if the user clicked its close button: `OnClose` runs first and can keep the window open. Call it on the form's goroutine (its widgets' handlers or `Invoke`).
+- **`OnClose func() bool`**: called when the user closes the window (close button, Alt+F4) or on `RequestClose`; return `false` to keep it open. Not called by `Close()`.
 - **`SetIcon(img image.Image)`**: set the icon of this window (title bar / taskbar), overriding the application icon. Works before and after the window is shown.
 
 ## Application icon

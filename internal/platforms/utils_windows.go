@@ -47,6 +47,9 @@ var (
 	procFlashWindowEx  = user32.NewProc("FlashWindowEx")
 	procMessageBeep    = user32.NewProc("MessageBeep")
 
+	procGetWindowThreadProcessId = user32.NewProc("GetWindowThreadProcessId")
+	procGetCurrentThreadId       = kernel32.NewProc("GetCurrentThreadId")
+
 	procLoadCursorW = user32.NewProc("LoadCursorW")
 	procSetCursor   = user32.NewProc("SetCursor")
 
@@ -115,6 +118,9 @@ const (
 
 	c_WM_CLOSE   = 0x0010
 	c_WM_DESTROY = 0x0002
+
+	// c_WM_NUI_CLOSE asks the window thread to destroy the window (see nativeWindow.Close)
+	c_WM_NUI_CLOSE = c_WM_APP + 2
 
 	c_WM_KEYDOWN = 0x0100
 	c_WM_KEYUP   = 0x0101
@@ -714,6 +720,10 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 		if win != nil && win.onMove != nil {
 			win.onMove(int(x), int(y))
 		}
+		return 0
+
+	case c_WM_NUI_CLOSE:
+		procDestroyWindow.Call(uintptr(hwnd))
 		return 0
 
 	case c_WM_CLOSE:

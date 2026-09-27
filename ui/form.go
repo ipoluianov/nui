@@ -276,15 +276,33 @@ func (c *Form) CloseTopPopup() {
 	c.topWidget.CloseTopPopup()
 }
 
+// Close closes the window at once, without calling OnClose - the same on
+// every platform. It may be called from any goroutine. A window that has a
+// modal dialog open closes as soon as the dialog does.
+// To close the window as if the user clicked its close button, so OnClose
+// can veto it, use RequestClose.
 func (c *Form) Close() {
-	unregisterOpenForm(c)
 	c.tooltipClose()
 	c.destroyPopupWindows()
 	if c.wnd != nil {
-		if c.wnd.Close() {
-			c.wnd = nil
+		if !c.wnd.Close() {
+			return // still open: keep it registered
 		}
+		c.wnd = nil
 	}
+	unregisterOpenForm(c)
+}
+
+// RequestClose closes the window as if the user clicked its close button:
+// OnClose is called first and may keep the window open.
+// Returns true if the window is closed. Call it on the form's goroutine
+// (e.g. from its widgets' handlers or via Invoke), like OnClose itself runs.
+func (c *Form) RequestClose() bool {
+	if !c.processWindowClose() {
+		return false
+	}
+	c.Close()
+	return true
 }
 
 func (c *Form) SetTitle(title string) {

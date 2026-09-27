@@ -48,7 +48,7 @@ Non-blocking on Linux/Windows: `parentWin`'s own event loop, timers and repaint 
 
 1. **One goroutine per window.** Never call `Exec()`/`EventLoop()`/`Show()` for the same window twice or from two goroutines at once.
 2. **Call a window's own methods/setters only from that window's own callbacks** (its `On*` handlers), or before its `Exec()`/goroutine has started. Do not call `win2.SetTitle(...)`, `win2.Resize(...)`, etc. from inside `win1`'s callback.
-3. **Exception: `Close()`.** `win.Close()` is safe to call from any goroutine, including another window's callback (e.g. a parent closing a child dialog). It only requests the close; the actual teardown always runs on the window's own event-loop goroutine.
+3. **Exception: `Close()`.** `win.Close()` is safe to call from any goroutine, including another window's callback (e.g. a parent closing a child dialog). It only requests the close; the actual teardown always runs on the window's own event-loop goroutine (on Windows a call from another thread is posted to the window's thread, since `DestroyWindow` works only there).
 4. **Don't block inside callbacks** (`OnPaint`, `OnKeyDown`, `OnTimer`, ...). A blocked callback freezes that window's repaint/timer/input until it returns. Long work belongs on its own goroutine; hand results back via a channel and call `win.Update()`.
 5. **Shared state read/written from multiple windows' callbacks needs your own synchronization** (mutex/channel) — the library does not add any for you.
 

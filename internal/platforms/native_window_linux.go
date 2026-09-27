@@ -283,7 +283,9 @@ func (c *nativeWindow) pumpEvents() {
 	nextTick := time.Now().Add(tickInterval)
 
 	for !c.platform.closed {
-		if atomic.LoadInt32(&c.platform.closeRequested) != 0 {
+		// A close requested while a modal dialog of this window is open waits
+		// until the dialog is gone (see Close)
+		if atomic.LoadInt32(&c.platform.closeRequested) != 0 && !c.inputBlocked() {
 			c.doClose()
 			break
 		}
@@ -695,14 +697,13 @@ func waitForFd(fd int, timeout time.Duration) {
 // (see doClose), since closing the Display while that goroutine might still
 // be mid-call on it (XPending/XNextEvent) would be a use-after-free.
 //
-// Refuses to close a window that still has a modal dialog open on top of
-// it (inputBlocked), the same as the WM_DELETE_WINDOW handler in
-// pumpEvents - covers Close() being called directly (e.g. from a menu
-// action) rather than only via the titlebar close button.
+// A window that still has a modal dialog open on top of it (inputBlocked)
+// is closed as soon as that dialog closes: tearing it down earlier would
+// leave the dialog's modalParent dangling. This is the usual case of a dialog
+// result handler closing the parent while the dialog itself is still closing.
+// (The titlebar close button is refused outright in that state, see the
+// WM_DELETE_WINDOW handler in pumpEvents.)
 func (c *nativeWindow) Close() bool {
-	if c.inputBlocked() {
-		return false
-	}
 	atomic.StoreInt32(&c.platform.closeRequested, 1)
 	return true
 }

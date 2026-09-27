@@ -1030,6 +1030,20 @@ func (c *Widget) ScrollY() int {
 	return c.scrollY
 }
 
+// SetScrollX scrolls the content horizontally to scrollX, kept within the content
+func (c *Widget) SetScrollX(scrollX int) {
+	c.setScrollX(scrollX)
+	c.checkScrolls()
+	c.form.Update()
+}
+
+// SetScrollY scrolls the content vertically to scrollY, kept within the content
+func (c *Widget) SetScrollY(scrollY int) {
+	c.setScrollY(scrollY)
+	c.checkScrolls()
+	c.form.Update()
+}
+
 func (c *Widget) ScrollEnsureVisible(x1, y1 int) {
 
 	if y1 < c.scrollY {

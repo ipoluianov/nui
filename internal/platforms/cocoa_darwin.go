@@ -125,7 +125,7 @@ var (
 	selSetTitle                                 = objc.RegisterName("setTitle:")
 	selWindowNumber                             = objc.RegisterName("windowNumber")
 	selMakeKeyAndOrderFront                     = objc.RegisterName("makeKeyAndOrderFront:")
-	selPerformClose                             = objc.RegisterName("performClose:")
+	selClose                                    = objc.RegisterName("close")
 	selFrame                                    = objc.RegisterName("frame")
 	selSetFrameDisplayAnimate                   = objc.RegisterName("setFrame:display:animate:")
 	selScreen                                   = objc.RegisterName("screen")
@@ -871,9 +871,13 @@ func runEventLoop() {
 	})
 }
 
+// closeWindowById closes the window at once. "close", unlike "performClose:"
+// (a simulated click on the close button), does not ask windowShouldClose:,
+// so a programmatic Close does not run OnClose - the same as on Windows and
+// Linux. windowWillClose: is still sent, ending a modal session as usual.
 func closeWindowById(id windowId) {
 	if win, ok := cocoaWindows[int(id)]; ok {
-		win.Send(selPerformClose, objc.ID(0))
+		win.Send(selClose)
 	}
 }
 

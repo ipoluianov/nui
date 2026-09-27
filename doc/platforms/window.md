@@ -29,7 +29,7 @@ Run one window per goroutine. See [multi-window.md](multi-window.md) for running
 win.Close()
 ```
 
-Safe to call from any goroutine (including from another window's callback). Does not block.
+Safe to call from any goroutine (including from another window's callback). Does not block. Closes the window without calling `OnCloseRequest` - on every platform. If the window has a modal dialog open, it closes as soon as the dialog does.
 
 ```go
 win.OnCloseRequest(func() bool {
@@ -37,7 +37,7 @@ win.OnCloseRequest(func() bool {
 })
 ```
 
-`OnCloseRequest` fires when the user clicks the OS close button, before the window actually closes.
+`OnCloseRequest` fires when the user clicks the OS close button, before the window actually closes. A programmatic `Close()` does not fire it (at the `ui.Form` level, `RequestClose()` does).
 
 ## Repainting
 
