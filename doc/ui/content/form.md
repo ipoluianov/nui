@@ -19,6 +19,25 @@ form.Exec()
 - **`Close()`**: close the window at once, without calling `OnClose`. Safe from any goroutine. A window with an open modal dialog closes as soon as the dialog does.
 - **`RequestClose() bool`**: close the window as if the user clicked its close button: `OnClose` runs first and can keep the window open. Call it on the UI thread (a handler or `Invoke`).
 - **`Invoke(f func())`**: run `f` on the UI thread, then repaint the form. Safe from any goroutine.
+- **`Hide()` / `Show()` / `IsHidden()`**: hide the window (taskbar button and all) and bring it back; the form stays open. See [TrayIcon](trayicon.md).
+- **`ShowToast(text, kind)` / `ShowToastFor(text, kind, duration)`**: a short message in the corner, see [Toasts](toast.md).
+- **`SetOnFilesDropped(func(files []string, x, y int))`**: files dropped from the system outside the drop targets, see [Drag and drop](dragdrop.md).
+
+## File dialogs
+
+The system dialogs don't block the form; the result comes on the UI thread (empty when cancelled).
+
+```go
+form.ShowOpenFileDialog(ui.OpenFileDialogOptions{Title: "Open", AllowMultiple: true,
+	Filters: []ui.FileDialogFilter{{DisplayName: "Text", Patterns: []string{"*.txt"}}}},
+	func(paths []string, err error) { ... })
+form.ShowSaveFileDialog(ui.SaveFileDialogOptions{DefaultFileName: "report.txt"},
+	func(path string, err error) { ... })
+form.ShowSelectDirectoryDialog(ui.SelectDirectoryDialogOptions{Title: "Folder"},
+	func(path string, err error) { ... })
+```
+
+On Linux the dialogs need `zenity` or `kdialog` (`ui.ErrNoFileDialog` otherwise).
 
 ## Threading
 

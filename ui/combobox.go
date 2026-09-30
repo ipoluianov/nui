@@ -8,6 +8,8 @@ type ComboBox struct {
 	Widget
 	items         []*ComboBoxItem
 	selectedIndex int
+
+	onSelectedIndexChanged func()
 }
 
 type ComboBoxItem struct {
@@ -62,12 +64,37 @@ func (c *ComboBox) SetItemText(index int, text string) {
 	c.form.Update()
 }
 
+// SetSelectedIndex selects the item without calling the
+// SetOnSelectedIndexChanged function.
 func (c *ComboBox) SetSelectedIndex(index int) {
 	if index < 0 || index >= len(c.items) {
 		return
 	}
 	c.selectedIndex = index
 	c.form.Update()
+}
+
+func (c *ComboBox) SelectedIndex() int {
+	return c.selectedIndex
+}
+
+func (c *ComboBox) ItemCount() int {
+	return len(c.items)
+}
+
+// SetOnSelectedIndexChanged sets the function called when the user picks
+// another item.
+func (c *ComboBox) SetOnSelectedIndexChanged(f func()) {
+	c.onSelectedIndexChanged = f
+}
+
+// selectByUser selects the item the user picked
+func (c *ComboBox) selectByUser(index int) {
+	changed := index != c.selectedIndex
+	c.SetSelectedIndex(index)
+	if changed && c.onSelectedIndexChanged != nil {
+		c.onSelectedIndexChanged()
+	}
 }
 
 func (c *ComboBox) SelectedItemText() string {
@@ -98,7 +125,7 @@ func (c *ComboBox) OpenPopup() {
 	popup.selectedIndex = c.selectedIndex
 	for _, item := range c.items {
 		popup.AddItem(item.text, func(index int) {
-			c.SetSelectedIndex(index)
+			c.selectByUser(index)
 			c.form.Update()
 		})
 	}

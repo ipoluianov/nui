@@ -93,6 +93,9 @@ const (
 
 	nsModalResponseOK = 1
 
+	nsDragOperationNone = 0
+	nsDragOperationCopy = 1
+
 	cgImageAlphaPremultipliedLast = 1
 	cgBitmapByteOrder32Big        = 4 << 12
 	cgRenderingIntentDefault      = 0
@@ -234,6 +237,15 @@ var (
 	selUpdateTrackingAreas   = objc.RegisterName("updateTrackingAreas")
 	selIsFlipped             = objc.RegisterName("isFlipped")
 	selDrawRect              = objc.RegisterName("drawRect:")
+
+	selRegisterForDraggedTypes      = objc.RegisterName("registerForDraggedTypes:")
+	selDraggingEntered              = objc.RegisterName("draggingEntered:")
+	selDraggingUpdated              = objc.RegisterName("draggingUpdated:")
+	selPerformDragOperation         = objc.RegisterName("performDragOperation:")
+	selDraggingPasteboard           = objc.RegisterName("draggingPasteboard")
+	selDraggingLocation             = objc.RegisterName("draggingLocation")
+	selReadObjectsForClassesOptions = objc.RegisterName("readObjectsForClasses:options:")
+	selIsFileURL                    = objc.RegisterName("isFileURL")
 )
 
 /////////////////////////////////////////////////////
@@ -752,6 +764,44 @@ func nuiViewDrawRect(self objc.ID, _ objc.SEL, _, _, _, _ float64) {
 	go_on_declare_draw_time(id, int(time.Since(start).Microseconds()))
 }
 
+// Files dragged from Finder: the view is a dragging destination for file URLs
+// (registered in initWindow).
+
+func nuiViewDraggingEntered(self objc.ID, _ objc.SEL, sender objc.ID) uint {
+	win := objc.Send[objc.ID](self, selWindow)
+	if w, ok := hwnds[wndID(win)]; ok && w.onFilesDropped != nil {
+		return nsDragOperationCopy
+	}
+	return nsDragOperationNone
+}
+
+func nuiViewPerformDragOperation(self objc.ID, _ objc.SEL, sender objc.ID) bool {
+	win := objc.Send[objc.ID](self, selWindow)
+	pasteboard := objc.Send[objc.ID](sender, selDraggingPasteboard)
+	classes := objc.ID(clsNSMutableArray).Send(selAlloc).Send(selInit)
+	classes.Send(selAddObject, objc.ID(clsNSURL))
+	urls := objc.Send[objc.ID](pasteboard, selReadObjectsForClassesOptions, classes, objc.ID(0))
+	classes.Send(selRelease)
+
+	var files []string
+	if urls != 0 {
+		n := objc.Send[int](urls, selCount)
+		for i := 0; i < n; i++ {
+			u := objc.Send[objc.ID](urls, selObjectAtIndex, i)
+			if objc.Send[bool](u, selIsFileURL) {
+				files = append(files, nsStringToGo(objc.Send[objc.ID](u, selPath)))
+			}
+		}
+	}
+	if len(files) == 0 {
+		return false
+	}
+	p := objc.Send[nsPoint](sender, selDraggingLocation)
+	p = objc.Send[nsPoint](self, selConvertPointFromView, p, objc.ID(0))
+	go_on_files_dropped(wndID(win), files, int(p.X), int(p.Y))
+	return true
+}
+
 func registerNuiClasses() {
 	var err error
 
@@ -797,6 +847,9 @@ func registerNuiClasses() {
 			{Cmd: selMouseExited, Fn: nuiViewMouseExited},
 			{Cmd: selUpdateTrackingAreas, Fn: nuiViewUpdateTrackingAreas},
 			{Cmd: selDrawRect, Fn: nuiViewDrawRect},
+			{Cmd: selDraggingEntered, Fn: nuiViewDraggingEntered},
+			{Cmd: selDraggingUpdated, Fn: nuiViewDraggingEntered},
+			{Cmd: selPerformDragOperation, Fn: nuiViewPerformDragOperation},
 		},
 	)
 	if err != nil {
@@ -851,6 +904,11 @@ func initWindow() windowId {
 		view := objc.ID(nuiPaintViewClass).Send(selAlloc).Send(selInitWithFrame, frame)
 		win.Send(selSetContentView, view)
 		view.Send(selRelease) // window now owns it via setContentView:'s internal retain
+
+		draggedTypes := objc.ID(clsNSMutableArray).Send(selAlloc).Send(selInit)
+		draggedTypes.Send(selAddObject, goStringToNS("public.file-url"))
+		view.Send(selRegisterForDraggedTypes, draggedTypes)
+		draggedTypes.Send(selRelease)
 
 		win.Send(selSetTitle, goStringToNS("NUI Window"))
 		win.Send(selSetDelegate, delegate)
@@ -934,6 +992,14 @@ func showModalWindow(id, parentID windowId) {
 	nsApp.Send(selRunModalForWindow, win)
 }
 
+func hideWindow(id windowId) {
+	runOnMainSync(func() {
+		if win, ok := cocoaWindows[int(id)]; ok {
+			win.Send(selOrderOut, objc.ID(0))
+		}
+	})
+}
+
 func updateWindow(id windowId) {
 	win, ok := cocoaWindows[int(id)]
 	if !ok {
@@ -959,26 +1025,34 @@ func setAppIconFromRGBA(pix []byte, width, height int) {
 		return
 	}
 	withAutoreleasePool(func() {
-		colorSpaceName := goStringToNS("NSCalibratedRGBColorSpace")
-		bitmapRep := objc.ID(clsNSBitmapImageRep).Send(selAlloc)
-		bitmapRep = bitmapRep.Send(selInitWithBitmapDataPlanes,
-			uintptr(0), width, height, 8, 4, true, false, colorSpaceName, width*4, 32)
-		if bitmapRep == 0 {
+		image := newNSImageFromRGBA(pix, width, height, float64(width), float64(height))
+		if image == 0 {
 			return
 		}
-
-		dataPtr := objc.Send[uintptr](bitmapRep, selBitmapData)
-		dst := unsafe.Slice((*byte)(unsafe.Pointer(dataPtr)), width*height*4)
-		copy(dst, pix)
-
-		image := objc.ID(clsNSImage).Send(selAlloc).Send(selInitWithSize, nsSize{float64(width), float64(height)})
-		image.Send(selAddRepresentation, bitmapRep)
-
 		objc.ID(clsNSApplication).Send(selSharedApplication).Send(selSetApplicationIconImage, image)
-
-		bitmapRep.Send(selRelease)
 		image.Send(selRelease)
 	})
+}
+
+// newNSImageFromRGBA makes an NSImage (+1 retained, the caller releases it)
+// of the pixels, drawn at the size in points
+func newNSImageFromRGBA(pix []byte, width, height int, pointsW, pointsH float64) objc.ID {
+	colorSpaceName := goStringToNS("NSCalibratedRGBColorSpace")
+	bitmapRep := objc.ID(clsNSBitmapImageRep).Send(selAlloc)
+	bitmapRep = bitmapRep.Send(selInitWithBitmapDataPlanes,
+		uintptr(0), width, height, 8, 4, true, false, colorSpaceName, width*4, 32)
+	if bitmapRep == 0 {
+		return 0
+	}
+
+	dataPtr := objc.Send[uintptr](bitmapRep, selBitmapData)
+	dst := unsafe.Slice((*byte)(unsafe.Pointer(dataPtr)), width*height*4)
+	copy(dst, pix)
+
+	image := objc.ID(clsNSImage).Send(selAlloc).Send(selInitWithSize, nsSize{pointsW, pointsH})
+	image.Send(selAddRepresentation, bitmapRep)
+	bitmapRep.Send(selRelease)
+	return image
 }
 
 // setMacCursor: cursorType mirrors native_window_darwin.go's macSetMouseCursor switch.

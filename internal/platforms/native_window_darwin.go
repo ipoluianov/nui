@@ -124,6 +124,11 @@ func (c *nativeWindow) Show() {
 	showWindow(c.hwnd)
 }
 
+// Hide orders the window out until the next Show. It stays open meanwhile.
+func (c *nativeWindow) Hide() {
+	hideWindow(c.hwnd)
+}
+
 func (c *nativeWindow) Update() {
 	updateWindow(c.hwnd)
 }

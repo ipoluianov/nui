@@ -16,6 +16,7 @@ import (
 	"github.com/ipoluianov/nui/examples/ex13treeview"
 	"github.com/ipoluianov/nui/examples/ex14colorpicker"
 	"github.com/ipoluianov/nui/examples/ex15controls"
+	"github.com/ipoluianov/nui/examples/ex16more"
 	"github.com/ipoluianov/nui/ui"
 )
 
@@ -49,6 +50,7 @@ func Run() {
 		addButton("Example 13 - TreeView", ex13treeview.NewExampleForm)
 		addButton("Example 14 - Color Picker", ex14colorpicker.NewExampleForm)
 		addButton("Example 15 - Controls", ex15controls.NewExampleForm)
+		addButton("Example 16 - Expander, PropertyGrid, Drag & Drop, Toasts, Tray", ex16more.NewExampleForm)
 
 		form.Panel().AddWidget(form.Panel().NextGridRow(), 0, ui.NewVSpacer())
 		form.Panel().AddButton(form.Panel().NextGridRow(), 0, "Light Theme", func() {

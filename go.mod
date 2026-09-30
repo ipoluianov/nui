@@ -5,6 +5,7 @@ go 1.24.0
 require (
 	github.com/ebitengine/purego v0.10.2
 	github.com/fogleman/gg v1.3.0
+	github.com/godbus/dbus/v5 v5.2.2
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646
 	golang.design/x/clipboard v0.7.1
 	golang.org/x/image v0.34.0

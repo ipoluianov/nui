@@ -135,6 +135,11 @@ type Widget struct {
 
 	onFocused   func()
 	onFocusLost func()
+
+	// See SetDragSource and SetDropTarget
+	dragSource  func(x, y int) *DragData
+	dropAccept  func(data *DragData, x, y int) bool
+	dropHandler func(data *DragData, x, y int)
 }
 
 /*

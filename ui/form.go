@@ -44,6 +44,17 @@ type Form struct {
 
 	tooltip tooltipState
 
+	// hidden is set by Hide
+	hidden bool
+
+	// The drag in progress, see SetDragSource
+	drag           dragState
+	onFilesDropped func(files []string, x, y int)
+
+	// The toasts shown now, oldest first, see ShowToast
+	toasts                 []*toast
+	toastPopupsUnavailable bool
+
 	// Native windows of the open popup widgets, see form_popup.go
 	popupHosts              []*popupHost
 	freePopupWindows        []platforms.PopupWindow
@@ -182,15 +193,6 @@ func (c *Form) Beep() {
 	}
 }
 
-// ShowSaveFileDialog shows the system "Save File" dialog without blocking the form
-// and calls onResult on the UI thread: path is "" when the user cancelled.
-func (c *Form) ShowSaveFileDialog(opts platforms.SaveFileDialogOptions, onResult func(path string, err error)) {
-	go func() {
-		path, err := platforms.SaveFileDialog(c.wnd, opts)
-		c.Invoke(func() { onResult(path, err) })
-	}()
-}
-
 func (c *Form) UpdateLayout() {
 	if c != nil && c.Panel() != nil {
 		c.Panel().ClearLayoutCache()
@@ -289,6 +291,7 @@ func (c *Form) Close() {
 		return
 	}
 	c.tooltipClose()
+	c.closeToasts()
 	c.destroyPopupWindows()
 	if c.wnd != nil {
 		if !c.wnd.Close() {
@@ -476,6 +479,7 @@ func (c *Form) createWindow(maximized bool) {
 	c.wnd.OnMove(c.processWindowMove)
 	c.wnd.OnDeactivate(c.processDeactivate)
 	c.wnd.OnCloseRequest(c.processWindowClose)
+	c.wnd.OnFilesDropped(c.processFilesDropped)
 	c.wnd.SetAllowMinimize(c.allowMinimize)
 	c.wnd.SetAllowMaximize(c.allowMaximize)
 	if c.icon != nil {
@@ -491,15 +495,42 @@ func (c *Form) createWindow(maximized bool) {
 	registerOpenForm(c)
 }
 
-// Show opens the form as a non-modal window and returns at once. The window
-// lives on the UI thread: called from another goroutine, Show opens it there
-// and waits for it (see InvokeSync).
+// Show opens the form as a non-modal window and returns at once; a hidden
+// form (see Hide) comes back. The window lives on the UI thread: called from
+// another goroutine, Show opens it there and waits for it (see InvokeSync).
 func (c *Form) Show() {
 	platforms.RunOnUIThread(func() {
+		if c.wnd != nil {
+			c.wnd.Show()
+			c.hidden = false
+			c.forceUpdate()
+			return
+		}
 		c.createWindow(false)
 		c.wnd.Show()
 		c.processResize(c.width, c.height)
 	})
+}
+
+// Hide hides the form's window, taskbar button and all, until the next Show.
+// The form stays open: Exec keeps waiting, the timers keep running. Useful
+// with a TrayIcon, to keep the application in the tray.
+func (c *Form) Hide() {
+	platforms.RunOnUIThread(func() {
+		if c.wnd == nil {
+			return
+		}
+		c.tooltipHide()
+		c.closePopups()
+		c.closeToasts()
+		c.wnd.Hide()
+		c.hidden = true
+	})
+}
+
+// IsHidden reports whether the form is hidden by Hide
+func (c *Form) IsHidden() bool {
+	return c.hidden
 }
 
 // ShowModal opens the form as a modal dialog over parent, which gets no input
@@ -607,6 +638,7 @@ func (c *Form) processWindowClose() bool {
 	if c.OnClose != nil && !c.OnClose() {
 		return false
 	}
+	c.closeToasts()
 	unregisterOpenForm(c)
 	return true
 }
@@ -634,6 +666,8 @@ func (c *Form) processPaint(rgba *image.RGBA) {
 	cnv.TranslateAndClip(c.topWidget.X(), c.topWidget.Y(), c.topWidget.Width(), c.topWidget.Height())
 	c.topWidget.ProcessPaint(cnv)
 	cnv.Restore()
+	c.dragPaint(cnv)
+	c.toastsPaint(cnv)
 	c.tooltipPaint(cnv)
 	if c.hoverWidget != nil {
 		//c.DrawWidgetDebugInfo(c.hoverWidget, cnv)
@@ -685,6 +719,7 @@ func (c *Form) processResize(width, height int) {
 	c.width = width
 	c.height = height
 	c.layoutMenuBar()
+	c.layoutToasts()
 	c.forceUpdate()
 }
 
@@ -694,6 +729,10 @@ func (c *Form) processMouseDown(button MouseButton, x int, y int) {
 		c.mouseLeftButtonPressed = true
 	}
 	c.tooltipSuppress()
+	if c.popupUnderMouse == nil && c.toastsProcessMouseDown(x, y) {
+		c.mouseLeftButtonPressed = false
+		return
+	}
 	if c.closePopupsByClickOutside() {
 		c.Update()
 		return
@@ -703,6 +742,9 @@ func (c *Form) processMouseDown(button MouseButton, x int, y int) {
 	widgetAtCoords := c.widgetUnderMouse(x, y)
 	if c.mouseLeftButtonPressed {
 		c.mouseLeftButtonPressedWidget = widgetAtCoords
+		if button == MouseButtonLeft && c.popupUnderMouse == nil {
+			c.dragMouseDown(widgetAtCoords, x, y)
+		}
 	}
 	// A click on the menu bar keeps the focus, so the chosen menu item acts
 	// on the focused widget
@@ -750,6 +792,11 @@ func (c *Form) processMouseUp(button MouseButton, x int, y int) {
 	if button == MouseButtonLeft {
 		c.mouseLeftButtonPressed = false
 		c.mouseLeftButtonPressedWidget = nil
+		// After a drag the release goes nowhere: it must not click the
+		// widget the drag started on
+		if c.dragMouseUp(x, y) {
+			x, y = dragCancelledPos, dragCancelledPos
+		}
 	}
 
 	// The release goes where the button was pressed, wherever the mouse is now
@@ -775,6 +822,9 @@ func (c *Form) processMouseUp(button MouseButton, x int, y int) {
 }
 
 func (c *Form) processMouseMove(x int, y int) {
+	if c.dragMouseMove(x, y) {
+		return
+	}
 	if c.mouseLeftButtonPressedWidget != nil {
 		wX, wY := c.mouseLeftButtonPressedWidget.RectClientAreaOnWindow()
 		c.mouseLeftButtonPressedWidget.ProcessMouseMove(x-wX, y-wY, c.lastKeyboardModifiers)
@@ -875,6 +925,10 @@ func (c *Form) processKeyDown(keyCode Key, mods KeyModifiers) bool {
 			c.Update()
 			return true
 		}
+	}
+
+	if keyCode == KeyEsc && c.dragCancel() {
+		return true
 	}
 
 	// Escape closes the top popup (a submenu closes before its menu) instead
@@ -1027,6 +1081,7 @@ func (c *Form) processTimer() {
 	}
 	c.topWidget.ProcessTimer()
 	c.tooltipProcessTimer()
+	c.toastsProcessTimer()
 
 	for _, popupWidget := range c.topWidget.PopupWidgets {
 		if popupWidget != nil {
@@ -1041,6 +1096,7 @@ func (c *Form) processTimer() {
 
 func (c *Form) processWindowMove(x, y int) {
 	c.tooltipHide()
+	c.layoutToasts()
 	// Popup windows don't move with the form
 	c.closePopups()
 	c.forceUpdate()

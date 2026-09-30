@@ -120,6 +120,14 @@ func go_on_mouse_up(hwnd windowId, button, x, y int) {
 	}
 }
 
+func go_on_files_dropped(hwnd windowId, files []string, x, y int) {
+	if win, ok := hwnds[hwnd]; ok && win.onFilesDropped != nil {
+		// Flip Y: see windowMouseMove.
+		_, areaH := win.requestClientAreaSize()
+		win.onFilesDropped(files, x, areaH-y)
+	}
+}
+
 func go_on_mouse_move(hwnd windowId, x, y int) {
 	if win, ok := hwnds[hwnd]; ok {
 		win.windowMouseMove(x, y)

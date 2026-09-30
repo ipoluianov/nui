@@ -40,6 +40,9 @@ type nativeWindowPlatform struct {
 	// modalOwner is the window ShowModal disabled, enabled again when this
 	// window closes (see releaseModalOwner)
 	modalOwner uintptr
+
+	// shownOnce is set by the first Show; a later Show brings a hidden window back
+	shownOnce bool
 }
 
 // ///////////////////////////////////////////////////
@@ -122,6 +125,7 @@ func createWindow(title string, posX int, posY int, width int, height int, cente
 	}
 
 	setDarkMode(hwnd, true)
+	c.enableFileDrop()
 
 	procSetTimer.Call(uintptr(c.hwnd), timerID1ms, 1, 0)
 
@@ -129,6 +133,12 @@ func createWindow(title string, posX int, posY int, width int, height int, cente
 }
 
 func (c *nativeWindow) Show() {
+	if c.platform.shownOnce {
+		procShowWindow.Call(uintptr(c.hwnd), c_SW_SHOW)
+		procSetForegroundWindow.Call(uintptr(c.hwnd))
+		return
+	}
+	c.platform.shownOnce = true
 	if c.showMaximized {
 		procShowWindow.Call(uintptr(c.hwnd), c_SW_SHOWMAXIMIZED)
 	} else {
@@ -136,6 +146,12 @@ func (c *nativeWindow) Show() {
 	}
 	procInvalidateRect.Call(uintptr(c.hwnd), 0, 0)
 	procUpdateWindow.Call(uintptr(c.hwnd))
+}
+
+// Hide hides the window and its taskbar button until the next Show. It
+// stays open meanwhile.
+func (c *nativeWindow) Hide() {
+	procShowWindow.Call(uintptr(c.hwnd), c_SW_HIDE)
 }
 
 func (c *nativeWindow) Update() {

@@ -12,7 +12,8 @@ import (
 // other goroutines. Update, Close and Exec may be called from any goroutine.
 type Window interface {
 	// Change window
-	Show()                   // Shows the window, non-modal; returns immediately
+	Show()                   // Shows the window, non-modal; returns immediately. Brings a hidden window back.
+	Hide()                   // Hides the window until the next Show; it stays open
 	ShowModal(parent Window) // Shows the window as a modal dialog owned by parent; returns immediately (blocks on macOS)
 	Update()                 // Updates the window content
 	Close() bool             // Closes the window
@@ -44,6 +45,10 @@ type Window interface {
 	// OnDeactivate is called when the window loses activation (keyboard
 	// focus): the user switched to another window or application
 	OnDeactivate(func())
+	// OnFilesDropped is called when files dragged from the system (e.g. from
+	// the file manager) are dropped on the window, at (x, y) in client
+	// coordinates
+	OnFilesDropped(func(files []string, x, y int))
 
 	// Window appearance
 	SetTitle(title string)

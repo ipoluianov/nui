@@ -81,6 +81,9 @@ type nativeWindowPlatform struct {
 	// enforce the block itself.
 	modalChildCount int32
 
+	// dnd is a drag from another application over the window, see dnd_linux.go
+	dnd dndState
+
 	// modalParent is the window this dialog was shown modally over (set by
 	// ShowModal), kept so doClose can decrement its modalChildCount and
 	// un-block it again once this dialog closes.
@@ -165,6 +168,7 @@ func openDisplay() uintptr {
 			panic("Unable to open X display")
 		}
 		xScreen = xDefaultScreen(xDisplay)
+		initXdndAtoms(xDisplay)
 	}
 	return xDisplay
 }
@@ -278,6 +282,7 @@ func createWindow(title string, posX int, posY int, width int, height int, cente
 
 	c.initCloseProtocol()
 	c.initWindowStateAtoms()
+	c.enableFileDrop()
 
 	return &c
 }
@@ -300,19 +305,27 @@ func (c *nativeWindow) initWindowStateAtoms() {
 	c.platform.netWMStateMaximizedVert = xInternAtom(display, "_NET_WM_STATE_MAXIMIZED_VERT", xFalse)
 }
 
-// Show maps the window; the event loop serves it from then on. Safe to call
-// more than once; only the first call does anything.
+// Show maps the window, on top of the others; the event loop serves it from
+// then on. Showing a shown window does nothing.
 func (c *nativeWindow) Show() {
 	if c.platform.shown || c.platform.closed {
 		return
 	}
 	c.platform.shown = true
 
-	xMapWindow(c.platform.display, c.platform.window)
+	xMapRaised(c.platform.display, c.platform.window)
 	xFlush(c.platform.display)
 }
 
+// Hide unmaps the window: it disappears, taskbar button and all, until the
+// next Show. It stays open meanwhile.
 func (c *nativeWindow) Hide() {
+	if !c.platform.shown || c.platform.closed {
+		return
+	}
+	c.platform.shown = false
+	xUnmapWindow(c.platform.display, c.platform.window)
+	xFlush(c.platform.display)
 }
 
 // Update asks to paint the window: the event loop paints it once the pending
@@ -476,7 +489,7 @@ func (c *nativeWindow) processEvent(event *xEvent) {
 		// the _MOTIF_WM_HINTS decorations bits for button visibility
 		// on every theme, undo the effect directly: re-map right
 		// away instead of trying to prevent the click itself.
-		if !c.platform.allowMinimize && !c.platform.closed && atomic.LoadInt32(&c.platform.closeRequested) == 0 {
+		if !c.platform.allowMinimize && c.platform.shown && !c.platform.closed && atomic.LoadInt32(&c.platform.closeRequested) == 0 {
 			xMapWindow(c.platform.display, c.platform.window)
 			xFlush(c.platform.display)
 		}
@@ -693,6 +706,9 @@ func (c *nativeWindow) processEvent(event *xEvent) {
 
 	case xClientMessage:
 		xclient := (*xClientMessageEvent)(unsafe.Pointer(event))
+		if c.processXdnd(xclient) {
+			break
+		}
 		data0 := xclient.dataLong(0)
 
 		if xclient.MessageType == c.platform.wmProtocols &&
@@ -716,6 +732,9 @@ func (c *nativeWindow) processEvent(event *xEvent) {
 				c.Close()
 			}
 		}
+
+	case xSelectionNotify:
+		c.processXdndSelection((*xSelectionEvent)(unsafe.Pointer(event)))
 
 	case xPropertyNotify:
 		propEvent := (*xPropertyEvent)(unsafe.Pointer(event))

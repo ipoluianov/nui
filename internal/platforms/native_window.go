@@ -54,6 +54,14 @@ type nativeWindow struct {
 	onCloseRequest func() bool
 	onTimer        func()
 	onDeactivate   func()
+	onFilesDropped func(files []string, x, y int)
+}
+
+// OnFilesDropped sets the function called when files dragged from the system
+// (e.g. from the file manager) are dropped on the window; x, y is the point in
+// client coordinates.
+func (c *nativeWindow) OnFilesDropped(f func(files []string, x, y int)) {
+	c.onFilesDropped = f
 }
 
 func (c *nativeWindow) OnKeyDown(f func(keyCode Key, mods KeyModifiers) bool) {

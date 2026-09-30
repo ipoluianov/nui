@@ -80,6 +80,7 @@ const (
 	c_CW_USEDEFAULT       = 0x80000000
 
 	c_SW_HIDE          = 0
+	c_SW_SHOW          = 5
 	c_SW_SHOWNORMAL    = 1
 	c_SW_SHOWMINIMIZED = 2
 	c_SW_SHOWMAXIMIZED = 3
@@ -433,6 +434,14 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 			win.onDeactivate()
 		}
 		// No return: DefWindowProc sets the keyboard focus on activation
+
+	case c_WM_DROPFILES:
+		if win != nil {
+			win.processDropFiles(wParam)
+		} else {
+			procDragFinish.Call(wParam)
+		}
+		return 0
 
 	case c_WM_NUI_CREATE_POPUP:
 		// Popups are created on their owner's thread (see createPopupWindow)

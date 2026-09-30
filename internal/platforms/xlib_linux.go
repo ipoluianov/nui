@@ -361,6 +361,7 @@ var (
 	xIconifyWindow        func(display, window uintptr, screenNumber int32) int32
 	xBell                 func(display uintptr, percent int32) int32
 	xInitThreads          func() int32
+	xConvertSelection     func(display, selection, target, property, requestor, time uintptr) int32
 	xMapRaised            func(display, window uintptr) int32
 	xUnmapWindow          func(display, window uintptr) int32
 
@@ -455,6 +456,7 @@ func init() {
 	purego.RegisterLibFunc(&xIconifyWindow, libX11, "XIconifyWindow")
 	purego.RegisterLibFunc(&xBell, libX11, "XBell")
 	purego.RegisterLibFunc(&xInitThreads, libX11, "XInitThreads")
+	purego.RegisterLibFunc(&xConvertSelection, libX11, "XConvertSelection")
 	purego.RegisterLibFunc(&xMapRaised, libX11, "XMapRaised")
 	purego.RegisterLibFunc(&xUnmapWindow, libX11, "XUnmapWindow")
 

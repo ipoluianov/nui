@@ -16,6 +16,7 @@ Short reference for `ui` controls. Code snippets are intentionally minimal—see
 - [GroupBox](content/groupbox.md)
 - [ScrollArea](content/scrollarea.md)
 - [TabWidget](content/tabwidget.md)
+- [Expander and Accordion](content/expander.md)
 - [Splitter](content/splitter.md)
 - [Space](content/space.md)
 - [HSpacer](content/hspacer.md)
@@ -44,6 +45,7 @@ Short reference for `ui` controls. Code snippets are intentionally minimal—see
 ## Data & visualization
 
 - [Table](content/table.md)
+- [PropertyGrid](content/propertygrid.md)
 - [TreeView](content/treeview.md)
 - [ProgressBar](content/progressbar.md)
 - [Chart](content/chart.md)
@@ -57,7 +59,10 @@ Short reference for `ui` controls. Code snippets are intentionally minimal—see
 - [QuestionMessageBox](content/question_messagebox.md)
 - [EnterStringDialog](content/enter_string_dialog.md)
 - [AboutDialog](content/about_dialog.md)
+- [Toasts](content/toast.md)
 
 ## Misc
 
 - [Timer](content/timer.md)
+- [Drag and drop](content/dragdrop.md)
+- [TrayIcon](content/trayicon.md)
