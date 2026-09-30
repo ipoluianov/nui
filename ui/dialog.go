@@ -16,9 +16,10 @@ func (c *DialogContent) InitWidget() {
 	c.Widget.InitWidget()
 }
 
-// RunInParent runs f on the goroutine of the window the dialog was shown over.
-// Use it for the dialog's result callbacks: they change the widgets of that
-// window, which must not be touched from the dialog's own goroutine (see Form.Invoke).
+// RunInParent runs f after the current handler of the dialog returns, then
+// updates the window the dialog was shown over. Use it for the dialog's result
+// callbacks: they run once the dialog is closed, and the parent is repainted
+// with the changes they made (see Form.Invoke).
 // Read what f needs from the dialog's widgets before calling RunInParent.
 func (c *DialogContent) RunInParent(f func()) {
 	if f == nil {
@@ -57,7 +58,6 @@ func (c *Widget) ShowDialog(centralWidget Widgeter) {
 	}
 	// The show handler sets the size, title and focus: it runs before the window
 	// is created, so the dialog appears at once as it should, without resizing
-	// (and no other goroutine handles the dialog yet)
 	form.parentForm = c.form
 	if w, ok := centralWidget.(Dialoger); ok {
 		w.onDialogShow()

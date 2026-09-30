@@ -3,7 +3,6 @@ package platforms
 import (
 	"image"
 	"image/color"
-	"sync"
 
 	"github.com/ipoluianov/nui/internal/canvas"
 )
@@ -46,9 +45,15 @@ func makeDefaultIcon() *image.RGBA {
 	return icon
 }
 
+// CreateWindow creates a hidden window. Windows live on the UI thread: called
+// from another goroutine, it creates the window there and waits for it (see
+// RunOnUIThread).
 func CreateWindow(title string, posX int, posY int, width int, height int, center bool, maximized bool) Window {
-	w := createWindow(title, posX, posY, width, height, center, maximized)
-	w.SetAppIcon(makeDefaultIcon())
+	var w *nativeWindow
+	RunOnUIThread(func() {
+		w = createWindow(title, posX, posY, width, height, center, maximized)
+		w.SetAppIcon(makeDefaultIcon())
+	})
 	return w
 }
 
@@ -57,31 +62,18 @@ func CreateDefaultWindow() Window {
 	return w
 }
 
-// Run shows each window and blocks until all of them have been closed.
-// Additional windows created later (e.g. from a callback) don't need Run at
-// all: Show() (or ShowModal()) already makes a window live entirely on its
-// own, hiding whatever goroutine it needs internally - call Exec() yourself
-// afterward only if you specifically need to block until that window closes.
+// Run shows the windows and runs the event loop until all of them are
+// closed. Call it from the main goroutine: the event loop of every window -
+// these ones and the ones opened later, e.g. from a callback - runs on the UI
+// thread (the main OS thread), and so does every window callback.
 //
-// The first window's Show()/Exec() run on the calling goroutine rather than
-// a spawned one: on Cocoa the real event loop must start on the process's
-// original thread, so callers must never wrap their first Run() call in
-// `go` themselves.
+// Windows opened later need no Run of their own: Show() is enough, the
+// running event loop serves them too.
 func Run(windows ...Window) {
-	if len(windows) == 0 {
-		return
+	for _, w := range windows {
+		w.Show()
 	}
-
-	var wg sync.WaitGroup
-	for _, w := range windows[1:] {
-		wg.Add(1)
-		go func(w Window) {
-			defer wg.Done()
-			w.Show()
-			w.Exec()
-		}(w)
+	for _, w := range windows {
+		w.Exec()
 	}
-	windows[0].Show()
-	windows[0].Exec()
-	wg.Wait()
 }

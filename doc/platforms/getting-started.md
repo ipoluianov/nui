@@ -39,7 +39,7 @@ func main() {
 }
 ```
 
-`Exec()` shows the window and blocks the calling goroutine, running the event loop until the window is closed.
+`Exec()` shows the window and runs the event loop until the window is closed. Call it from the main goroutine: all windows and their callbacks live on the UI thread, the main OS thread (see [multi-window.md](multi-window.md)).
 
 ## Window with drawing and input
 

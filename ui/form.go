@@ -73,10 +73,6 @@ type Form struct {
 	// OnDialogShow resizes the dialog to fit its actual content.
 	parentForm *Form
 
-	// Functions to run on the goroutine of this form, see Invoke
-	invokeMtx   sync.Mutex
-	invokeQueue []func()
-
 	acceptButton *Button // The button that is triggered when the user accepts the form (e.g., presses Enter)
 	cancelButton *Button // The button that is triggered when the user cancels the form (e.g., presses Esc)
 
@@ -89,8 +85,9 @@ type Form struct {
 
 var nextWidgetId int64
 
-// allwidgets holds the widgets of all the forms by ID. Each form is handled by
-// its own goroutine, so the map is locked: an unlocked concurrent access is a fatal error.
+// allwidgets holds the widgets of all the forms by ID. The forms all live on
+// the UI thread, but widgets may be created on other goroutines too (e.g. a
+// form built before it is shown), so the map is locked.
 var (
 	allwidgetsMtx sync.RWMutex
 	allwidgets    map[string]Widgeter
@@ -186,7 +183,7 @@ func (c *Form) Beep() {
 }
 
 // ShowSaveFileDialog shows the system "Save File" dialog without blocking the form
-// and calls onResult on the form's goroutine: path is "" when the user cancelled.
+// and calls onResult on the UI thread: path is "" when the user cancelled.
 func (c *Form) ShowSaveFileDialog(opts platforms.SaveFileDialogOptions, onResult func(path string, err error)) {
 	go func() {
 		path, err := platforms.SaveFileDialog(c.wnd, opts)
@@ -281,11 +278,16 @@ func (c *Form) CloseTopPopup() {
 }
 
 // Close closes the window at once, without calling OnClose - the same on
-// every platform. It may be called from any goroutine. A window that has a
-// modal dialog open closes as soon as the dialog does.
+// every platform. It may be called from any goroutine (off the UI thread it
+// is handed over to it, see Invoke). A window that has a modal dialog open
+// closes as soon as the dialog does.
 // To close the window as if the user clicked its close button, so OnClose
 // can veto it, use RequestClose.
 func (c *Form) Close() {
+	if !platforms.IsUIThread() {
+		platforms.Post(c.Close)
+		return
+	}
 	c.tooltipClose()
 	c.destroyPopupWindows()
 	if c.wnd != nil {
@@ -299,8 +301,8 @@ func (c *Form) Close() {
 
 // RequestClose closes the window as if the user clicked its close button:
 // OnClose is called first and may keep the window open.
-// Returns true if the window is closed. Call it on the form's goroutine
-// (e.g. from its widgets' handlers or via Invoke), like OnClose itself runs.
+// Returns true if the window is closed. Call it on the UI thread (e.g. from
+// a handler or via Invoke), like OnClose itself runs.
 func (c *Form) RequestClose() bool {
 	if !c.processWindowClose() {
 		return false
@@ -489,23 +491,33 @@ func (c *Form) createWindow(maximized bool) {
 	registerOpenForm(c)
 }
 
+// Show opens the form as a non-modal window and returns at once. The window
+// lives on the UI thread: called from another goroutine, Show opens it there
+// and waits for it (see InvokeSync).
 func (c *Form) Show() {
-	c.createWindow(false)
-	c.wnd.Show()
-	c.processResize(c.width, c.height)
+	platforms.RunOnUIThread(func() {
+		c.createWindow(false)
+		c.wnd.Show()
+		c.processResize(c.width, c.height)
+	})
 }
 
+// ShowModal opens the form as a modal dialog over parent, which gets no input
+// until the dialog is closed. It returns at once (on macOS, once the dialog
+// is closed). Like Show, it opens the window on the UI thread.
 func (c *Form) ShowModal(parent *Form) {
 	if parent == nil {
 		panic("parent form cannot be nil for ShowModal")
 	}
-	c.parentForm = parent
-	if c.posX < 0 && c.posY < 0 {
-		c.centerOnForm(parent)
-	}
-	c.createWindow(false)
-	c.wnd.ShowModal(parent.wnd)
-	c.processResize(c.width, c.height)
+	platforms.RunOnUIThread(func() {
+		c.parentForm = parent
+		if c.posX < 0 && c.posY < 0 {
+			c.centerOnForm(parent)
+		}
+		c.createWindow(false)
+		c.wnd.ShowModal(parent.wnd)
+		c.processResize(c.width, c.height)
+	})
 }
 
 // centerOnForm positions the window at the center of the given parent form.
@@ -536,12 +548,23 @@ func (c *Form) MoveToCenterOfParent() {
 }
 
 func (c *Form) ShowMaximized() {
-	c.createWindow(true)
-	c.wnd.Show()
-	c.wnd.MaximizeWindow()
-	c.processResize(c.width, c.height)
+	platforms.RunOnUIThread(func() {
+		c.createWindow(true)
+		c.wnd.Show()
+		c.wnd.MaximizeWindow()
+		c.processResize(c.width, c.height)
+	})
 }
 
+// Exec waits until the form is closed. Called from the main goroutine (the
+// UI thread), it runs the event loop of all the forms meanwhile - this is how
+// a program runs its main form:
+//
+//	form.Show()
+//	form.Exec()
+//
+// Called from a handler, it runs a nested event loop, so the other forms keep
+// working. Called from another goroutine, it just waits.
 func (c *Form) Exec() {
 	if c.wnd == nil {
 		panic("window is not created. Call Show or ShowModal first")
@@ -974,18 +997,18 @@ func (c *Form) processMouseWheel(deltaX int, deltaY int) {
 	c.Update()
 }
 
-// Invoke runs f on the goroutine that handles this form, on its next timer tick
-// (about 10ms later). Each window has its own goroutine, so code that changes
-// the widgets of this form from another window - e.g. a callback of a dialog
-// shown over it - must go through Invoke: changing widgets while this form
-// paints them would crash with a concurrent map access. Safe to call from any goroutine.
+// Invoke runs f on the UI thread, then updates the form, and returns at once.
+// Safe to call from any goroutine: it is how a background goroutine changes
+// the widgets of the form. Called on the UI thread, f runs after the current
+// handler. See also the package-level Invoke.
 func (c *Form) Invoke(f func()) {
 	if c == nil || f == nil {
 		return
 	}
-	c.invokeMtx.Lock()
-	c.invokeQueue = append(c.invokeQueue, f)
-	c.invokeMtx.Unlock()
+	platforms.Post(func() {
+		f()
+		c.Update()
+	})
 }
 
 // ParentForm returns the form this one was shown modally over, nil if none
@@ -993,22 +1016,7 @@ func (c *Form) ParentForm() *Form {
 	return c.parentForm
 }
 
-func (c *Form) runInvoked() {
-	c.invokeMtx.Lock()
-	queue := c.invokeQueue
-	c.invokeQueue = nil
-	c.invokeMtx.Unlock()
-	for _, f := range queue {
-		f()
-	}
-	if len(queue) > 0 {
-		c.Update()
-	}
-}
-
 func (c *Form) processTimer() {
-	c.runInvoked()
-
 	if time.Since(c.lastFreeMemoryTime) > 30*time.Second {
 		c.freeMemory()
 		c.lastFreeMemoryTime = time.Now()

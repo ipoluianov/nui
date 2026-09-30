@@ -13,9 +13,9 @@ import (
 )
 
 // Font registry. Each font file is parsed once, when registered. Faces (a
-// font at a size) are cached; a face isn't safe for concurrent use and forms
-// paint on their own goroutines, so every use of a face holds its mutex (see
-// withFace).
+// font at a size) are cached; a face isn't safe for concurrent use and text
+// may be measured off the UI thread too (e.g. while a form is built), so every
+// use of a face holds its mutex (see withFace).
 //
 // A face falls back to other fonts for the characters its own font doesn't
 // have (see AddFallbackFont), e.g. to a Chinese font for Chinese text.

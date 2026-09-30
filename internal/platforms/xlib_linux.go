@@ -463,7 +463,8 @@ func init() {
 	purego.RegisterLibFunc(&libcFree, libc, "free")
 
 	libcSetlocale(xLCAll, "")
-	// Required before any Xlib call once multiple windows run their event loops on separate goroutines.
+	// The event loop runs on the UI thread only; this keeps Xlib safe should
+	// a call still come from another goroutine.
 	xInitThreads()
 
 	if h, err := dlopenFirst("libXinerama.so.1", "libXinerama.so"); err == nil {

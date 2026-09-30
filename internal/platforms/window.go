@@ -5,13 +5,18 @@ import (
 	"image/color"
 )
 
+// Window is a native window. All the windows live on the UI thread (the main
+// OS thread): its event loop serves them all and calls every callback there,
+// so callbacks of different windows never run concurrently. Call the methods
+// on the UI thread too - from the callbacks, or via Post/RunOnUIThread from
+// other goroutines. Update, Close and Exec may be called from any goroutine.
 type Window interface {
 	// Change window
 	Show()                   // Shows the window, non-modal; returns immediately
-	ShowModal(parent Window) // Shows the window as a modal dialog owned by parent; returns immediately
+	ShowModal(parent Window) // Shows the window as a modal dialog owned by parent; returns immediately (blocks on macOS)
 	Update()                 // Updates the window content
 	Close() bool             // Closes the window
-	Exec()                   // Waits for the window to close
+	Exec()                   // Waits for the window to close, running the event loop on the UI thread
 
 	SystemHandle() any
 

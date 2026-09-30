@@ -16,12 +16,11 @@ win := platforms.CreateDefaultWindow() platforms.Window // title "App", 800x600,
 ## Running the event loop
 
 ```go
-win.Exec()      // Show() + EventLoop(), blocks current goroutine until closed
-win.Show()      // shows the window
-win.EventLoop() // blocks current goroutine, pumps events until closed
+win.Show() // shows the window, returns at once
+win.Exec() // shows the window and runs the event loop until it is closed
 ```
 
-Run one window per goroutine. See [multi-window.md](multi-window.md) for running several windows.
+Call `Exec()` (or `platforms.Run`) from the main goroutine: the event loop of all the windows runs on the UI thread, the main OS thread. See [multi-window.md](multi-window.md) for running several windows.
 
 ## Closing
 
@@ -29,7 +28,7 @@ Run one window per goroutine. See [multi-window.md](multi-window.md) for running
 win.Close()
 ```
 
-Safe to call from any goroutine (including from another window's callback). Does not block. Closes the window without calling `OnCloseRequest` - on every platform. If the window has a modal dialog open, it closes as soon as the dialog does.
+Safe to call from any goroutine. Does not block. Closes the window without calling `OnCloseRequest` - on every platform. If the window has a modal dialog open, it closes as soon as the dialog does.
 
 ```go
 win.OnCloseRequest(func() bool {
@@ -100,7 +99,7 @@ win.OnCloseRequest(func() bool)
 win.OnTimer(func()) // fires every ~10ms while the window is open
 ```
 
-All callbacks run on the goroutine that is executing that window's `EventLoop()`/`Exec()`. Do not block inside them.
+All callbacks of all windows run on the UI thread, one at a time. Do not block inside them: that freezes every window. From other goroutines, use `platforms.Post(f)` to run code on the UI thread.
 
 ## Modal dialogs
 
@@ -115,4 +114,4 @@ dlg.OnKeyDown(func(k platforms.Key, m platforms.KeyModifiers) bool {
 dlg.ShowModal(parentWin)
 ```
 
-`ShowModal` returns immediately (non-blocking); the dialog runs on its own goroutine. The window manager blocks input to `parentWin` while the dialog is open (parent keeps repainting/timers). See [multi-window.md](multi-window.md).
+`ShowModal` returns immediately (non-blocking, except on macOS); the event loop serves the dialog like any other window. Input to `parentWin` is blocked while the dialog is open (parent keeps repainting/timers). See [multi-window.md](multi-window.md).

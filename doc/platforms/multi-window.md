@@ -1,36 +1,43 @@
 # Multiple windows and threading rules
 
+## One UI thread
+
+All windows live on the **UI thread**: the main OS thread, where `main()` runs (the library locks the main goroutine to it at startup). A single event loop on that thread serves every window, and every callback (`OnPaint`, `OnKeyDown`, `OnTimer`, ...) of every window is called there, **one at a time**. This works the same on Linux, Windows and macOS.
+
+As a result, a callback of one window can use another window's methods, and state shared between the callbacks of different windows needs no locking.
+
 ## Running several windows
 
 ```go
 win1 := platforms.CreateWindow("Window 1", 100, 100, 500, 300, true, false)
 win2 := platforms.CreateWindow("Window 2", 650, 100, 500, 300, true, false)
 
-platforms.Run(win1, win2) // blocks until ALL windows are closed
+platforms.Run(win1, win2) // shows both, blocks until ALL of them are closed
 ```
 
-`platforms.Run` runs the first window's `Exec()` on the calling goroutine and starts one goroutine per remaining window (`go win.Exec()`), then waits for all to finish. Equivalent manual form:
+Call `Run` (or `Exec`) from the main goroutine: that is what runs the event loop. Equivalent manual form:
 
 ```go
-go win1.Exec()
-go win2.Exec()
-// ... wait yourself, e.g. sync.WaitGroup
+win1.Show()
+win2.Show()
+win1.Exec() // runs the event loop until win1 is closed
+win2.Exec() // then until win2 is closed (returns at once if it already is)
 ```
 
-Opening a window later (e.g. from a button click) works the same way:
+Opening a window later, e.g. from a callback, needs only `Show()`: the running event loop serves it too.
 
 ```go
 win.OnKeyDown(func(k platforms.Key, m platforms.KeyModifiers) bool {
 	if k == platforms.KeyN {
 		other := platforms.CreateWindow("New window", 0, 0, 300, 150, true, false)
 		other.OnPaint(...)
-		go other.Exec()
+		other.Show()
 	}
 	return true
 })
 ```
 
-Note: the very *first* window's `Exec()` (or your `platforms.Run(...)` call) must never be wrapped in `go` — on macOS the real event loop has to start on the process's original goroutine/thread.
+`Exec()` called from a callback runs a nested event loop until that window is closed; the other windows keep working meanwhile.
 
 ## Modal dialogs
 
@@ -38,29 +45,29 @@ Note: the very *first* window's `Exec()` (or your `platforms.Run(...)` call) mus
 dlg.ShowModal(parentWin)
 ```
 
-Non-blocking on Linux/Windows: `parentWin`'s own event loop, timers and repaint keep running.
+Non-blocking on Linux/Windows: `parentWin` keeps repainting and running its timer, but gets no input while `dlg` is open.
 
-- Linux: sets `WM_TRANSIENT_FOR` + `_NET_WM_STATE_MODAL`; the window manager blocks mouse/keyboard input to `parentWin` while `dlg` is open (GNOME/KDE; not enforced by all window managers, e.g. openbox).
-- macOS: runs `dlg` as an app-modal window (`NSApp runModalForWindow:`). This **blocks the calling goroutine** until `dlg` closes (unlike other platforms) — nesting a modal session must happen synchronously on the call stack for modal-on-modal to work reliably on Cocoa; a deferred/async call let an intermediate dialog stay key and clickable. It also blocks input to **all** of the app's windows, not just `parentWin` — Cocoa has no native "block only this one parent" dialog style that keeps its own title bar. Parent timers/repaint still run since all windows share one process-wide run loop.
-- Windows: not implemented yet (behaves like a non-modal window).
+- Linux: sets `WM_TRANSIENT_FOR` + `_NET_WM_STATE_MODAL`. The event loop also drops `parentWin`'s mouse/keyboard events itself, since not every window manager blocks pointer input.
+- Windows: `dlg` is owned by `parentWin`, which is disabled until `dlg` closes.
+- macOS: runs `dlg` as an app-modal window (`NSApp runModalForWindow:`). This **blocks the caller** until `dlg` closes: nesting a modal session must happen synchronously on the call stack for modal-on-modal to work reliably on Cocoa. It also blocks input to **all** of the app's windows, not just `parentWin`. Parent timers/repaint still run.
 
-## Threading rules (must follow)
+## Threading rules
 
-1. **One goroutine per window.** Never call `Exec()`/`EventLoop()`/`Show()` for the same window twice or from two goroutines at once.
-2. **Call a window's own methods/setters only from that window's own callbacks** (its `On*` handlers), or before its `Exec()`/goroutine has started. Do not call `win2.SetTitle(...)`, `win2.Resize(...)`, etc. from inside `win1`'s callback.
-3. **Exception: `Close()`.** `win.Close()` is safe to call from any goroutine, including another window's callback (e.g. a parent closing a child dialog). It only requests the close; the actual teardown always runs on the window's own event-loop goroutine (on Windows a call from another thread is posted to the window's thread, since `DestroyWindow` works only there).
-4. **Don't block inside callbacks** (`OnPaint`, `OnKeyDown`, `OnTimer`, ...). A blocked callback freezes that window's repaint/timer/input until it returns. Long work belongs on its own goroutine; hand results back via a channel and call `win.Update()`.
-5. **Shared state read/written from multiple windows' callbacks needs your own synchronization** (mutex/channel) — the library does not add any for you.
+1. **Call window methods on the UI thread**: from any window's callbacks, or before the event loop starts.
+2. **Other goroutines hand work over to the UI thread**:
+   - `platforms.Post(f)` runs `f` on the UI thread and returns at once. Called on the UI thread itself, `f` runs after the current callback.
+   - `platforms.RunOnUIThread(f)` runs `f` on the UI thread and waits for it to return. Don't use it from a goroutine the UI thread is waiting for: that deadlocks.
+   - `platforms.IsUIThread()` tells whether the caller is on the UI thread.
+   - `CreateWindow` does the hand-over itself.
+3. **Exceptions: `Update()`, `Close()` and `Exec()`** are safe from any goroutine.
+   - `Close()` only requests the close. Off the UI thread it is handed over to it.
+   - `Exec()` called from another goroutine just waits for the window to close.
+4. **Don't block inside callbacks.** A blocked callback freezes *all* windows, since they share one thread. Long work belongs on its own goroutine; hand the results back with `Post`.
 
-## Why this works safely on Linux (X11)
+At the `ui` level, `ui.Invoke(f)` / `form.Invoke(f)` / `ui.InvokeSync(f)` are the same hand-over. `Form.Show`/`ShowModal` may be called from any goroutine: they open the window on the UI thread.
 
-- Each window opens its own X11 `Display` connection; `XInitThreads()` is called once at startup, so Xlib supports being driven from independent goroutines/threads.
-- Each window has its own paint buffer — no shared global framebuffer between windows.
-- `Close()` defers the actual `XDestroyWindow`/`XCloseDisplay` to the window's own event-loop goroutine, so a cross-window `Close()` call can never race with that window's own event pump.
+## How it works per platform
 
-## Why this works safely on macOS (Cocoa)
-
-- Unlike X11/Win32, there is exactly **one** `NSApplication` / one `[NSApp run]` loop for the whole process, shared by every window, and it must start on the process's original ("main") OS thread.
-- Only the first window to reach `EventLoop()` actually calls `[NSApp run]`; every later window (secondary window or modal dialog) just registers/shows itself and returns immediately — the already-running shared loop services it too. This is why `platforms.Run()`'s first window must run on the calling goroutine instead of a spawned one (see above).
-- `ShowModal` doesn't spawn its own event loop: it shows the dialog and calls `NSApp runModalForWindow:` synchronously, right there on the calling goroutine, nesting a new modal session directly on the call stack — the only reliable way to stack a modal on top of another already-open modal on Cocoa. That call is what actually restricts input to the dialog until it's closed, and it's why `ShowModal` blocks its caller on macOS (see above).
-
+- **Linux (X11)**: all windows and popups share one X `Display` connection. The event loop waits on the X connection and on a pipe; `Post` writes to the pipe to wake it. The loop dispatches each X event to its window by id, then runs the timers and paints the windows that asked for it.
+- **Windows**: every HWND is created on the UI thread, so a single `GetMessage` loop there gets the messages of all of them. `Post` sends a message to a hidden message-only window of the UI thread. Unlike a thread message, it isn't lost while a system modal loop runs (moving a window, a system dialog).
+- **macOS (Cocoa)**: there is one `NSApplication` run loop for the process, on the main thread. The first `Exec()` starts it and later ones return at once. `Post` goes to the main dispatch queue.

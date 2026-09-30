@@ -14,9 +14,8 @@ const (
 )
 
 // popupWindow is an override-redirect X11 window: the window manager doesn't
-// decorate, place or focus it. It lives on its owner's Display, so the
-// owner's pumpEvents delivers its events (see processEvent) and no extra
-// connection or goroutine is needed.
+// decorate, place or focus it. It lives on the shared Display, so the event
+// loop delivers its events (see processEvent) like the ones of the windows.
 type popupWindow struct {
 	popupCallbacks
 
@@ -98,8 +97,7 @@ func getPopupByWindow(window uintptr) *popupWindow {
 	return popups[window]
 }
 
-// closePopupsOf forgets the owner's popups right before its Display is
-// closed; closing the Display destroys their X windows.
+// closePopupsOf destroys the owner's popups right before the owner is closed
 func closePopupsOf(owner *nativeWindow) {
 	popupsMu.Lock()
 	defer popupsMu.Unlock()
@@ -107,11 +105,12 @@ func closePopupsOf(owner *nativeWindow) {
 		if p.owner == owner {
 			p.closed = true
 			delete(popups, window)
+			xDestroyWindow(p.display, window)
 		}
 	}
 }
 
-// processEvent runs on the owner's pumpEvents goroutine.
+// processEvent runs on the UI thread, from the event loop.
 func (p *popupWindow) processEvent(event *xEvent) {
 	switch event.eventType() {
 	case xExpose:

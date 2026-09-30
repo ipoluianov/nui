@@ -18,8 +18,9 @@ const (
 	messageBoxChromeHeight = 120
 )
 
-// runOnParent runs a message box callback on the goroutine of the parent window,
-// which owns the widgets the callback usually changes (see Form.Invoke)
+// runOnParent runs a message box callback once the message box is closed,
+// then updates the parent window, whose widgets the callback usually changes
+// (see Form.Invoke)
 func runOnParent(parentWidget Widgeter, f func()) {
 	if f == nil {
 		return

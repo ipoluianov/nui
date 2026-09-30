@@ -119,7 +119,7 @@ const (
 	c_WM_CLOSE   = 0x0010
 	c_WM_DESTROY = 0x0002
 
-	// c_WM_NUI_CLOSE asks the window thread to destroy the window (see nativeWindow.Close)
+	// c_WM_NUI_CLOSE asks the UI thread to destroy the window (see nativeWindow.Close)
 	c_WM_NUI_CLOSE = c_WM_APP + 2
 
 	c_WM_KEYDOWN = 0x0100
@@ -443,7 +443,13 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 		appWindowsMu.Lock()
 		delete(app.windows, windowId(hwnd))
 		appWindowsMu.Unlock()
-		procPostQuitMessage.Call(0)
+		// The message loop is shared by all the windows and keeps running;
+		// only the loops and goroutines waiting for this window end (see Exec)
+		if win != nil && !win.platform.closed {
+			win.releaseModalOwner()
+			win.platform.closed = true
+			close(win.platform.done)
+		}
 		return 0
 
 	case c_WM_KEYDOWN:
@@ -723,7 +729,11 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 		return 0
 
 	case c_WM_NUI_CLOSE:
-		procDestroyWindow.Call(uintptr(hwnd))
+		if win != nil {
+			win.destroy()
+		} else {
+			procDestroyWindow.Call(uintptr(hwnd))
+		}
 		return 0
 
 	case c_WM_CLOSE:
@@ -732,6 +742,9 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 			if !allow {
 				return 0
 			}
+		}
+		if win != nil {
+			win.releaseModalOwner()
 		}
 		procDefWindowProcW.Call(uintptr(hwnd), uintptr(msg), wParam, lParam)
 		return 0

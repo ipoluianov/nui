@@ -9,7 +9,7 @@ Native GUI library for Go. Windows, keyboard, mouse, 2D canvas. Talks to OS nati
 
 - [getting-started.md](getting-started.md) — build, run, minimal app
 - [window.md](window.md) — `Window` interface: creation, properties, events
-- [multi-window.md](multi-window.md) — multiple windows, modal dialogs, goroutine rules
+- [multi-window.md](multi-window.md) — multiple windows, modal dialogs, the UI thread
 - [canvas.md](canvas.md) — 2D drawing API (`internal/canvas`)
 - [keyboard.md](keyboard.md) — key codes
 - [mouse.md](mouse.md) — mouse buttons/cursors

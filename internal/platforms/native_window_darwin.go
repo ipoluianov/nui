@@ -128,12 +128,10 @@ func (c *nativeWindow) Update() {
 	updateWindow(c.hwnd)
 }
 
-// Exec waits for windows to close, but on Cocoa (unlike Linux/Windows) that
-// means running the ONE shared NSApplication run loop for the whole process,
-// not this specific window: the first caller starts and blocks on it for as
-// long as the app has any window open; later callers (other windows'
-// goroutines) just return immediately since that shared loop already
-// services their window too.
+// Exec runs the ONE shared NSApplication run loop for the whole process, not
+// just this window's: the first caller starts and blocks on it for as long
+// as the app runs; later callers just return immediately since that shared
+// loop already services their window too.
 func (c *nativeWindow) Exec() {
 	if atomic.CompareAndSwapInt32(&eventLoopStarted, 0, 1) {
 		runEventLoop()
