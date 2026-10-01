@@ -14,6 +14,10 @@ const (
 	// Every button has a lighter bottom edge so it stands out from the toolbar
 	toolButtonEdgeWidth = 2
 	toolButtonEdgeLift  = 8
+
+	// A flat button's background is a rounded rectangle this far inside its edges
+	toolButtonFlatInset  = 3
+	toolButtonFlatRadius = 6
 )
 
 // ToolButton is a fixed-size image button for toolbars.
@@ -21,13 +25,15 @@ const (
 // On top of ButtonImage it has:
 //   - a disabled state: a grayed-out copy of the image is shown and clicks are ignored;
 //   - a checked state for toggles: a lighter background and a bright bar along the bottom;
-//   - a lighter bottom edge, so the buttons stand out from the toolbar.
+//   - a lighter bottom edge, so the buttons stand out from the toolbar;
+//   - a flat look (SetFlat): just the image, without the box.
 type ToolButton struct {
 	ButtonImage
 
 	img         image.Image
 	imgDisabled image.Image
 	checked     bool
+	flat        bool
 	highlight   color.Color
 	onClick     func()
 }
@@ -104,6 +110,49 @@ func (c *ToolButton) SetChecked(checked bool) {
 	c.form.Update()
 }
 
+// SetFlat draws the button without its box: just the image, on a soft
+// rounded background while the mouse is over it, it is pressed or checked.
+// A row of flat buttons makes a light toolbar.
+func (c *ToolButton) SetFlat(flat bool) {
+	if c.flat == flat {
+		return
+	}
+	c.flat = flat
+	if flat {
+		c.SetOnPaint(c.drawFlat)
+	} else {
+		c.SetOnPaint(c.draw)
+	}
+	c.form.Update()
+}
+
+func (c *ToolButton) IsFlat() bool {
+	return c.flat
+}
+
+func (c *ToolButton) drawFlat(cnv *Canvas) {
+	backColor := colorToRGBA(c.BackgroundColor())
+	textColor := colorToRGBA(c.ForegroundColor())
+	var fill color.Color
+	switch {
+	case c.pressed && c.Enabled():
+		fill = pressedColor(backColor, textColor)
+	case c.IsHovered() && c.Enabled():
+		fill = hoverColor(backColor, textColor)
+	case c.checked:
+		fill = c.BackgroundColorWithAddElevation(toolButtonCheckedLift)
+	}
+	if fill != nil {
+		cnv.SetColor(fill)
+		cnv.FillRoundedRect(toolButtonFlatInset, toolButtonFlatInset,
+			c.Width()-toolButtonFlatInset*2, c.Height()-toolButtonFlatInset*2, toolButtonFlatRadius)
+	}
+	if c.ButtonImage.img != nil {
+		x, y := c.imagePosition()
+		cnv.DrawImage(x, y, c.ButtonImage.img)
+	}
+}
+
 // SetHighlight draws the bottom bar in the color to draw attention to the button,
 // e.g. the action to start with. nil returns the usual look.
 func (c *ToolButton) SetHighlight(col color.Color) {
@@ -116,6 +165,10 @@ func (c *ToolButton) SetHighlight(col color.Color) {
 
 // drawBottomEdge draws the lighter bottom edge, or a bright bar when the button is checked or highlighted
 func (c *ToolButton) drawBottomEdge(cnv *Canvas) {
+	if c.flat {
+		c.drawFlatMark(cnv)
+		return
+	}
 	if c.checked {
 		cnv.FillRect(0, c.Height()-toolButtonCheckMarkWidth, c.Width(), toolButtonCheckMarkWidth, CurrentPalette().Highlight)
 		return
@@ -125,6 +178,22 @@ func (c *ToolButton) drawBottomEdge(cnv *Canvas) {
 		return
 	}
 	cnv.FillRect(0, c.Height()-toolButtonEdgeWidth, c.Width(), toolButtonEdgeWidth, c.BackgroundColorWithAddElevation(toolButtonEdgeLift))
+}
+
+// drawFlatMark draws a short bar under the image of a flat button that is
+// checked or highlighted; an ordinary flat button has no edge
+func (c *ToolButton) drawFlatMark(cnv *Canvas) {
+	var col color.Color
+	switch {
+	case c.checked:
+		col = CurrentPalette().Highlight
+	case c.highlight != nil:
+		col = c.highlight
+	default:
+		return
+	}
+	w := c.Width() / 3
+	cnv.FillRect((c.Width()-w)/2, c.Height()-toolButtonFlatInset-toolButtonCheckMarkWidth, w, toolButtonCheckMarkWidth, col)
 }
 
 // toolButtonDisabledImage returns a grayscale, semi-transparent copy of img

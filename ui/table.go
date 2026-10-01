@@ -22,6 +22,8 @@ type Table struct {
 	rowHeight1         int  // Can be changed
 	customRowHeight    bool // set by SetRowHeight, else rowHeight1 follows the theme font
 	defaultColumnWidth int  // Default width for columns if not set
+	// stretchLastColumn widens the last column to the right edge of the table
+	stretchLastColumn bool
 
 	rowCount    int
 	columnCount int
@@ -51,6 +53,9 @@ type Table struct {
 	selectionAnchorCol int
 
 	selectionDragging      bool
+	selectionDragStarted   bool // the mouse moved past tableDragThreshold
+	selectionDragStartX    int
+	selectionDragStartY    int
 	selectionDragBaseRows  map[int]bool
 	selectionDragBaseCells map[TableCellPos]bool
 
@@ -101,7 +106,8 @@ type tableHeaderRow struct {
 }
 
 type tableHeaderCell struct {
-	name string
+	name   string
+	hAlign HAlign
 
 	image      image.Image
 	imageWidth int
@@ -153,6 +159,10 @@ type tableCell struct {
 
 	selectionDisabled bool
 }
+
+// tableDragThreshold is how far the mouse has to move with the button held
+// before it starts selecting cells by dragging
+const tableDragThreshold = 4
 
 func NewTable() *Table {
 	var c Table
@@ -284,6 +294,17 @@ func (c *Table) SetRowHeight(height int) {
 	c.updateInnerSize()
 	c.form.UpdateLayout()
 	c.form.Update()
+}
+
+// SetCellPadding sets the space between the text of the cells (and of the
+// header) and their edges
+func (c *Table) SetCellPadding(padding int) {
+	c.cellPadding = padding
+	c.form.Update()
+}
+
+func (c *Table) CellPadding() int {
+	return c.cellPadding
 }
 
 func (c *Table) SetCellOnDraw(row int, col int, onDraw func(cnv *Canvas)) {
@@ -532,6 +553,24 @@ func (c *Table) SetColumnName(col int, name string) {
 	headerCell := c.headerCell2(0, col)
 	headerCell.name = name
 	c.updateInnerSize()
+}
+
+// SetColumnHAlign aligns the column's header text, e.g. to the right over numbers
+// aligned with SetCellHAlign
+func (c *Table) SetColumnHAlign(col int, align HAlign) {
+	if col < 0 || col >= c.columnCount {
+		return
+	}
+	c.headerCell2(0, col).hAlign = align
+	c.form.Update()
+}
+
+// SetStretchLastColumn makes the last column fill the table up to its right
+// edge, so there is no empty strip after the columns. Its width set with
+// SetColumnWidth stays the minimum; the table doesn't scroll to show the rest.
+func (c *Table) SetStretchLastColumn(stretch bool) {
+	c.stretchLastColumn = stretch
+	c.form.Update()
 }
 
 func (c *Table) ColumnName(col int) string {
@@ -840,8 +879,10 @@ func (c *Table) handleSelectionMouseDown(row int, col int, mods KeyModifiers) {
 		return
 	}
 
+	// Cmd is the toggle modifier on macOS, Ctrl elsewhere
+	toggle := mods.Ctrl || mods.Cmd
 	if c.multiselect && mods.Shift {
-		if mods.Ctrl {
+		if toggle {
 			c.selectionDragBaseRows = c.cloneSelectedRows()
 			c.selectionDragBaseCells = c.cloneSelectedCells()
 		} else {
@@ -854,7 +895,7 @@ func (c *Table) handleSelectionMouseDown(row int, col int, mods KeyModifiers) {
 		return
 	}
 
-	if c.multiselect && mods.Ctrl {
+	if c.multiselect && toggle {
 		c.toggleSelectionItem(row, col)
 		c.selectionAnchorRow = row
 		c.selectionAnchorCol = col
@@ -1122,9 +1163,12 @@ func (c *Table) onMouseDown(button MouseButton, x int, y int, mods KeyModifiers)
 
 	col, row := c.cellByPosition(x, y)
 	if row >= 0 && col >= 0 && button == MouseButtonLeft {
+		c.selectionDragStarted = false
+		c.selectionDragStartX = x
+		c.selectionDragStartY = y
 		c.handleSelectionMouseDown(row, col, mods)
 		//fmt.Println("Cell clicked:", col, row, " at ", x, y)
-	} else if button == MouseButtonLeft && c.clearSelectionOnEmptyClick && !mods.Ctrl && !mods.Shift {
+	} else if button == MouseButtonLeft && c.clearSelectionOnEmptyClick && !mods.Ctrl && !mods.Cmd && !mods.Shift {
 		// A plain click on the empty area below the rows / right of the columns.
 		c.ClearSelection()
 	}
@@ -1174,6 +1218,12 @@ func (c *Table) onMouseDblClick(button MouseButton, x int, y int, mods KeyModifi
 	col, row := c.cellByPosition(x, y)
 	fmt.Println("Cell double clicked:", col, row, " at ", x, y)
 	if row >= 0 && col >= 0 {
+		// A quick Shift/Ctrl+click on another cell arrives as a double click;
+		// it must extend or toggle the selection, not reset it
+		if c.multiselect && (mods.Shift || mods.Ctrl || mods.Cmd) {
+			c.handleSelectionMouseDown(row, col, mods)
+			return true
+		}
 		c.SetCurrentCell2(row, col)
 
 		if c.onCellMouseDblClick != nil {
@@ -1217,7 +1267,7 @@ func (c *Table) ProcessKeyDown(key Key, mods KeyModifiers) bool {
 		return processed
 	}
 
-	if key == KeyA && mods.Ctrl && c.multiselect {
+	if key == KeyA && (mods.Ctrl || mods.Cmd) && c.multiselect {
 		c.SelectAll()
 		c.form.Update()
 		return true
@@ -1387,7 +1437,13 @@ func (c *Table) onMouseMoveHeader(x int, y int, _ KeyModifiers) MouseCursor {
 func (c *Table) onMouseMove(x int, y int, mods KeyModifiers) bool {
 	c.SetMouseCursor(MouseCursorArrow)
 
-	if c.selectionDragging {
+	if c.selectionDragging && !c.selectionDragStarted {
+		// The hand shakes a bit while clicking: near a cell's edge that
+		// would already extend the selection to the neighbor
+		dx, dy := x-c.selectionDragStartX, y-c.selectionDragStartY
+		c.selectionDragStarted = dx*dx+dy*dy > tableDragThreshold*tableDragThreshold
+	}
+	if c.selectionDragging && c.selectionDragStarted {
 		col, row := c.cellByPositionClamped(x, y)
 		if row >= 0 && col >= 0 {
 			cellObj := c.getCellObj(row, col)
@@ -1638,13 +1694,16 @@ func (c *Table) draw(cnv *Canvas) {
 		for rowIndex := visibleRow1; rowIndex < visibleRow2+1; rowIndex++ {
 			x1 := 0
 			y1 := rowIndex*c.rowHeight1 - c.scrollY
-			x2 := c.innerWidth
+			x2 := c.contentWidth()
 			y2 := y1
 			cnv.DrawLine(x1, y1, x2, y2, c.cellBorderWidth, c.CellBorderColor())
 		}
 
 		for colIndex := 0; colIndex < c.columnCount+1; colIndex++ {
 			x1 := c.columnOffset(colIndex) - c.scrollX
+			if colIndex == c.columnCount {
+				x1 = c.contentWidth() - c.scrollX // after the stretched column
+			}
 			y1 := visibleRow1*c.rowHeight1 - c.scrollY
 			x2 := x1
 			y2 := visibleRow2*c.rowHeight1 - c.scrollY
@@ -1717,7 +1776,7 @@ func (c *Table) drawPost(cnv *Canvas) {
 				imgWidth += c.cellPadding
 			}
 
-			cnv.SetHAlign(HAlignLeft)
+			cnv.SetHAlign(headerCell.hAlign)
 			cnv.SetVAlign(VAlignCenter)
 			cnv.SetColor(CurrentPalette().ButtonText)
 			cnv.SetFontFamily(c.FontFamily())
@@ -1773,10 +1832,31 @@ func (c *Table) columnWidth(col int) int {
 
 	colWidth, exists := c.columnsWidths[col]
 	if !exists {
-		return c.defaultColumnWidth
+		colWidth = c.defaultColumnWidth
 	}
 
+	if c.stretchLastColumn && col == c.columnCount-1 {
+		colWidth = max(colWidth, c.visibleWidth()-c.columnOffset(col))
+	}
 	return colWidth
+}
+
+// visibleWidth is the width the cells can take: without the vertical scroll bar
+func (c *Table) visibleWidth() int {
+	w := c.Width()
+	if c.allowScrollY && c.innerHeight > c.h {
+		w -= c.scrollBarYSize
+	}
+	return w
+}
+
+// contentWidth is the width of all the columns, the stretched one included
+func (c *Table) contentWidth() int {
+	if c.columnCount == 0 {
+		return 0
+	}
+	last := c.columnCount - 1
+	return c.columnOffset(last) + c.columnWidth(last)
 }
 
 func (c *Table) columnOffset(col int) int {
@@ -1811,10 +1891,14 @@ func (c *Table) headerColumnBorderByPosition(x int, y int) int {
 	if x < 0 {
 		return -1
 	}
-	if x >= c.innerWidth {
+	if x >= c.contentWidth() {
 		return -1
 	}
 	for col := 0; col < c.columnCount; col++ {
+		// The stretched column ends at the edge of the table: nothing to drag
+		if c.stretchLastColumn && col == c.columnCount-1 {
+			break
+		}
 		colOffset := c.columnOffset(col)
 		colWidth := c.columnWidth(col)
 		rigthBorder := colOffset + colWidth
@@ -1832,7 +1916,7 @@ func (c *Table) headerColumnByPosition(x int, y int) int {
 	if x < 0 {
 		return -1
 	}
-	if x >= c.innerWidth {
+	if x >= c.contentWidth() {
 		return -1
 	}
 	for col := 0; col < c.columnCount; col++ {
@@ -1858,8 +1942,15 @@ func (c *Table) cellByPosition(x, y int) (row int, col int) {
 	if col >= c.columnCount {
 		return -1, -1
 	}
-	row = (y - c.headerHeight()) / c.rowHeight1
-	if row < 0 || row >= c.rowCount {
+	// The grid line drawn at the top of a row looks like the bottom edge of
+	// the row above, so it belongs to that one; the line under the header
+	// stays with the first row
+	y -= c.headerHeight()
+	if y < 0 {
+		return -1, -1
+	}
+	row = max(y-c.cellBorderWidth, 0) / c.rowHeight1
+	if row >= c.rowCount {
 		return -1, -1
 	}
 	return col, row

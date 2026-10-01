@@ -380,42 +380,48 @@ func (c *nativeWindow) windowMouseLeave() {
 }
 
 // key modifiers
+// The new state is stored before the key event, so the event (and the form's
+// modifiers it records for the following mouse clicks) already includes it
 func (c *nativeWindow) windowKeyModifiersChanged(shift bool, ctrl bool, alt bool, cmd bool, caps bool, num bool, _ bool) {
 	// Key shift
-	if c.platform.keyModifiers.Shift && !shift {
-		c.windowKeyUp(KeyShift)
+	if c.platform.keyModifiers.Shift != shift {
+		c.platform.keyModifiers.Shift = shift
+		if shift {
+			c.windowKeyDown(KeyShift)
+		} else {
+			c.windowKeyUp(KeyShift)
+		}
 	}
-	if !c.platform.keyModifiers.Shift && shift {
-		c.windowKeyDown(KeyShift)
-	}
-	c.platform.keyModifiers.Shift = shift
 
 	// Key ctrl
-	if c.platform.keyModifiers.Ctrl && !ctrl {
-		c.windowKeyUp(KeyCtrl)
+	if c.platform.keyModifiers.Ctrl != ctrl {
+		c.platform.keyModifiers.Ctrl = ctrl
+		if ctrl {
+			c.windowKeyDown(KeyCtrl)
+		} else {
+			c.windowKeyUp(KeyCtrl)
+		}
 	}
-	if !c.platform.keyModifiers.Ctrl && ctrl {
-		c.windowKeyDown(KeyCtrl)
-	}
-	c.platform.keyModifiers.Ctrl = ctrl
 
 	// Key alt
-	if c.platform.keyModifiers.Alt && !alt {
-		c.windowKeyUp(KeyAlt)
+	if c.platform.keyModifiers.Alt != alt {
+		c.platform.keyModifiers.Alt = alt
+		if alt {
+			c.windowKeyDown(KeyAlt)
+		} else {
+			c.windowKeyUp(KeyAlt)
+		}
 	}
-	if !c.platform.keyModifiers.Alt && alt {
-		c.windowKeyDown(KeyAlt)
-	}
-	c.platform.keyModifiers.Alt = alt
 
 	// Key cmd
-	if c.platform.keyModifiers.Cmd && !cmd {
-		c.windowKeyUp(KeyCommand)
+	if c.platform.keyModifiers.Cmd != cmd {
+		c.platform.keyModifiers.Cmd = cmd
+		if cmd {
+			c.windowKeyDown(KeyCommand)
+		} else {
+			c.windowKeyUp(KeyCommand)
+		}
 	}
-	if !c.platform.keyModifiers.Cmd && cmd {
-		c.windowKeyDown(KeyCommand)
-	}
-	c.platform.keyModifiers.Cmd = cmd
 
 	if caps != c.platform.lastCapsLockState {
 		if caps {

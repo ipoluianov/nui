@@ -623,7 +623,14 @@ func nuiViewKeyDown(self objc.ID, _ objc.SEL, event objc.ID) {
 
 func nuiViewFlagsChanged(self objc.ID, _ objc.SEL, event objc.ID) {
 	win := objc.Send[objc.ID](self, selWindow)
-	id := wndID(win)
+	syncEventModifiers(wndID(win), event)
+}
+
+// syncEventModifiers reports the modifier keys held during the event. Mouse
+// events call it too: flagsChanged: only reaches the first responder of the
+// key window, so a modifier pressed while it was elsewhere would be missed,
+// and Shift/Ctrl+click wouldn't extend the selection.
+func syncEventModifiers(id windowId, event objc.ID) {
 	flags := objc.Send[uint64](event, selModifierFlags)
 	go_on_modifier_change(id,
 		flags&nsEventModifierFlagShift != 0,
@@ -641,11 +648,19 @@ func eventLocationInView(self, event objc.ID) nsPoint {
 	return objc.Send[nsPoint](self, selConvertPointFromView, p, objc.ID(0))
 }
 
+// viewPointToInt rounds a view point to the whole point it lies in. The view
+// isn't flipped and Go turns y into areaH-y, so y is rounded up: truncating
+// it would move the point a whole point down after the flip.
+func viewPointToInt(p nsPoint) (int, int) {
+	return int(math.Floor(p.X)), int(math.Ceil(p.Y))
+}
+
 func nuiHandleMouseDown(self, event objc.ID, button int) {
 	win := objc.Send[objc.ID](self, selWindow)
 	id := wndID(win)
+	syncEventModifiers(id, event)
 	p := eventLocationInView(self, event)
-	x, y := int(p.X), int(p.Y)
+	x, y := viewPointToInt(p)
 	if objc.Send[int](event, selClickCount) == 2 {
 		go_on_mouse_double_click(id, button, x, y)
 	} else {
@@ -664,8 +679,9 @@ func nuiViewOtherMouseDown(self objc.ID, _ objc.SEL, event objc.ID) {
 func nuiHandleMouseUp(self, event objc.ID, button int) {
 	win := objc.Send[objc.ID](self, selWindow)
 	id := wndID(win)
-	p := eventLocationInView(self, event)
-	go_on_mouse_up(id, button, int(p.X), int(p.Y))
+	syncEventModifiers(id, event)
+	x, y := viewPointToInt(eventLocationInView(self, event))
+	go_on_mouse_up(id, button, x, y)
 }
 
 func nuiViewMouseUp(self objc.ID, _ objc.SEL, event objc.ID)      { nuiHandleMouseUp(self, event, 0) }
@@ -677,8 +693,9 @@ func nuiViewOtherMouseUp(self objc.ID, _ objc.SEL, event objc.ID) { nuiHandleMou
 func nuiViewMouseMoved(self objc.ID, _ objc.SEL, event objc.ID) {
 	win := objc.Send[objc.ID](self, selWindow)
 	id := wndID(win)
-	p := eventLocationInView(self, event)
-	go_on_mouse_move(id, int(p.X), int(p.Y))
+	syncEventModifiers(id, event)
+	x, y := viewPointToInt(eventLocationInView(self, event))
+	go_on_mouse_move(id, x, y)
 }
 
 func nuiViewScrollWheel(self objc.ID, _ objc.SEL, event objc.ID) {
@@ -808,7 +825,8 @@ func nuiViewPerformDragOperation(self objc.ID, _ objc.SEL, sender objc.ID) bool 
 	}
 	p := objc.Send[nsPoint](sender, selDraggingLocation)
 	p = objc.Send[nsPoint](self, selConvertPointFromView, p, objc.ID(0))
-	go_on_files_dropped(wndID(win), files, int(p.X), int(p.Y))
+	x, y := viewPointToInt(p)
+	go_on_files_dropped(wndID(win), files, x, y)
 	return true
 }
 
