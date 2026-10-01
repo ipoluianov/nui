@@ -76,6 +76,13 @@ func clearRenderedTexts() {
 }
 
 func DrawText(rgba *image.RGBA, text string, textColor color.Color, fontFamily string, fontSize float64, x int, y int, clipX int, clipY int, clipWidth int, clipHeight int) {
+	// A system font is drawn straight onto the pixels under it: its subpixel
+	// antialiasing depends on them, so there is no image to cache
+	if sf := systemFontFor(fontFamily, fontSize); sf != nil {
+		sf.Draw(rgba, text, colorToRGBA(textColor), x, y, image.Rect(clipX, clipY, clipX+clipWidth, clipY+clipHeight))
+		return
+	}
+
 	var textImage *image.RGBA
 	key := fontFamily + "_" + fmt.Sprint(fontSize) + "_" + fmt.Sprintf("%v", textColor) + "_" + text
 
@@ -125,6 +132,9 @@ func DrawText(rgba *image.RGBA, text string, textColor color.Color, fontFamily s
 // width of the whole text. Advances and kerning are added up the same way
 // as in MeasureText and in drawing, so the cursor stays on the characters.
 func GetCharPositions(fontFamily string, fontSize float64, text string) ([]int, error) {
+	if sf := systemFontFor(fontFamily, fontSize); sf != nil {
+		return sf.Positions(text), nil
+	}
 	stringLenInRunes := len([]rune(text))
 
 	positions := make([]int, stringLenInRunes+1) // на 1 больше, чтобы последняя позиция = ширине всей строки
@@ -151,6 +161,11 @@ func GetCharPositions(fontFamily string, fontSize float64, text string) ([]int, 
 }
 
 func MeasureText(fontFamily string, fontSize float64, text string) (int, int, error) {
+	if sf := systemFontFor(fontFamily, fontSize); sf != nil {
+		positions := sf.Positions(text)
+		ascent, descent := sf.Metrics()
+		return positions[len(positions)-1], ascent + descent, nil
+	}
 	var textWidth, textHeight int
 	ensureFallbackFonts(text)
 	err := withFace(fontFamily, fontSize, func(face font.Face) {

@@ -59,6 +59,15 @@ func Run() {
 		form.Panel().AddButton(form.Panel().NextGridRow(), 0, "Dark Theme", func() {
 			ui.ApplyDarkTheme()
 		})
+		systemFont := ui.SystemUIFontName()
+		form.Panel().AddButton(form.Panel().NextGridRow(), 0, "System Font ("+systemFont+")", func() {
+			if err := ui.UseSystemFont(systemFont); err != nil {
+				form.ShowToast(err.Error(), ui.ToastError)
+			}
+		})
+		form.Panel().AddButton(form.Panel().NextGridRow(), 0, "Built-in Font (Noto Sans)", func() {
+			ui.UseBuiltinFont()
+		})
 		form.Show()
 		form.Exec()
 	}
