@@ -328,6 +328,9 @@ type comboBoxPopupItem struct {
 	text     string
 	selected bool
 	OnClick  func(index int)
+
+	// pressed is set by a press on the item; the release over it picks it
+	pressed bool
 }
 
 func newComboBoxPopupItem(index int, text string) *comboBoxPopupItem {
@@ -338,6 +341,7 @@ func newComboBoxPopupItem(index int, text string) *comboBoxPopupItem {
 	item.SetMouseCursor(MouseCursorPointer)
 	item.SetOnPaint(item.Draw)
 	item.SetOnMouseDown(item.mouseDownHandler)
+	item.SetOnMouseUp(item.mouseUpHandler)
 
 	item.index = index
 	item.text = text
@@ -363,7 +367,18 @@ func (c *comboBoxPopupItem) Draw(ctx *Canvas) {
 	ctx.DrawText(comboBoxItemPadding, 0, c.Width()-comboBoxItemPadding*2, c.Height(), c.text)
 }
 
+// The item is picked on the release over it, like in the system dropdowns
 func (c *comboBoxPopupItem) mouseDownHandler(button MouseButton, x int, y int, mods KeyModifiers) bool {
+	c.pressed = button == MouseButtonLeft
+	return true
+}
+
+func (c *comboBoxPopupItem) mouseUpHandler(button MouseButton, x int, y int, mods KeyModifiers) bool {
+	pressed := c.pressed
+	c.pressed = false
+	if !pressed || button != MouseButtonLeft || x < 0 || x >= c.Width() || y < 0 || y >= c.Height() {
+		return true
+	}
 	if c.OnClick != nil {
 		c.OnClick(c.index)
 	}

@@ -24,6 +24,9 @@ type ContextMenuItem struct {
 
 	// separator: a line between groups of items, not an item to click
 	separator bool
+
+	// pressed is set by a press on the item; the release over it clicks it
+	pressed bool
 }
 
 // ContextMenuSeparatorHeight is the height of a separator line between groups of items
@@ -51,6 +54,7 @@ func NewContextMenuItem() *ContextMenuItem {
 	item.SetOnPaint(item.Draw)
 
 	item.SetOnMouseDown(item.mouseDownHandler)
+	item.SetOnMouseUp(item.mouseUpHandler)
 	item.SetOnMouseMove(item.MouseMove)
 	item.SetOnMouseEnter(item.MouseEnter)
 	item.SetOnMouseLeave(item.MouseLeave)
@@ -163,13 +167,54 @@ func (c *ContextMenuItem) mouseDownHandler(button MouseButton, x int, y int, mod
 		return true // a click on a separator does nothing and keeps the menu open
 	}
 
+	// A submenu opens at once; a command runs on the release (mouseUpHandler),
+	// like in the system menus, so a press can still be taken back by moving
+	// off the item
 	if c.innerMenu != nil {
 		x, y := c.RectClientAreaOnWindow()
 		w := c.Width()
 		c.innerMenu.showMenu(x+w, y, c.parentMenu)
 		return true
 	}
+	c.pressed = button == MouseButtonLeft
+	return true
+}
 
+// mouseUpHandler: the release after a press on the item clicks the item
+// under the mouse - this one, or another one the mouse was moved to with the
+// button down, also in a submenu. Released off the menus: no click.
+func (c *ContextMenuItem) mouseUpHandler(button MouseButton, x int, y int, mods KeyModifiers) bool {
+	pressed := c.pressed
+	c.pressed = false
+	if !pressed || button != MouseButtonLeft || c.form == nil {
+		return true
+	}
+	wx, wy := c.RectClientAreaOnWindow()
+	if item := c.form.contextMenuItemAt(wx+x, wy+y); item != nil {
+		item.click()
+	}
+	return true
+}
+
+// contextMenuItemAt returns the clickable menu item at the client point in
+// the open menus, nil if there is none
+func (c *Form) contextMenuItemAt(x, y int) *ContextMenuItem {
+	h := c.popupHostAt(x, y)
+	if h == nil {
+		return nil
+	}
+	if _, ok := h.widget.(*ContextMenu); !ok {
+		return nil
+	}
+	item, ok := h.widget.findWidgetAt(x-h.widget.X(), y-h.widget.Y()).(*ContextMenuItem)
+	if !ok || item.separator || item.innerMenu != nil || !item.Enabled() {
+		return nil
+	}
+	return item
+}
+
+// click closes the menu and runs the item's command
+func (c *ContextMenuItem) click() {
 	if c.needToClosePopupMenu != nil {
 		c.needToClosePopupMenu()
 	}
@@ -177,7 +222,6 @@ func (c *ContextMenuItem) mouseDownHandler(button MouseButton, x int, y int, mod
 	if c.OnClick != nil {
 		c.OnClick()
 	}
-	return true
 }
 
 func (c *ContextMenuItem) MouseEnter() {

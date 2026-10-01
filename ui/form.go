@@ -828,6 +828,9 @@ func (c *Form) processMouseMove(x int, y int) {
 	if c.mouseLeftButtonPressedWidget != nil {
 		wX, wY := c.mouseLeftButtonPressedWidget.RectClientAreaOnWindow()
 		c.mouseLeftButtonPressedWidget.ProcessMouseMove(x-wX, y-wY, c.lastKeyboardModifiers)
+		if c.mouseDownPopup != nil {
+			c.followMouseInPopups(x, y)
+		}
 		c.Update()
 		return
 	}

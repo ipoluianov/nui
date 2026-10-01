@@ -201,6 +201,36 @@ func (c *Form) updatePopupWindows() {
 	}
 }
 
+// popupHostAt returns the open popup window at the client point, the topmost
+// one where they overlap, nil if none
+func (c *Form) popupHostAt(x, y int) *popupHost {
+	for i := len(c.popupHosts) - 1; i >= 0; i-- {
+		w := c.popupHosts[i].widget
+		if x >= w.X() && x < w.X()+w.Width() && y >= w.Y() && y < w.Y()+w.Height() {
+			return c.popupHosts[i]
+		}
+	}
+	return nil
+}
+
+// followMouseInPopups keeps the hover on the widget under the mouse while the
+// button pressed in a popup is held - in a menu the highlight follows the
+// mouse, also into a submenu and back. The pressed popup's window gets the
+// mouse events meanwhile (the system's mouse grab), wherever the mouse is.
+func (c *Form) followMouseInPopups(x, y int) {
+	c.lastMouseX, c.lastMouseY = x, y
+	if h := c.popupHostAt(x, y); h != nil {
+		c.popupUnderMouse = h
+		c.updateHover()
+		return
+	}
+	// Off the popups: nothing is highlighted
+	if c.hoverWidget != nil {
+		c.hoverWidget.ProcessMouseLeave()
+		c.hoverWidget = nil
+	}
+}
+
 // mouseTarget returns the widget that gets a mouse event at the client point
 // (x, y), and the point in its coordinates: the popup widget of the window
 // the event came from, or, for the form's own window, the menu bar or the
