@@ -43,6 +43,34 @@ func NewExampleForm() *ui.Form {
 	file.AddItemWithSubmenu("Open Recent", recent)
 	file.AddItem("Save", func() { setStatus("Save") }).SetImage(iconSave())
 	file.AddSeparator()
+	// Printing: the text box's text, wrapped and split into pages
+	file.AddItem("Print...", func() {
+		job := ui.NewTextPrintJob("Main menu example", text.Text(), nil)
+		form.Print(job, func(err error) {
+			switch err {
+			case nil:
+				setStatus("Printed")
+			case ui.ErrPrintCanceled:
+				setStatus("Printing canceled")
+			default:
+				setStatus("Print: " + err.Error())
+			}
+		})
+	}).SetImage(iconPrinter())
+	file.AddItem("Export PDF...", func() {
+		form.ShowSaveFileDialog(ui.SaveFileDialogOptions{DefaultFileName: "text.pdf"}, func(path string, err error) {
+			if path == "" || err != nil {
+				return
+			}
+			job := ui.NewTextPrintJob("Main menu example", text.Text(), nil)
+			if err := job.SavePDF(path); err != nil {
+				setStatus("PDF: " + err.Error())
+				return
+			}
+			setStatus("Saved " + path)
+		})
+	})
+	file.AddSeparator()
 	file.AddItem("Exit", func() { form.Close() }).SetImage(iconCross())
 
 	edit := bar.AddMenu("Edit")
@@ -126,6 +154,24 @@ func iconSave() image.Image {
 		dc.Fill()
 		dc.SetHexColor("#CFD8DC")
 		dc.DrawRectangle(4, 9.5, 8, 4)
+		dc.Fill()
+	})
+}
+
+// iconPrinter: a printer with a sheet of paper
+func iconPrinter() image.Image {
+	return drawIcon(func(dc *gg.Context) {
+		dc.SetHexColor("#F5F5F5")
+		dc.DrawRectangle(4.5, 1.5, 7, 5)
+		dc.FillPreserve()
+		dc.SetHexColor("#757575")
+		dc.SetLineWidth(1)
+		dc.Stroke()
+		dc.SetHexColor("#607D8B")
+		dc.DrawRoundedRectangle(1, 6, 14, 6, 1.5)
+		dc.Fill()
+		dc.SetHexColor("#F5F5F5")
+		dc.DrawRectangle(4.5, 10, 7, 4.5)
 		dc.Fill()
 	})
 }

@@ -23,6 +23,10 @@ type UIStrings struct {
 	MonthNames [12]string
 	// WeekdaysShort are two- or three-letter names, Sunday first (as time.Weekday)
 	WeekdaysShort [7]string
+
+	// The print dialog (Form.Print on Linux and macOS)
+	Print, Printer, Copies, Pages, PagesHint, Paper string
+	Portrait, Landscape, SaveAsPDF                  string
 }
 
 var (
@@ -32,18 +36,27 @@ var (
 			Today: "Сегодня",
 			MonthNames: [12]string{"Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
 				"Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"},
-			WeekdaysShort: [7]string{"Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"}},
+			WeekdaysShort: [7]string{"Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"},
+			Print:         "Печать", Printer: "Принтер", Copies: "Копии", Pages: "Страницы",
+			PagesHint: "Все, или например 1-3, 5", Paper: "Бумага",
+			Portrait: "Книжная", Landscape: "Альбомная", SaveAsPDF: "Сохранить в PDF"},
 		"zh": {OK: "确定", Cancel: "取消", Yes: "是", No: "否",
 			Today: "今天",
 			MonthNames: [12]string{"一月", "二月", "三月", "四月", "五月", "六月",
 				"七月", "八月", "九月", "十月", "十一月", "十二月"},
-			WeekdaysShort: [7]string{"日", "一", "二", "三", "四", "五", "六"}},
+			WeekdaysShort: [7]string{"日", "一", "二", "三", "四", "五", "六"},
+			Print:         "打印", Printer: "打印机", Copies: "份数", Pages: "页面",
+			PagesHint: "全部，或例如 1-3, 5", Paper: "纸张",
+			Portrait: "纵向", Landscape: "横向", SaveAsPDF: "另存为 PDF"},
 	}
 	uiStringsEnglish = UIStrings{OK: "OK", Cancel: "Cancel", Yes: "Yes", No: "No",
 		Today: "Today",
 		MonthNames: [12]string{"January", "February", "March", "April", "May", "June",
 			"July", "August", "September", "October", "November", "December"},
-		WeekdaysShort: [7]string{"Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"}}
+		WeekdaysShort: [7]string{"Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"},
+		Print:         "Print", Printer: "Printer", Copies: "Copies", Pages: "Pages",
+		PagesHint: "All, or e.g. 1-3, 5", Paper: "Paper",
+		Portrait: "Portrait", Landscape: "Landscape", SaveAsPDF: "Save as PDF"}
 	uiStringsCatalog = i18n.NewCatalog(uiStringsEnglish, uiStringsByLang)
 )
 

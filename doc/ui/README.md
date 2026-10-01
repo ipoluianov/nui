@@ -61,6 +61,7 @@ Short reference for `ui` controls. Code snippets are intentionally minimal—see
 - [EnterStringDialog](content/enter_string_dialog.md)
 - [AboutDialog](content/about_dialog.md)
 - [Toasts](content/toast.md)
+- [Printing and PDF](content/printing.md)
 
 ## Misc
 
