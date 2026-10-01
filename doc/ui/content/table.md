@@ -47,6 +47,8 @@ focus, etc.) are available too. The methods below are the ones that belong to
 - `SetSelectingRows(selectingRows bool)` / `SelectingRows() bool` - selection unit: whole rows (`true`, the default) or individual cells (`false`).
 - `SetMultiselect(enabled bool)` / `Multiselect() bool` - allow selecting more than one row/cell at once (default `false`). When enabled: drag to select a range, Shift+click/Shift+Arrow/Home/End/PageUp/PageDown extends a range from the anchor, Ctrl+click toggles a single item, Ctrl+Shift+click adds a range, Ctrl+A selects everything. Only the left mouse button drives selection. When disabled, a plain drag still moves the single selection to follow the mouse.
 - `SelectAll()` - selects every row/cell; no-op unless `Multiselect()` is `true`.
+- `ClearSelection()` - removes the selection; `CurrentRow()` returns `-1` until a row is clicked or navigated to again.
+- `SetClearSelectionOnEmptyClick(enabled bool)` / `ClearSelectionOnEmptyClick() bool` - whether a plain left click on the empty area of the table (outside any cell) clears the selection (default `true`).
 - `SelectedRows() []int` - sorted selected row indices; meaningful when `SelectingRows()` is `true`.
 - `SetSelectedRows(rows []int)` - selects the rows (e.g. to keep a selection after reloading them); the first one becomes current.
 - `SelectedCells() []TableCellPos` - sorted selected cells; meaningful when `SelectingRows()` is `false`.

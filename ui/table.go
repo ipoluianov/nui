@@ -38,6 +38,8 @@ type Table struct {
 	multiselect   bool
 	selectingRows bool
 
+	clearSelectionOnEmptyClick bool
+
 	// Selection
 	currentCellX int
 	currentCellY int
@@ -199,6 +201,7 @@ func NewTable() *Table {
 	c.showSelection = true
 	c.selectingRows = true
 	c.multiselect = false
+	c.clearSelectionOnEmptyClick = true
 	c.selectedRows = make(map[int]bool)
 	c.selectedCells = make(map[TableCellPos]bool)
 
@@ -872,6 +875,31 @@ func (c *Table) handleSelectionMouseDown(row int, col int, mods KeyModifiers) {
 	c.selectionDragging = true
 }
 
+// ClearSelection removes the selection entirely: nothing is selected and
+// CurrentRow() returns -1 until a row is clicked or navigated to again
+// (Arrow Down / Home then start from the first row).
+func (c *Table) ClearSelection() {
+	if c.currentCellY < 0 && len(c.selectedRows) == 0 && len(c.selectedCells) == 0 {
+		return
+	}
+
+	c.form.UpdateBlockPush()
+	defer c.form.UpdateBlockPop()
+
+	c.previousCurrentCellX = c.currentCellX
+	c.previousCurrentCellY = c.currentCellY
+	c.currentCellY = -1
+	c.selectionAnchorRow = 0
+	c.selectionAnchorCol = max(c.currentCellX, 0)
+	c.selectionDragging = false
+	c.clearSelectionSets()
+
+	c.form.Update()
+	if c.onSelectionChanged != nil {
+		c.onSelectionChanged(c.CurrentRow(), c.CurrentColumn())
+	}
+}
+
 // SelectAll selects every row (in row-selection mode) or every cell (in
 // cell-selection mode). No-op unless multiselect is enabled.
 func (c *Table) SelectAll() {
@@ -1096,6 +1124,9 @@ func (c *Table) onMouseDown(button MouseButton, x int, y int, mods KeyModifiers)
 	if row >= 0 && col >= 0 && button == MouseButtonLeft {
 		c.handleSelectionMouseDown(row, col, mods)
 		//fmt.Println("Cell clicked:", col, row, " at ", x, y)
+	} else if button == MouseButtonLeft && c.clearSelectionOnEmptyClick && !mods.Ctrl && !mods.Shift {
+		// A plain click on the empty area below the rows / right of the columns.
+		c.ClearSelection()
 	}
 
 	if c.onCellMouseDown != nil {
@@ -1400,6 +1431,16 @@ func (c *Table) SetMultiselect(enabled bool) {
 
 func (c *Table) Multiselect() bool {
 	return c.multiselect
+}
+
+// SetClearSelectionOnEmptyClick controls whether a plain left click on the
+// empty area of the table (outside any cell) clears the selection (default true).
+func (c *Table) SetClearSelectionOnEmptyClick(enabled bool) {
+	c.clearSelectionOnEmptyClick = enabled
+}
+
+func (c *Table) ClearSelectionOnEmptyClick() bool {
+	return c.clearSelectionOnEmptyClick
 }
 
 // SetSelectingRows chooses the selection unit: true selects whole rows,
@@ -1880,6 +1921,10 @@ func (c *Table) headerHeight() int {
 }
 
 func (c *Table) EditCurrentCell(enteredText string) {
+	if c.CurrentRow() < 0 || c.CurrentColumn() < 0 {
+		return
+	}
+
 	if c.editorTextBox != nil {
 		c.RemoveWidget(c.editorTextBox)
 		c.editorTextBox = nil
