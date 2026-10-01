@@ -121,6 +121,7 @@ func registerPopupViewClass() {
 		[]objc.MethodDef{
 			{Cmd: selIsFlipped, Fn: nuiViewIsFlipped},
 			{Cmd: selDrawRect, Fn: nuiPopupViewDrawRect},
+			{Cmd: selViewDidChangeBackingProperties, Fn: nuiViewDidChangeBackingProperties},
 			// The popup never becomes key, so without this the first click
 			// would only be used to "activate" it
 			{Cmd: selAcceptsFirstMouse, Fn: nuiPopupViewAcceptsFirstMouse},
@@ -185,14 +186,17 @@ func nuiPopupViewDrawRect(self objc.ID, _ objc.SEL, _, _, _, _ float64) {
 	bounds := objc.Send[nsRect](self, selBounds)
 	width := int(math.Max(1, math.Floor(bounds.Size.Width)))
 	height := int(math.Max(1, math.Floor(bounds.Size.Height)))
-	stride := width * 4
-	dataSize := stride * height
+	// In the screen's pixels, as nuiViewDrawRect
+	p.scale = backingScale(p.win)
+	pixelW, pixelH := scaledSize(width, height, p.scale)
+	stride := pixelW * 4
+	dataSize := stride * pixelH
 
 	buf := make([]byte, dataSize)
 	img := &image.RGBA{
 		Pix:    buf,
 		Stride: stride,
-		Rect:   image.Rect(0, 0, width, height),
+		Rect:   image.Rect(0, 0, pixelW, pixelH),
 	}
 	for i := 3; i < dataSize; i += 4 {
 		buf[i] = 255 // opaque black
@@ -204,7 +208,7 @@ func nuiPopupViewDrawRect(self objc.ID, _ objc.SEL, _, _, _, _ float64) {
 	ctx := objc.Send[uintptr](objc.ID(clsNSGraphicsContext).Send(selCurrentContext), selCGContext)
 	colorSpace := cgColorSpaceCreateDeviceRGB()
 	provider := cgDataProviderCreateWithData(0, unsafe.Pointer(&buf[0]), uintptr(dataSize), 0)
-	cgImg := cgImageCreate(uintptr(width), uintptr(height), 8, 32, uintptr(stride), colorSpace,
+	cgImg := cgImageCreate(uintptr(pixelW), uintptr(pixelH), 8, 32, uintptr(stride), colorSpace,
 		cgImageAlphaPremultipliedLast|cgBitmapByteOrder32Big, provider, 0, false, cgRenderingIntentDefault)
 
 	dest := nsRect{bounds.Origin, nsSize{float64(width), float64(height)}}

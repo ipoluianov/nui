@@ -13,6 +13,9 @@ import (
 // keyboard input stays with the owner.
 type PopupWindow interface {
 	OnPaint(func(rgba *image.RGBA))
+	// Scale returns how many pixels of the image given to OnPaint a logical
+	// pixel takes, as Window.Scale
+	Scale() float64
 
 	// Mouse events of an interactive popup, in popup coordinates
 	OnMouseMove(func(x, y int))
@@ -47,6 +50,16 @@ type popupCallbacks struct {
 	onMouseButtonUp   func(btn MouseButton, x, y int)
 	onMouseLeave      func()
 	onMouseWheel      func(deltaX, deltaY int)
+
+	// scale: see Scale; 0 means 1
+	scale float64
+}
+
+func (c *popupCallbacks) Scale() float64 {
+	if c.scale <= 0 {
+		return 1
+	}
+	return c.scale
 }
 
 func (c *popupCallbacks) OnPaint(f func(rgba *image.RGBA)) {

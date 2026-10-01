@@ -158,7 +158,7 @@ func (c *Form) tooltipShowPopup() bool {
 
 func (c *Form) tooltipPopupPaint(rgba *image.RGBA) {
 	p := CurrentPalette()
-	cnv := NewCanvas(rgba)
+	cnv := NewCanvasScaled(rgba, c.tooltip.popup.Scale())
 	cnv.SetDirectTranslateAndClip(0, 0, c.tooltip.popupW, c.tooltip.popupH)
 	// The popup is rectangular, so no rounded corners here
 	cnv.FillFrame(0, 0, c.tooltip.popupW, c.tooltip.popupH, 0, p.ToolTipBase, p.Border)

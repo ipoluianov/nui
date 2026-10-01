@@ -238,6 +238,9 @@ var (
 	selIsFlipped             = objc.RegisterName("isFlipped")
 	selDrawRect              = objc.RegisterName("drawRect:")
 
+	selBackingScaleFactor             = objc.RegisterName("backingScaleFactor")
+	selViewDidChangeBackingProperties = objc.RegisterName("viewDidChangeBackingProperties")
+
 	selRegisterForDraggedTypes      = objc.RegisterName("registerForDraggedTypes:")
 	selDraggingEntered              = objc.RegisterName("draggingEntered:")
 	selDraggingUpdated              = objc.RegisterName("draggingUpdated:")
@@ -643,6 +646,30 @@ func syncEventModifiers(id windowId, event objc.ID) {
 	)
 }
 
+// backingScale returns how many pixels of the screen a point of the window
+// takes: 2 on Retina
+func backingScale(win objc.ID) float64 {
+	if win == 0 {
+		return 1
+	}
+	scale := objc.Send[float64](win, selBackingScaleFactor)
+	if scale <= 0 {
+		return 1
+	}
+	return scale
+}
+
+// scaledSize returns the size in points in pixels of the scale
+func scaledSize(width, height int, scale float64) (int, int) {
+	return max(1, int(math.Round(float64(width)*scale))), max(1, int(math.Round(float64(height)*scale)))
+}
+
+// nuiViewDidChangeBackingProperties: the window moved to a screen of another
+// scale, so it's painted again in its pixels
+func nuiViewDidChangeBackingProperties(self objc.ID, _ objc.SEL) {
+	self.Send(selSetNeedsDisplay, true)
+}
+
 func eventLocationInView(self, event objc.ID) nsPoint {
 	p := objc.Send[nsPoint](event, selLocationInWindow)
 	return objc.Send[nsPoint](self, selConvertPointFromView, p, objc.ID(0))
@@ -759,16 +786,20 @@ func nuiViewDrawRect(self objc.ID, _ objc.SEL, _, _, _, _ float64) {
 	drawable := drawableRectInContentView(win, self)
 	width := int(math.Max(1, math.Floor(drawable.Size.Width)))
 	height := int(math.Max(1, math.Floor(drawable.Size.Height)))
-	stride := width * 4
-	dataSize := stride * height
+	// Painted in the screen's pixels (2 per point on Retina) and drawn into
+	// the rect in points, so the image isn't stretched
+	scale := backingScale(win)
+	pixelW, pixelH := scaledSize(width, height, scale)
+	stride := pixelW * 4
+	dataSize := stride * pixelH
 
 	buf := make([]byte, dataSize)
-	go_on_paint(id, unsafe.Pointer(&buf[0]), width, height)
+	go_on_paint(id, unsafe.Pointer(&buf[0]), pixelW, pixelH, scale)
 
 	ctx := objc.Send[uintptr](objc.ID(clsNSGraphicsContext).Send(selCurrentContext), selCGContext)
 	colorSpace := cgColorSpaceCreateDeviceRGB()
 	provider := cgDataProviderCreateWithData(0, unsafe.Pointer(&buf[0]), uintptr(dataSize), 0)
-	image := cgImageCreate(uintptr(width), uintptr(height), 8, 32, uintptr(stride), colorSpace,
+	image := cgImageCreate(uintptr(pixelW), uintptr(pixelH), 8, 32, uintptr(stride), colorSpace,
 		cgImageAlphaPremultipliedLast|cgBitmapByteOrder32Big, provider, 0, false, cgRenderingIntentDefault)
 
 	bounds := objc.Send[nsRect](self, selBounds)
@@ -875,6 +906,7 @@ func registerNuiClasses() {
 			{Cmd: selMouseExited, Fn: nuiViewMouseExited},
 			{Cmd: selUpdateTrackingAreas, Fn: nuiViewUpdateTrackingAreas},
 			{Cmd: selDrawRect, Fn: nuiViewDrawRect},
+			{Cmd: selViewDidChangeBackingProperties, Fn: nuiViewDidChangeBackingProperties},
 			{Cmd: selDraggingEntered, Fn: nuiViewDraggingEntered},
 			{Cmd: selDraggingUpdated, Fn: nuiViewDraggingEntered},
 			{Cmd: selPerformDragOperation, Fn: nuiViewPerformDragOperation},

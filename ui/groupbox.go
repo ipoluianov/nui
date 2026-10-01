@@ -92,20 +92,24 @@ func (c *GroupBox) draw(cnv *Canvas) {
 // strokeRoundedRectClipped draws the 1px outline of a rounded rectangle,
 // anti-aliased, only within the clip rectangle (and the canvas' clip).
 func strokeRoundedRectClipped(cnv *Canvas, x, y, w, h, radius int, col color.RGBA, clipX, clipY, clipW, clipH int) {
-	tx, ty := cnv.TranslatedX(), cnv.TranslatedY()
-	x1 := max(tx+clipX, cnv.state.clipX)
-	y1 := max(ty+clipY, cnv.state.clipY)
-	x2 := min(tx+clipX+clipW, cnv.state.clipX+cnv.state.clipW)
-	y2 := min(ty+clipY+clipH, cnv.state.clipY+cnv.state.clipH)
+	// The clip in pixels of the image; the outline is drawn in logical
+	// coordinates scaled to them
+	px, py, pw, ph := cnv.pixelRect(clipX, clipY, clipW, clipH)
+	x1 := max(px, cnv.state.clipX)
+	y1 := max(py, cnv.state.clipY)
+	x2 := min(px+pw, cnv.state.clipX+cnv.state.clipW)
+	y2 := min(py+ph, cnv.state.clipY+cnv.state.clipH)
 	if x2 <= x1 || y2 <= y1 {
 		return
 	}
 	dc := gg.NewContextForRGBA(cnv.rgba)
 	dc.DrawRectangle(float64(x1), float64(y1), float64(x2-x1), float64(y2-y1))
 	dc.Clip()
+	dc.Translate(float64(cnv.state.translateX), float64(cnv.state.translateY))
+	dc.Scale(cnv.scale, cnv.scale)
 	dc.SetColor(col)
 	dc.SetLineWidth(1)
-	dc.DrawRoundedRectangle(float64(tx+x)+0.5, float64(ty+y)+0.5, float64(w-1), float64(h-1), float64(radius))
+	dc.DrawRoundedRectangle(float64(x)+0.5, float64(y)+0.5, float64(w-1), float64(h-1), float64(radius))
 	dc.Stroke()
 }
 

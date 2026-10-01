@@ -1690,7 +1690,7 @@ func (c *Table) draw(cnv *Canvas) {
 	// Draw cell borders
 	if c.cellBorderWidth > 0 {
 		cnv.Save()
-		cnv.SetDirectTranslateAndClip(cnv.state.translateX+c.scrollX, cnv.state.translateY+c.scrollY+c.headerHeight(), c.Width(), c.Height()-c.headerHeight())
+		cnv.SetDirectTranslateAndClip(cnv.TranslatedX()+c.scrollX, cnv.TranslatedY()+c.scrollY+c.headerHeight(), c.Width(), c.Height()-c.headerHeight())
 		for rowIndex := visibleRow1; rowIndex < visibleRow2+1; rowIndex++ {
 			x1 := 0
 			y1 := rowIndex*c.rowHeight1 - c.scrollY

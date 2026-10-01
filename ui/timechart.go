@@ -1156,7 +1156,15 @@ func (c *TimeChart) drawBadHatch(cnv *Canvas, al *timeChartAreaLayout, points []
 // up seamlessly.
 func (c *TimeChart) hatchRect(cnv *Canvas, x1, x2, height int, col color.Color) {
 	const period = 6
-	tx, ty := cnv.TranslatedX(), cnv.TranslatedY()
+	if cnv.Scale() != 1 {
+		for x := x1; x < x2; x++ {
+			for y := (period - x%period) % period; y < height; y += period {
+				cnv.FillRect(x, y, 1, 1, col)
+			}
+		}
+		return
+	}
+	tx, ty := cnv.state.translateX, cnv.state.translateY
 	for x := x1; x < x2; x++ {
 		for y := (period - x%period) % period; y < height; y += period {
 			cnv.MixPixel(tx+x, ty+y, col)

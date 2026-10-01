@@ -11,8 +11,9 @@ import (
 	"unsafe"
 )
 
-func go_on_paint(hwnd windowId, ptr unsafe.Pointer, width int, height int) {
-	// width/height come from drawRect's drawable rect in cocoa_darwin.go.
+func go_on_paint(hwnd windowId, ptr unsafe.Pointer, width int, height int, scale float64) {
+	// width/height come from drawRect's drawable rect in cocoa_darwin.go,
+	// in pixels: points times scale.
 	img := &image.RGBA{
 		Pix:    unsafe.Slice((*uint8)(ptr), width*height*4),
 		Stride: width * 4,
@@ -20,6 +21,7 @@ func go_on_paint(hwnd windowId, ptr unsafe.Pointer, width int, height int) {
 	}
 
 	if win, ok := hwnds[hwnd]; ok {
+		win.scale = scale
 		win.windowPaint(img)
 	}
 }

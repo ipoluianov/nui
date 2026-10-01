@@ -42,6 +42,6 @@ func (c *nativeWindow) processDropFiles(hDrop uintptr) {
 	var pt struct{ x, y int32 }
 	procDragQueryPoint.Call(hDrop, uintptr(unsafe.Pointer(&pt)))
 	if len(files) > 0 {
-		c.onFilesDropped(files, int(pt.x), int(pt.y))
+		c.onFilesDropped(files, c.toLogical(int(pt.x)), c.toLogical(int(pt.y)))
 	}
 }

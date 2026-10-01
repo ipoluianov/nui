@@ -1120,8 +1120,7 @@ func (c *Widget) ProcessPaint(cnv *Canvas) {
 	// Draw using the custom paint function if set
 	cnv.Save()
 
-	cnv.state.translateX -= c.scrollX
-	cnv.state.translateY -= c.scrollY
+	cnv.translateBy(-c.scrollX, -c.scrollY)
 
 	if c.onCustomPaint != nil {
 		c.onCustomPaint(cnv)

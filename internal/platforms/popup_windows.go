@@ -55,6 +55,7 @@ type popupWindow struct {
 	popupCallbacks
 
 	hwnd        syscall.Handle
+	owner       *nativeWindow
 	interactive bool
 	mouseInside bool    // owner's thread only
 	hCursor     uintptr // the cursor set by SetMouseCursor, 0 for the class cursor
@@ -86,7 +87,7 @@ func createPopupWindow(owner Window, interactive bool) PopupWindow {
 		return nil
 	}
 
-	p := &popupWindow{hwnd: syscall.Handle(hwnd), interactive: interactive}
+	p := &popupWindow{hwnd: syscall.Handle(hwnd), owner: o, interactive: interactive}
 	popupsMu.Lock()
 	popups[p.hwnd] = p
 	popupsMu.Unlock()
@@ -137,6 +138,10 @@ func popupWndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintp
 	p := getPopupByHandle(hwnd)
 	x := int(int16(lParam & 0xFFFF))
 	y := int(int16((lParam >> 16) & 0xFFFF))
+	if p != nil {
+		// The mouse position in logical pixels
+		x, y = scaleToLogical(x, p.Scale()), scaleToLogical(y, p.Scale())
+	}
 
 	switch msg {
 	case c_WM_NCHITTEST:
@@ -222,6 +227,12 @@ func popupWndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintp
 	return ret
 }
 
+// Scale is the owner's: the popup shows over it, and its size and position
+// are converted to pixels with that scale too
+func (p *popupWindow) Scale() float64 {
+	return p.owner.Scale()
+}
+
 func (p *popupWindow) paint(hdc uintptr) {
 	var r rect
 	procGetClientRect.Call(uintptr(p.hwnd), uintptr(unsafe.Pointer(&r)))
@@ -259,8 +270,8 @@ func (p *popupWindow) ShowAt(x, y, width, height int) {
 	procSetWindowPos.Call(
 		uintptr(p.hwnd),
 		c_HWND_TOPMOST,
-		uintptr(x), uintptr(y),
-		uintptr(width), uintptr(height),
+		uintptr(scaleToPhysical(x, p.Scale())), uintptr(scaleToPhysical(y, p.Scale())),
+		uintptr(scaleToPhysical(width, p.Scale())), uintptr(scaleToPhysical(height, p.Scale())),
 		c_SWP_NOACTIVATE|c_SWP_SHOWWINDOW,
 	)
 	procInvalidateRect.Call(uintptr(p.hwnd), 0, 0)

@@ -86,6 +86,10 @@ type Window interface {
 	Height() int
 	KeyModifiers() KeyModifiers
 	DrawTimeUs() int64
+	// Scale returns how many pixels of the image given to OnPaint a logical
+	// pixel takes: 1, or e.g. 2 on a Retina screen. The sizes, positions and
+	// mouse coordinates are all logical.
+	Scale() float64
 
 	// ClientToScreen converts a point in the window's client area to screen coordinates
 	ClientToScreen(x, y int) (screenX, screenY int)

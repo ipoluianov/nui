@@ -117,7 +117,7 @@ func (c *Form) takePopupWindow() platforms.PopupWindow {
 
 func (c *Form) bindPopupWindow(h *popupHost) {
 	h.wnd.OnPaint(func(rgba *image.RGBA) {
-		cnv := NewCanvas(rgba)
+		cnv := NewCanvasScaled(rgba, h.wnd.Scale())
 		cnv.SetDirectTranslateAndClip(0, 0, h.widget.Width(), h.widget.Height())
 		h.widget.ProcessPaint(cnv)
 	})

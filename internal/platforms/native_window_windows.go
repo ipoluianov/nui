@@ -91,6 +91,10 @@ func createWindow(title string, posX int, posY int, width int, height int, cente
 		windowFlags |= c_WS_MAXIMIZE
 	}
 
+	// The size is logical: in pixels of the screen it opens on (the
+	// primary one), corrected below if it opens on another
+	c.scale = systemScale()
+
 	// Create the window
 	hwnd, _, _ := procCreateWindowExW.Call(
 		0,
@@ -99,8 +103,8 @@ func createWindow(title string, posX int, posY int, width int, height int, cente
 		uintptr(windowFlags),
 		c_CW_USEDEFAULT,
 		c_CW_USEDEFAULT,
-		uintptr(width),
-		uintptr(height),
+		uintptr(c.toPhysical(width)),
+		uintptr(c.toPhysical(height)),
 		0,
 		0,
 		hInstance,
@@ -112,6 +116,12 @@ func createWindow(title string, posX int, posY int, width int, height int, cente
 
 	// Store the window handle
 	c.hwnd = windowId(syscall.Handle(hwnd))
+	if s := hwndScale(hwnd); s != c.scale {
+		c.scale = s
+		if !maximized {
+			c.Resize(width, height)
+		}
+	}
 	appWindowsMu.Lock()
 	app.windows[c.hwnd] = &c
 	appWindowsMu.Unlock()
@@ -290,18 +300,19 @@ func (c *nativeWindow) Move(x, y int) {
 	procSetWindowPos.Call(
 		uintptr(c.hwnd),
 		0,
-		uintptr(x), uintptr(y),
+		uintptr(c.toPhysical(x)), uintptr(c.toPhysical(y)),
 		0, 0,
 		uintptr(flags),
 	)
 }
 
 func (c *nativeWindow) MoveToCenterOfScreen() {
+	// In physical pixels, as the screen's size
 	screenWidth, screenHeight := getScreenSize()
-	windowWidth, windowHeight := c.Size()
+	windowWidth, windowHeight := c.toPhysical(c.windowWidth), c.toPhysical(c.windowHeight)
 	x := (screenWidth - windowWidth) / 2
 	y := (screenHeight - windowHeight) / 2
-	c.Move(int(x), int(y))
+	procSetWindowPos.Call(uintptr(c.hwnd), 0, uintptr(x), uintptr(y), 0, 0, c_SWP_NOSIZE|c_SWP_NOZORDER)
 }
 
 func (c *nativeWindow) Resize(width, height int) {
@@ -311,8 +322,8 @@ func (c *nativeWindow) Resize(width, height int) {
 		uintptr(c.hwnd),
 		0,
 		0, 0,
-		uintptr(width),
-		uintptr(height),
+		uintptr(c.toPhysical(width)),
+		uintptr(c.toPhysical(height)),
 		uintptr(flags),
 	)
 }
@@ -456,13 +467,20 @@ func (c *nativeWindow) SystemHandle() any {
 	return syscall.Handle(c.hwnd)
 }
 
+// ClientToScreen: the screen coordinates are logical too, in the window's
+// scale (see dpi_windows.go)
 func (c *nativeWindow) ClientToScreen(x, y int) (int, int) {
-	pt := struct{ x, y int32 }{int32(x), int32(y)}
+	pt := struct{ x, y int32 }{int32(c.toPhysical(x)), int32(c.toPhysical(y))}
 	procClientToScreen.Call(uintptr(c.hwnd), uintptr(unsafe.Pointer(&pt)))
-	return int(pt.x), int(pt.y)
+	return c.toLogicalScreen(int(pt.x)), c.toLogicalScreen(int(pt.y))
 }
 
 func (c *nativeWindow) ScreenWorkArea(x, y int) (int, int, int, int) {
+	areaX, areaY, areaW, areaH := c.screenWorkAreaPhysical(c.toPhysical(x), c.toPhysical(y))
+	return c.toLogicalScreen(areaX), c.toLogicalScreen(areaY), c.toLogical(areaW), c.toLogical(areaH)
+}
+
+func (c *nativeWindow) screenWorkAreaPhysical(x, y int) (int, int, int, int) {
 	// MonitorFromRect instead of MonitorFromPoint: POINT is passed by value
 	// there, which doesn't map onto syscall's uintptr arguments portably.
 	r := rect{int32(x), int32(y), int32(x + 1), int32(y + 1)}

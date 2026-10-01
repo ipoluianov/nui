@@ -31,6 +31,10 @@ type nativeWindow struct {
 	drawTimes      [32]int64
 	drawTimesIndex int
 
+	// scale is how many pixels of the paint buffer a logical pixel takes,
+	// set by the platform before each paint; 0 means 1
+	scale float64
+
 	timerLastDT time.Time
 
 	onKeyDown func(keyCode Key, mods KeyModifiers) bool
@@ -142,4 +146,14 @@ func growBuffer(buf *[]byte, size int) []byte {
 		*buf = (*buf)[:size]
 	}
 	return *buf
+}
+
+// Scale returns how many pixels of the image given to OnPaint a logical
+// pixel (a unit of the window's sizes and of the mouse coordinates) takes:
+// 1, or e.g. 2 on a Retina screen
+func (c *nativeWindow) Scale() float64 {
+	if c.scale <= 0 {
+		return 1
+	}
+	return c.scale
 }

@@ -12,16 +12,25 @@ func (c *Canvas) FillRoundedRectAA(x, y, width, height, radius int, col color.RG
 	if width <= 0 || height <= 0 {
 		return
 	}
+	x, y, width, height = c.pixelRect(x, y, width, height)
+	c.fillRoundedRectAAPixels(x, y, width, height, c.scaled(radius), col)
+}
+
+// fillRoundedRectAAPixels is FillRoundedRectAA in pixels of the image
+func (c *Canvas) fillRoundedRectAAPixels(x, y, width, height, radius int, col color.RGBA) {
+	if width <= 0 || height <= 0 {
+		return
+	}
 	radius = max(0, min(radius, width/2, height/2))
 	if radius == 0 {
-		c.FillRect(x, y, width, height, col)
+		c.fillRectPixels(x, y, width, height, col)
 		return
 	}
 
 	// The middle band and the parts of the top and bottom bands between the corners
-	c.FillRect(x, y+radius, width, height-radius*2, col)
-	c.FillRect(x+radius, y, width-radius*2, radius, col)
-	c.FillRect(x+radius, y+height-radius, width-radius*2, radius, col)
+	c.fillRectPixels(x, y+radius, width, height-radius*2, col)
+	c.fillRectPixels(x+radius, y, width-radius*2, radius, col)
+	c.fillRectPixels(x+radius, y+height-radius, width-radius*2, radius, col)
 
 	// The corners: each pixel covered as much as the quarter circle covers it
 	for cy := 0; cy < radius; cy++ {
@@ -67,10 +76,8 @@ func cornerCoverage(cx, cy, radius int) float64 {
 }
 
 // blendPixel blends the straight (not premultiplied) color into the pixel
-// at (x, y) in the current coordinates, inside the clip rectangle only.
+// (x, y) of the image, inside the clip rectangle only.
 func (c *Canvas) blendPixel(x, y int, col color.RGBA) {
-	x += c.state.translateX
-	y += c.state.translateY
 	if x < c.state.clipX || x >= c.state.clipX+c.state.clipW || y < c.state.clipY || y >= c.state.clipY+c.state.clipH {
 		return
 	}

@@ -657,7 +657,12 @@ func (c *Form) applyTheme() {
 }
 
 func (c *Form) processPaint(rgba *image.RGBA) {
-	cnv := NewCanvas(rgba)
+	c.paintScaled(rgba, c.wnd.Scale())
+}
+
+// paintScaled paints the form on rgba, scale pixels of it per logical pixel
+func (c *Form) paintScaled(rgba *image.RGBA, scale float64) {
+	cnv := NewCanvasScaled(rgba, scale)
 	cnv.SetDirectTranslateAndClip(0, 0, c.width, c.height)
 	if c.menuBar != nil {
 		cnv.Save()

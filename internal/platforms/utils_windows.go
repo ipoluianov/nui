@@ -413,6 +413,7 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 			Rect:   image.Rect(0, 0, int(hdcWidth), int(hdcHeight)),
 		}
 
+		// The buffer is in physical pixels; the scale tells the canvas so
 		if win.onPaint != nil {
 			win.onPaint(img)
 		}
@@ -547,10 +548,9 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 		return 0
 
 	case c_WM_MOUSEMOVE:
-		x := int16(lParam & 0xFFFF)
-		y := int16((lParam >> 16) & 0xFFFF)
 		if win != nil && win.onMouseMove != nil {
-			win.onMouseMove(int(x), int(y))
+			x, y := win.mousePos(lParam)
+			win.onMouseMove(x, y)
 		}
 
 		if !win.mouseInside {
@@ -576,8 +576,7 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 	case c_WM_LBUTTONDOWN:
 		procSetCapture.Call(uintptr(hwnd))
 		if win != nil && win.onMouseButtonDown != nil {
-			x := int16(lParam & 0xFFFF)
-			y := int16((lParam >> 16) & 0xFFFF)
+			x, y := win.mousePos(lParam)
 			win.onMouseButtonDown(MouseButtonLeft, int(x), int(y))
 			doubleClickDetected := false
 			if win.lastMouseButton == MouseButtonLeft {
@@ -603,16 +602,14 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 	case c_WM_LBUTTONUP:
 		procReleaseCapture.Call()
 		if win != nil && win.onMouseButtonUp != nil {
-			x := int16(lParam & 0xFFFF)
-			y := int16((lParam >> 16) & 0xFFFF)
+			x, y := win.mousePos(lParam)
 			win.onMouseButtonUp(MouseButtonLeft, int(x), int(y))
 		}
 		return 0
 
 	case c_WM_RBUTTONDOWN:
 		if win != nil && win.onMouseButtonDown != nil {
-			x := int16(lParam & 0xFFFF)
-			y := int16((lParam >> 16) & 0xFFFF)
+			x, y := win.mousePos(lParam)
 			win.onMouseButtonDown(MouseButtonRight, int(x), int(y))
 			doubleClickDetected := false
 			if win.lastMouseButton == MouseButtonRight {
@@ -637,16 +634,14 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 
 	case c_WM_RBUTTONUP:
 		if win != nil && win.onMouseButtonUp != nil {
-			x := int16(lParam & 0xFFFF)
-			y := int16((lParam >> 16) & 0xFFFF)
+			x, y := win.mousePos(lParam)
 			win.onMouseButtonUp(MouseButtonRight, int(x), int(y))
 		}
 		return 0
 
 	case c_WM_MBUTTONDOWN:
 		if win != nil && win.onMouseButtonDown != nil {
-			x := int16(lParam & 0xFFFF)
-			y := int16((lParam >> 16) & 0xFFFF)
+			x, y := win.mousePos(lParam)
 
 			win.onMouseButtonDown(MouseButtonMiddle, int(x), int(y))
 			doubleClickDetected := false
@@ -672,8 +667,7 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 
 	case c_WM_MBUTTONUP:
 		if win != nil && win.onMouseButtonUp != nil {
-			x := int16(lParam & 0xFFFF)
-			y := int16((lParam >> 16) & 0xFFFF)
+			x, y := win.mousePos(lParam)
 			win.onMouseButtonUp(MouseButtonMiddle, int(x), int(y))
 		}
 		return 0
@@ -717,27 +711,34 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 		return 0
 
 	case c_WM_SIZE:
-		width := int16(lParam & 0xFFFF)
-		height := int16((lParam >> 16) & 0xFFFF)
-		if win != nil && win.onResize != nil {
-			win.onResize(int(width), int(height))
-		}
 		if win != nil {
-			win.windowWidth = int(width)
-			win.windowHeight = int(height)
+			// The client area in logical pixels
+			width := win.toLogicalSize(int(uint16(lParam & 0xFFFF)))
+			height := win.toLogicalSize(int(uint16((lParam >> 16) & 0xFFFF)))
+			if win.onResize != nil {
+				win.onResize(width, height)
+			}
+			win.windowWidth = width
+			win.windowHeight = height
 		}
 		procInvalidateRect.Call(uintptr(hwnd), 0, 0)
 		return 0
 
 	case c_WM_MOVE:
-		x := int16(lParam & 0xFFFF)
-		y := int16((lParam >> 16) & 0xFFFF)
 		if win != nil {
-			win.windowPosX = int(x)
-			win.windowPosY = int(y)
+			x := win.toLogicalScreen(int(int16(lParam & 0xFFFF)))
+			y := win.toLogicalScreen(int(int16((lParam >> 16) & 0xFFFF)))
+			win.windowPosX = x
+			win.windowPosY = y
+			if win.onMove != nil {
+				win.onMove(x, y)
+			}
 		}
-		if win != nil && win.onMove != nil {
-			win.onMove(int(x), int(y))
+		return 0
+
+	case c_WM_DPICHANGED:
+		if win != nil {
+			win.dpiChanged(wParam, lParam)
 		}
 		return 0
 
@@ -777,6 +778,13 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 
 	ret, _, _ := procDefWindowProcW.Call(uintptr(hwnd), uintptr(msg), wParam, lParam)
 	return ret
+}
+
+// mousePos returns the mouse position of the message in logical pixels
+func (c *nativeWindow) mousePos(lParam uintptr) (int, int) {
+	x := int(int16(lParam & 0xFFFF))
+	y := int(int16((lParam >> 16) & 0xFFFF))
+	return c.toLogical(x), c.toLogical(y)
 }
 
 func (c *nativeWindow) changeMouseCursor(cursor MouseCursor) bool {
