@@ -506,8 +506,10 @@ func drawableRectInContentView(win, view objc.ID) nsRect {
 // delegate methods via respondsToSelector:, so formal protocol conformance
 // isn't required for AppKit to call these.
 
+// AppKit also asks this when the last visible window is ordered out, e.g. a
+// form hidden to the tray: only quit once no form window is left open.
 func nuiAppShouldTerminateAfterLastWindowClosed(self objc.ID, _ objc.SEL, _ objc.ID) bool {
-	return true
+	return len(cocoaWindows) == 0
 }
 
 func nuiWindowDidMove(self objc.ID, _ objc.SEL, notification objc.ID) {
