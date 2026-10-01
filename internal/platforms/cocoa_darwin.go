@@ -599,16 +599,24 @@ func nuiViewKeyUp(self objc.ID, _ objc.SEL, event objc.ID) {
 	}
 }
 
+// nuiViewKeyDown reports the key, then its character - unless the key was
+// handled (e.g. a shortcut) or is a command with Cmd or Ctrl
 func nuiViewKeyDown(self objc.ID, _ objc.SEL, event objc.ID) {
 	win := objc.Send[objc.ID](self, selWindow)
 	id := wndID(win)
+	keyCode := int(objc.Send[uint16](event, selKeyCode))
+	if go_on_key_down(id, keyCode) {
+		return
+	}
+	flags := objc.Send[uint64](event, selModifierFlags)
+	if flags&(nsEventModifierFlagCommand|nsEventModifierFlagControl) != 0 {
+		return
+	}
 	chars := objc.Send[objc.ID](event, selCharacters)
 	if objc.Send[int](chars, selLength) > 0 {
 		ch := objc.Send[uint16](chars, selCharacterAtIndex, 0)
 		go_on_char(id, int(ch))
 	}
-	keyCode := int(objc.Send[uint16](event, selKeyCode))
-	go_on_key_down(id, keyCode)
 }
 
 func nuiViewFlagsChanged(self objc.ID, _ objc.SEL, event objc.ID) {

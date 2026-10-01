@@ -27,6 +27,13 @@ type ContextMenuItem struct {
 
 	// pressed is set by a press on the item; the release over it clicks it
 	pressed bool
+
+	// shortcut runs the item from the keyboard and is shown on its right,
+	// see SetShortcut. mnemonic is the underlined letter ("&Open"), at
+	// mnemonicIndex of text.
+	shortcut      Shortcut
+	mnemonic      rune
+	mnemonicIndex int
 }
 
 // ContextMenuSeparatorHeight is the height of a separator line between groups of items
@@ -63,9 +70,60 @@ func NewContextMenuItem() *ContextMenuItem {
 	return &item
 }
 
+// SetText sets the text; "&" marks the mnemonic letter: "&Open" shows
+// "Open" with O underlined, and O chooses the item in the open menu.
 func (c *ContextMenuItem) SetText(text string) {
-	c.text = text
+	c.text, c.mnemonic, c.mnemonicIndex = parseMnemonic(text)
 	c.form.Update()
+}
+
+// Text returns the text as shown, without the mnemonic mark
+func (c *ContextMenuItem) Text() string {
+	return c.text
+}
+
+// SetShortcut sets the keys that run the item without opening the menu,
+// shown on the item's right: "Ctrl+S", "Ctrl+Shift+Z", "F5", "Mod+S" (Cmd
+// on macOS, Ctrl elsewhere). Works for the items of the form's main menu.
+// Panics on a wrong shortcut (see ParseShortcut); "" removes it. Returns the
+// item for chaining:
+//
+//	file.AddItem("&Save", onSave).SetShortcut("Mod+S")
+func (c *ContextMenuItem) SetShortcut(shortcut string) *ContextMenuItem {
+	c.shortcut = Shortcut{}
+	if shortcut != "" {
+		c.shortcut = MustParseShortcut(shortcut)
+	}
+	c.form.Update()
+	return c
+}
+
+// Shortcut returns the item's shortcut, zero if none
+func (c *ContextMenuItem) Shortcut() Shortcut {
+	return c.shortcut
+}
+
+// selectable reports whether the keyboard can choose the item
+func (c *ContextMenuItem) selectable() bool {
+	return !c.separator && c.IsVisible() && c.Enabled()
+}
+
+// activateByKeyboard opens the item's submenu, with its first item chosen,
+// or clicks the item
+func (c *ContextMenuItem) activateByKeyboard() {
+	if c.innerMenu != nil {
+		x, y := c.RectClientAreaOnWindow()
+		c.innerMenu.showMenu(x+c.Width(), y, c.parentMenu)
+		c.innerMenu.activateFirst()
+		return
+	}
+	c.click()
+}
+
+// isActive reports whether the item is highlighted: under the mouse, or
+// chosen with the keyboard
+func (c *ContextMenuItem) isActive() bool {
+	return c.IsHovered() || (c.parentMenu != nil && c.parentMenu.active == c)
 }
 
 // SetImage sets the icon shown left of the text; a larger image is scaled down
@@ -119,8 +177,11 @@ func (c *ContextMenuItem) Draw(ctx *Canvas) {
 	}
 
 	backColor, textColor := p.PopupBase, p.Text
-	if c.IsHovered() {
+	if c.isActive() && c.Enabled() {
 		backColor, textColor = p.Highlight, p.HighlightedText
+	}
+	if !c.Enabled() {
+		textColor = p.DisabledText
 	}
 	ctx.FillRect(0, 0, c.InnerWidth(), c.InnerHeight(), backColor)
 
@@ -134,14 +195,26 @@ func (c *ContextMenuItem) Draw(ctx *Canvas) {
 	if c.innerMenu != nil {
 		textAreaWidth -= c.Height() + contextMenuItemPadding
 	}
-	displayText := truncateTextToWidth(c.FontFamily(), c.FontSize(), c.text, textAreaWidth)
-
-	ctx.SetHAlign(HAlignLeft)
-	ctx.SetVAlign(VAlignCenter)
-	ctx.SetColor(textColor)
 	ctx.SetFontFamily(c.FontFamily())
 	ctx.SetFontSize(c.FontSize())
+	ctx.SetVAlign(VAlignCenter)
+
+	// The shortcut on the right, softer than the text
+	if shortcut := c.shortcut.String(); shortcut != "" && c.innerMenu == nil {
+		shortcutWidth, _, _ := MeasureText(c.FontFamily(), c.FontSize(), shortcut)
+		ctx.SetHAlign(HAlignRight)
+		ctx.SetColor(MixColors(colorToRGBA(textColor), backColor, 0.35))
+		ctx.DrawText(textX, 0, textAreaWidth, c.Height(), shortcut)
+		textAreaWidth -= shortcutWidth + contextMenuShortcutGap
+	}
+
+	displayText := truncateTextToWidth(c.FontFamily(), c.FontSize(), c.text, textAreaWidth)
+	ctx.SetHAlign(HAlignLeft)
+	ctx.SetColor(textColor)
 	ctx.DrawText(textX, 0, textAreaWidth, c.Height(), displayText)
+	if displayText == c.text {
+		drawMnemonicUnderline(ctx, textX, 0, textAreaWidth, c.Height(), c.text, c.mnemonicIndex)
+	}
 
 	if c.innerMenu != nil {
 		c.drawSubmenuArrow(ctx, textColor)
@@ -225,6 +298,10 @@ func (c *ContextMenuItem) click() {
 }
 
 func (c *ContextMenuItem) MouseEnter() {
+	// The keyboard goes on from the item under the mouse
+	if c.parentMenu != nil && c.selectable() {
+		c.parentMenu.active = c
+	}
 	c.form.Panel().CloseAfterPopupWidget(c.parentMenu)
 	if c.innerMenu != nil {
 		c.timerEnabled = true

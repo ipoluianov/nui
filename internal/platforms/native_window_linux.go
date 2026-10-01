@@ -16,7 +16,6 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
-	"unicode/utf8"
 	"unsafe"
 )
 
@@ -83,6 +82,9 @@ type nativeWindowPlatform struct {
 
 	// dnd is a drag from another application over the window, see dnd_linux.go
 	dnd dndState
+
+	// ic is the window's input context, see ime_linux.go
+	ic uintptr
 
 	// modalParent is the window this dialog was shown modally over (set by
 	// ShowModal), kept so doClose can decrement its modalChildCount and
@@ -169,6 +171,7 @@ func openDisplay() uintptr {
 		}
 		xScreen = xDefaultScreen(xDisplay)
 		initXdndAtoms(xDisplay)
+		openInputMethod(xDisplay)
 	}
 	return xDisplay
 }
@@ -283,6 +286,7 @@ func createWindow(title string, posX int, posY int, width int, height int, cente
 	c.initCloseProtocol()
 	c.initWindowStateAtoms()
 	c.enableFileDrop()
+	c.createInputContext()
 
 	return &c
 }
@@ -394,6 +398,16 @@ func processXEvents() {
 	for xDisplay != 0 && xPending(xDisplay) > 0 {
 		var event xEvent
 		xNextEvent(xDisplay, unsafe.Pointer(&event))
+		// The input method takes the keys of a composition
+		if filterEvent(&event) {
+			continue
+		}
+		// The keyboard layout changed (e.g. setxkbmap): Xlib must reload the
+		// key mapping to turn the keys into the new characters
+		if event.eventType() == xMappingNotify {
+			xRefreshKeyboardMapping(unsafe.Pointer(&event))
+			continue
+		}
 
 		w := event.window()
 		if c := GetNativeWindowByHandle(w); c != nil {
@@ -536,7 +550,9 @@ func (c *nativeWindow) processEvent(event *xEvent) {
 		fmt.Printf("Key pressed: KeySym = %d, KeyCode = 0x%x\n", keySym, keyEvent.Keycode)
 		key := ConvertLinuxKeyToNuiKey(int(keyEvent.Keycode))
 		processed := false
-		if c.onKeyDown != nil {
+		// An input method sends the text it composed as a key press with
+		// no key (keycode 0): only the text is there
+		if c.onKeyDown != nil && keyEvent.Keycode != 0 {
 			processed = c.onKeyDown(key, c.getModifierState())
 		}
 
@@ -548,26 +564,10 @@ func (c *nativeWindow) processEvent(event *xEvent) {
 			break
 		}
 
-		var buf [32]byte
-		var sym uintptr
-
-		n := xLookupString(
-			unsafe.Pointer(event),
-			unsafe.Pointer(&buf[0]),
-			int32(len(buf)),
-			unsafe.Pointer(&sym),
-			0,
-		)
-
-		if n > 0 {
-			text := string(buf[:n])
-			fmt.Printf("Text input: %s\n", text)
-
-			firstRune, _ := utf8.DecodeRuneInString(text)
-			if firstRune > 0 && firstRune != 127 {
-				if c.onChar != nil {
-					c.onChar(firstRune)
-				}
+		// An input method may commit several characters at once
+		for _, r := range c.keyText(event) {
+			if r > 0 && r != 127 && c.onChar != nil && !c.platform.closed {
+				c.onChar(r)
 			}
 		}
 
@@ -580,7 +580,11 @@ func (c *nativeWindow) processEvent(event *xEvent) {
 			c.onKeyUp(key, c.getModifierState())
 		}
 
+	case xFocusIn:
+		c.setInputFocus(true)
+
 	case xFocusOut:
+		c.setInputFocus(false)
 		focusEvent := (*xFocusChangeEvent)(unsafe.Pointer(event))
 		// Skip the temporary focus changes of keyboard grabs (e.g. the
 		// WM's own shortcuts) and focus moving into our own subwindows
@@ -823,6 +827,7 @@ func (c *nativeWindow) Close() bool {
 
 // doClose destroys the X window. UI thread only, from the event loop.
 func (c *nativeWindow) doClose() {
+	c.destroyInputContext()
 	closePopupsOf(c)
 	xDestroyWindow(c.platform.display, c.platform.window)
 	xFlush(c.platform.display)

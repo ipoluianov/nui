@@ -47,6 +47,9 @@ type Form struct {
 	// hidden is set by Hide
 	hidden bool
 
+	// See AddShortcut
+	shortcuts []formShortcut
+
 	// The drag in progress, see SetDragSource
 	drag           dragState
 	onFilesDropped func(files []string, x, y int)
@@ -933,6 +936,10 @@ func (c *Form) processKeyDown(keyCode Key, mods KeyModifiers) bool {
 	if keyCode == KeyEsc && c.dragCancel() {
 		return true
 	}
+	// Alt shows the mnemonics of the main menu
+	if keyCode == KeyAlt {
+		c.Update()
+	}
 
 	// Escape closes the top popup (a submenu closes before its menu) instead
 	// of reaching the widgets or the form's cancel button
@@ -943,6 +950,23 @@ func (c *Form) processKeyDown(keyCode Key, mods KeyModifiers) bool {
 		c.topWidget.CloseTopPopup()
 		c.Update()
 		return true
+	}
+
+	if len(c.topWidget.PopupWidgets) > 0 {
+		// An open menu takes the arrows, Enter and the mnemonic letters
+		if c.processMenuKeys(keyCode, mods) {
+			return true
+		}
+	} else {
+		if c.processMenuBarMnemonic(keyCode, mods) {
+			return true
+		}
+		// The shortcuts with modifiers and the function keys go before the
+		// focused widget; the others only reach the shortcuts if it doesn't
+		// take them
+		if isCommandKey(keyCode, mods) && c.processShortcut(keyCode, mods) {
+			return true
+		}
 	}
 
 	if c.focusedWidget != nil {
@@ -964,6 +988,10 @@ func (c *Form) processKeyDown(keyCode Key, mods KeyModifiers) bool {
 				break
 			}
 		}
+	}
+
+	if len(c.topWidget.PopupWidgets) == 0 && !isCommandKey(keyCode, mods) && c.processShortcut(keyCode, mods) {
+		return true
 	}
 
 	if !c.topWidget.ProcessKeyDown(keyCode, mods) {
@@ -1024,6 +1052,11 @@ func (c *Form) processKeyDown(keyCode Key, mods KeyModifiers) bool {
 func (c *Form) processKeyUp(keyCode Key, mods KeyModifiers) {
 	if c.lastKeyboardModifiers != mods {
 		c.lastKeyboardModifiers = mods
+	}
+	// The mnemonics of the main menu hide
+	if keyCode == KeyAlt {
+		c.lastKeyboardModifiers.Alt = false
+		c.Update()
 	}
 	if c.focusedWidget != nil {
 		c.focusedWidget.ProcessKeyUp(keyCode, mods)

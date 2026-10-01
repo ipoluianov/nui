@@ -8,7 +8,8 @@ import (
 	"github.com/ipoluianov/nui/ui"
 )
 
-// NewExampleForm shows the main menu of a form. Its menus are context menus
+// NewExampleForm shows the main menu of a form, with mnemonics (Alt+F) and
+// shortcuts (Ctrl+S). Its menus are context menus
 // (items with icons, separators, submenus) that drop down from the titles; while
 // one is open, moving the mouse along the bar switches between them. A click
 // on the bar keeps the focus, so the Edit items act on the text box.
@@ -29,22 +30,24 @@ func NewExampleForm() *ui.Form {
 
 	bar := ui.NewMenuBar()
 
-	file := bar.AddMenu("File")
-	file.AddItem("New", func() {
+	// "&" marks the mnemonics: Alt+F opens File, then N chooses New. The
+	// shortcuts work without opening the menus ("Mod" is Cmd on macOS)
+	file := bar.AddMenu("&File")
+	file.AddItem("&New", func() {
 		text.SetText("")
 		setStatus("New")
-	}).SetImage(iconNew())
-	file.AddItem("Open...", func() { setStatus("Open") }).SetImage(iconFolder())
+	}).SetImage(iconNew()).SetShortcut("Mod+N")
+	file.AddItem("&Open...", func() { setStatus("Open") }).SetImage(iconFolder()).SetShortcut("Mod+O")
 	recent := ui.NewContextMenu(nil)
 	for _, name := range []string{"report.txt", "notes.md", "todo.txt"} {
 		recent.AddItem(name, func() { setStatus("Open recent: " + name) })
 	}
 	// An item without an icon: its text lines up with the others
-	file.AddItemWithSubmenu("Open Recent", recent)
-	file.AddItem("Save", func() { setStatus("Save") }).SetImage(iconSave())
+	file.AddItemWithSubmenu("Open &Recent", recent)
+	file.AddItem("&Save", func() { setStatus("Save") }).SetImage(iconSave()).SetShortcut("Mod+S")
 	file.AddSeparator()
 	// Printing: the text box's text, wrapped and split into pages
-	file.AddItem("Print...", func() {
+	file.AddItem("&Print...", func() {
 		job := ui.NewTextPrintJob("Main menu example", text.Text(), nil)
 		form.Print(job, func(err error) {
 			switch err {
@@ -56,8 +59,8 @@ func NewExampleForm() *ui.Form {
 				setStatus("Print: " + err.Error())
 			}
 		})
-	}).SetImage(iconPrinter())
-	file.AddItem("Export PDF...", func() {
+	}).SetImage(iconPrinter()).SetShortcut("Mod+P")
+	file.AddItem("&Export PDF...", func() {
 		form.ShowSaveFileDialog(ui.SaveFileDialogOptions{DefaultFileName: "text.pdf"}, func(path string, err error) {
 			if path == "" || err != nil {
 				return
@@ -71,29 +74,37 @@ func NewExampleForm() *ui.Form {
 		})
 	})
 	file.AddSeparator()
-	file.AddItem("Exit", func() { form.Close() }).SetImage(iconCross())
+	file.AddItem("E&xit", func() { form.Close() }).SetImage(iconCross()).SetShortcut("Alt+F4")
 
-	edit := bar.AddMenu("Edit")
-	edit.AddItem("Upper Case", func() {
+	// Undo and Redo of the text box: in the text box Ctrl+Z works by itself,
+	// the menu items do the same from anywhere
+	edit := bar.AddMenu("&Edit")
+	edit.AddItem("&Undo", func() { text.Undo() }).SetShortcut("Mod+Z")
+	edit.AddItem("&Redo", func() { text.Redo() }).SetShortcut("Mod+Y")
+	edit.AddSeparator()
+	edit.AddItem("U&pper Case", func() {
 		text.SetText(strings.ToUpper(text.Text()))
 		setStatus("Upper Case")
-	}).SetImage(iconArrow(true))
-	edit.AddItem("Lower Case", func() {
+	}).SetImage(iconArrow(true)).SetShortcut("Mod+Shift+U")
+	edit.AddItem("Lo&wer Case", func() {
 		text.SetText(strings.ToLower(text.Text()))
 		setStatus("Lower Case")
-	}).SetImage(iconArrow(false))
+	}).SetImage(iconArrow(false)).SetShortcut("Mod+Shift+L")
 	edit.AddSeparator()
-	edit.AddItem("Clear", func() {
+	edit.AddItem("&Clear", func() {
 		text.SetText("")
 		setStatus("Clear")
 	}).SetImage(iconCross())
 
-	view := bar.AddMenu("View")
-	view.AddItem("Light Theme", func() { ui.ApplyLightTheme() }).SetImage(iconSun())
-	view.AddItem("Dark Theme", func() { ui.ApplyDarkTheme() }).SetImage(iconMoon())
+	view := bar.AddMenu("&View")
+	view.AddItem("&Light Theme", func() { ui.ApplyLightTheme() }).SetImage(iconSun())
+	view.AddItem("&Dark Theme", func() { ui.ApplyDarkTheme() }).SetImage(iconMoon())
 
-	help := bar.AddMenu("Help")
-	help.AddItem("About", func() { setStatus("nui main menu example") }).SetImage(iconInfo())
+	help := bar.AddMenu("&Help")
+	help.AddItem("&About", func() { setStatus("nui main menu example") }).SetImage(iconInfo()).SetShortcut("F1")
+
+	// A shortcut of the form, without a menu item
+	form.AddShortcut("F5", func() { setStatus("F5: refresh") })
 
 	form.SetMenuBar(bar)
 	return form

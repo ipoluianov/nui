@@ -822,3 +822,9 @@ func (c *NumBox) stepBy(delta float64) {
 	}
 	c.SetValue(v)
 }
+
+// handlesKey: the text editing keys go to the number box before the
+// shortcuts (see Form.AddShortcut)
+func (c *NumBox) handlesKey(key Key, mods KeyModifiers) bool {
+	return textEditingKey(key, mods)
+}

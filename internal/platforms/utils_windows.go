@@ -530,9 +530,13 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 		}
 		return 0
 
-	/*case c_WM_SYSCHAR:
-	println("SysChar typed:", rune(wParam), "=", string(rune(wParam)))
-	return 0*/
+	case c_WM_SYSCHAR:
+		// Alt+letter: the menu mnemonics and shortcuts were handled with
+		// WM_SYSKEYDOWN; DefWindowProc would only beep for a letter the window
+		// menu doesn't have. Alt+Space still opens the window menu.
+		if wParam != ' ' {
+			return 0
+		}
 
 	case c_WM_CHAR:
 		//println("Char typed:", rune(wParam), "=", string(rune(wParam)))

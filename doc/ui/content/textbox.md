@@ -30,3 +30,11 @@ tb.SetOnTextChanged(func() {
   fmt.Println(tb.Text())
 })
 ```
+
+## Undo and Redo
+
+Ctrl+Z takes the last edit back, Ctrl+Y or Ctrl+Shift+Z makes it again (Cmd on macOS). A run of
+typing, or of Backspace or Delete, at one place is one step; a paste is one step.
+
+- `Undo()`, `Redo()`, `CanUndo()`, `CanRedo()` - e.g. for the Edit menu.
+- `ClearUndo()` forgets the history; `SetText` from the code starts a new one.

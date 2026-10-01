@@ -121,12 +121,16 @@ func (c *MenuBar) attachToForm(self Widgeter, form *Form) {
 	}
 }
 
-// MenuBarItem is a title in a MenuBar.
+// MenuBarItem is a title in a MenuBar. "&" in its text marks the mnemonic
+// letter: "&File" opens with Alt+F, F underlined while Alt is held.
 type MenuBarItem struct {
 	Widget
 	bar  *MenuBar
 	text string
 	menu *ContextMenu
+
+	mnemonic      rune
+	mnemonicIndex int
 }
 
 func newMenuBarItem(bar *MenuBar, text string, menu *ContextMenu) *MenuBarItem {
@@ -134,7 +138,7 @@ func newMenuBarItem(bar *MenuBar, text string, menu *ContextMenu) *MenuBarItem {
 	c.InitWidget()
 	c.SetTypeName("MenuBarItem")
 	c.bar = bar
-	c.text = text
+	c.text, c.mnemonic, c.mnemonicIndex = parseMnemonic(text)
 	c.menu = menu
 	c.SetOnPaint(c.draw)
 	c.SetOnMouseDown(c.mouseDown)
@@ -147,7 +151,7 @@ func (c *MenuBarItem) Text() string {
 }
 
 func (c *MenuBarItem) SetText(text string) {
-	c.text = text
+	c.text, c.mnemonic, c.mnemonicIndex = parseMnemonic(text)
 	if c.form != nil {
 		c.form.layoutMenuBar()
 		c.form.Update()
@@ -209,6 +213,10 @@ func (c *MenuBarItem) draw(ctx *Canvas) {
 	ctx.SetFontFamily(c.FontFamily())
 	ctx.SetFontSize(c.FontSize())
 	ctx.DrawText(0, 0, c.Width(), c.Height(), c.text)
+	// The mnemonics show while Alt is held, as in the system menus
+	if c.form != nil && c.form.lastKeyboardModifiers.Alt {
+		drawMnemonicUnderline(ctx, 0, 0, c.Width(), c.Height(), c.text, c.mnemonicIndex)
+	}
 }
 
 // mouseDown opens the menu. A click on the title of the open menu doesn't

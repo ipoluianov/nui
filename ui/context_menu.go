@@ -13,7 +13,13 @@ type ContextMenu struct {
 	// title) instead of opening at a point, see dropDownFrom
 	dropDown                                    bool
 	anchorX, anchorY, anchorWidth, anchorHeight int
+
+	// active is the item chosen with the keyboard (or last under the mouse)
+	active *ContextMenuItem
 }
+
+// contextMenuShortcutGap is the space between an item's text and its shortcut
+const contextMenuShortcutGap = 24
 
 // Adaptive width bounds: the menu shrinks to fit short item text and grows
 // for long item text, but never past these limits.
@@ -61,6 +67,7 @@ func (c *ContextMenu) dropDownFrom(x, y, width, height int) {
 
 func (c *ContextMenu) show(x int, y int) {
 	c.parentMenu = nil
+	c.active = nil
 	if c.onShow != nil {
 		c.onShow()
 	}
@@ -73,6 +80,7 @@ func (c *ContextMenu) show(x int, y int) {
 func (c *ContextMenu) showMenu(x int, y int, parentMenu *ContextMenu) {
 	c.CloseAfterPopupWidget(parentMenu)
 	c.parentMenu = parentMenu
+	c.active = nil
 	c.dropDown = false
 	if c.onShow != nil {
 		c.onShow()
@@ -176,6 +184,46 @@ func (c *ContextMenu) rebuildVisualElements() {
 	c.menuHeight = yOffset
 }
 
+// activeItem returns the item chosen with the keyboard, nil if none
+func (c *ContextMenu) activeItem() *ContextMenuItem {
+	if c.active != nil && c.active.selectable() {
+		return c.active
+	}
+	return nil
+}
+
+// activateFirst chooses the first item that can be chosen
+func (c *ContextMenu) activateFirst() {
+	c.active = nil
+	c.moveActive(1)
+}
+
+// moveActive chooses the next (step 1) or the previous (-1) item that can be
+// chosen, around the end
+func (c *ContextMenu) moveActive(step int) {
+	n := len(c.items)
+	if n == 0 {
+		return
+	}
+	start := -1
+	for i, item := range c.items {
+		if item == c.active {
+			start = i
+		}
+	}
+	if start < 0 && step < 0 {
+		start = n
+	}
+	for i := 1; i <= n; i++ {
+		item := c.items[((start+step*i)%n+n)%n]
+		if item.selectable() {
+			c.active = item
+			c.form.Update()
+			return
+		}
+	}
+}
+
 // hasImages reports whether any item has an icon, so the menu reserves the icon column
 func (c *ContextMenu) hasImages() bool {
 	for _, item := range c.items {
@@ -202,6 +250,9 @@ func (c *ContextMenu) contentWidth() int {
 		itemWidth := item.textX() + textWidth + contextMenuItemPadding
 		if item.innerMenu != nil {
 			itemWidth += ThemeRowHeight() + contextMenuItemPadding
+		} else if shortcut := item.shortcut.String(); shortcut != "" {
+			shortcutWidth, _, _ := MeasureText(item.FontFamily(), item.FontSize(), shortcut)
+			itemWidth += contextMenuShortcutGap + shortcutWidth
 		}
 		if itemWidth > width {
 			width = itemWidth

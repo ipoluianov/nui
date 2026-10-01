@@ -66,7 +66,9 @@ func createPopupWindow(owner Window, interactive bool) PopupWindow {
 	windowType := "_NET_WM_WINDOW_TYPE_TOOLTIP"
 	if interactive {
 		windowType = "_NET_WM_WINDOW_TYPE_POPUP_MENU"
-		xSelectInput(display, window, xExposureMask|xButtonPressMask|xButtonReleaseMask|xPointerMotionMask|xLeaveWindowMask)
+		// The keys too: without a window manager the keyboard focus follows
+		// the mouse, and may land on the popup (see processEvent)
+		xSelectInput(display, window, xExposureMask|xButtonPressMask|xButtonReleaseMask|xPointerMotionMask|xLeaveWindowMask|xKeyPressMask|xKeyReleaseMask)
 	} else {
 		xSelectInput(display, window, xExposureMask)
 		// Empty input shape: the mouse passes through to the window below,
@@ -151,6 +153,11 @@ func (p *popupWindow) processEvent(event *xEvent) {
 		}
 	case xLeaveNotify:
 		p.mouseLeave()
+	case xKeyPress, xKeyRelease:
+		// The keyboard belongs to the owner (e.g. the arrows of an open menu)
+		if !p.owner.platform.closed {
+			p.owner.processEvent(event)
+		}
 	}
 }
 

@@ -53,11 +53,13 @@ func go_on_window_deactivate(hwnd windowId) {
 	}
 }
 
-func go_on_key_down(hwnd windowId, code int) {
+// go_on_key_down returns true if the window handled the key
+func go_on_key_down(hwnd windowId, code int) bool {
 	key := Key(ConvertMacOSKeyToNuiKey(code))
 	if win, ok := hwnds[hwnd]; ok {
-		win.windowKeyDown(key)
+		return win.windowKeyDown(key)
 	}
+	return false
 }
 
 func go_on_key_up(hwnd windowId, code int) {
@@ -434,10 +436,11 @@ func (c *nativeWindow) windowKeyModifiersChanged(shift bool, ctrl bool, alt bool
 	}
 }
 
-func (c *nativeWindow) windowKeyDown(keyCode Key) {
+func (c *nativeWindow) windowKeyDown(keyCode Key) bool {
 	if c.onKeyDown != nil {
-		c.onKeyDown(keyCode, c.platform.keyModifiers)
+		return c.onKeyDown(keyCode, c.platform.keyModifiers)
 	}
+	return false
 }
 
 func (c *nativeWindow) windowKeyUp(keyCode Key) {

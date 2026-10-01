@@ -2,6 +2,7 @@ package ui
 
 import (
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -30,7 +31,29 @@ type TextBox struct {
 	skipOneCursorBlinking bool
 
 	propIsProcessing bool
+
+	// The undo history, see Undo
+	undoStack, redoStack []textBoxState
+	// The last edit, to make one undo step of a run of typing (or of
+	// Backspace, Delete): its kind, where it left the cursor and when
+	lastEdit       textboxModifyCommand
+	lastEditX      int
+	lastEditY      int
+	lastEditTime   time.Time
+	lastEditActive bool
 }
+
+// textBoxState is a step of the undo history: the text and the cursor
+type textBoxState struct {
+	text string
+	x, y int
+}
+
+// textBoxUndoLimit is how many steps Undo goes back
+const textBoxUndoLimit = 500
+
+// textBoxUndoPause ends a run of typing that undoes in one step
+const textBoxUndoPause = 2 * time.Second
 
 /*
 Properties:
@@ -479,6 +502,17 @@ func (c *TextBox) KeyDown(key Key, mods KeyModifiers) bool {
 		return true
 	}
 
+	if (mods.Ctrl || mods.Cmd) && !mods.Alt {
+		switch {
+		case key == KeyZ && !mods.Shift:
+			c.Undo()
+			return true
+		case key == KeyY || (key == KeyZ && mods.Shift):
+			c.Redo()
+			return true
+		}
+	}
+
 	if mods.Ctrl && key == KeyX {
 		c.cutSelected()
 		return true
@@ -817,6 +851,11 @@ func (c *TextBox) clearSelection() {
 
 func (c *TextBox) modifyText(cmd textboxModifyCommand, modifiers KeyModifiers, data interface{}) {
 	c.redraw()
+	// Pasting inserts the text a character at a time, through here again
+	// (blockUpdate): the whole paste is one step
+	if !c.blockUpdate {
+		c.recordUndo(cmd)
+	}
 
 	valid := true
 	selectedTextRemoved, lines, curPosX, curPosY := c.removeSelectedText(modifiers)
@@ -928,6 +967,8 @@ func (c *TextBox) modifyText(cmd textboxModifyCommand, modifiers KeyModifiers, d
 		if !c.blockUpdate {
 			c.clearSelection()
 			c.updateInnerSize()
+			// The next typing at this place joins this undo step
+			c.lastEditX, c.lastEditY = c.cursorPosX, c.cursorPosY
 
 			f := c.GetPropFunction("ontextchanged")
 			if f != nil {
@@ -988,4 +1029,93 @@ func (c *TextBox) FontSize() float64 {
 func (c *TextBox) applyThemeMetrics() {
 	c.Widget.applyThemeMetrics()
 	c.updateInnerSize()
+}
+
+// handlesKey: the text editing keys go to the text box before the shortcuts
+// (see Form.AddShortcut), and Enter too when it starts a new line
+func (c *TextBox) handlesKey(key Key, mods KeyModifiers) bool {
+	return textEditingKey(key, mods) || (key == KeyEnter && c.Multiline())
+}
+
+// recordUndo saves the state before an edit. A run of typing (or of
+// Backspace, Delete) at one place makes one step; the text set by the code
+// (SetText) starts a new history.
+func (c *TextBox) recordUndo(cmd textboxModifyCommand) {
+	if cmd == textboxModifyCommandSetText {
+		c.ClearUndo()
+		return
+	}
+	grouped := false
+	switch cmd {
+	case textboxModifyCommandInsertChar, textboxModifyCommandBackspace, textboxModifyCommandDelete:
+		sel := c.selectionRange()
+		grouped = c.lastEditActive && c.lastEdit == cmd &&
+			c.cursorPosX == c.lastEditX && c.cursorPosY == c.lastEditY &&
+			sel.X1 == sel.X2 && sel.Y1 == sel.Y2 &&
+			time.Since(c.lastEditTime) < textBoxUndoPause
+	}
+	if !grouped {
+		c.undoStack = append(c.undoStack, textBoxState{c.Text(), c.cursorPosX, c.cursorPosY})
+		if len(c.undoStack) > textBoxUndoLimit {
+			c.undoStack = c.undoStack[1:]
+		}
+	}
+	c.redoStack = nil
+	c.lastEdit = cmd
+	c.lastEditActive = true
+	c.lastEditTime = time.Now()
+	// Where the cursor ends is known after the edit: see afterEdit
+	c.lastEditX, c.lastEditY = -1, -1
+}
+
+// Undo takes back the last edit of the user (Ctrl+Z)
+func (c *TextBox) Undo() {
+	if c.ReadOnly() || len(c.undoStack) == 0 {
+		return
+	}
+	state := c.undoStack[len(c.undoStack)-1]
+	c.undoStack = c.undoStack[:len(c.undoStack)-1]
+	c.redoStack = append(c.redoStack, textBoxState{c.Text(), c.cursorPosX, c.cursorPosY})
+	c.restoreState(state)
+}
+
+// Redo makes the edit taken back by Undo again (Ctrl+Y, Ctrl+Shift+Z)
+func (c *TextBox) Redo() {
+	if c.ReadOnly() || len(c.redoStack) == 0 {
+		return
+	}
+	state := c.redoStack[len(c.redoStack)-1]
+	c.redoStack = c.redoStack[:len(c.redoStack)-1]
+	c.undoStack = append(c.undoStack, textBoxState{c.Text(), c.cursorPosX, c.cursorPosY})
+	c.restoreState(state)
+}
+
+func (c *TextBox) CanUndo() bool {
+	return len(c.undoStack) > 0
+}
+
+func (c *TextBox) CanRedo() bool {
+	return len(c.redoStack) > 0
+}
+
+// ClearUndo forgets the undo history
+func (c *TextBox) ClearUndo() {
+	c.undoStack, c.redoStack = nil, nil
+	c.lastEditActive = false
+}
+
+// restoreState shows a state of the history, as an edit of the user
+func (c *TextBox) restoreState(state textBoxState) {
+	c.lastEditActive = false
+	c.Widget.SetProp("text", state.text)
+	c.updateInnerSize()
+	c.moveCursor(state.x, state.y, KeyModifiers{})
+	c.clearSelection()
+	c.ensureVisibleCursor()
+	if f := c.GetPropFunction("ontextchanged"); f != nil {
+		PushEvent(nil)
+		f()
+		PopEvent()
+	}
+	c.form.Update()
 }
