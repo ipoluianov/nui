@@ -46,7 +46,16 @@ func RegisterFont(family string, data []byte) error {
 		return fmt.Errorf("font %q: %w", family, err)
 	}
 	setFont(family, f)
+	registerNativeFont(family, data, f)
 	return nil
+}
+
+// isRegisteredFont tells whether a font file is registered as the family
+func isRegisteredFont(family string) bool {
+	fontsMu.RLock()
+	defer fontsMu.RUnlock()
+	_, ok := fonts[family]
+	return ok
 }
 
 // AddFallbackFont adds the registered family to the end of the fallback

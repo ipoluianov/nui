@@ -13,6 +13,16 @@ ui.ApplyBaseFontSize(16) // the theme font size, in pixels
 
 `ui.RegisterFont(family, ttfBytes)` adds your own font file.
 
+On **Windows** the built-in fonts and those of `RegisterFont` are drawn by GDI with ClearType, like
+the system fonts: the font file is added to GDI for the application only, and GDI runs its hinting,
+so the text is sharp at 100%. Text with characters the font lacks (e.g. Chinese, drawn with the
+fallback font) is drawn by nui's rasterizer with the same line height and baseline. ClearType needs
+opaque pixels under the text; on a transparent image the text is drawn in grayscale.
+
+```go
+ui.NativeFontRendering = false // before the first form: nui's rasterizer everywhere
+```
+
 ## System fonts
 
 A system font is a font of the operating system, not built into the application. It is drawn by the

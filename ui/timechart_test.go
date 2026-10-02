@@ -11,6 +11,9 @@ import (
 // the line has to move with it smoothly, not jump by whole pixels and change
 // its shape
 func TestTimeChartScrollsSmoothly(t *testing.T) {
+	// ClearType fringes of the labels would count as the blue series
+	NativeFontRendering = false
+	defer func() { NativeFontRendering = true }()
 	const w, h = 600, 300
 	chart := NewTimeChart()
 	chart.SetSize(w, h)

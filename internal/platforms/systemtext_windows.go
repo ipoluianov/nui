@@ -94,6 +94,10 @@ func systemUIFontName() string {
 }
 
 func openSystemFont(name string, pixelSize float64) (SystemFont, error) {
+	return openGDIFont(name, pixelSize, c_FW_NORMAL, false)
+}
+
+func openGDIFont(name string, pixelSize float64, weight int, italic bool) (SystemFont, error) {
 	face, err := syscall.UTF16PtrFromString(name)
 	if err != nil {
 		return nil, err
@@ -104,7 +108,11 @@ func openSystemFont(name string, pixelSize float64) (SystemFont, error) {
 	}
 	// A negative height is the em size, as the size of the other fonts
 	height := -int32(math.Round(pixelSize))
-	hfont, _, _ := procCreateFontW.Call(uintptr(height), 0, 0, 0, c_FW_NORMAL, 0, 0, 0,
+	var italicFlag uintptr
+	if italic {
+		italicFlag = 1
+	}
+	hfont, _, _ := procCreateFontW.Call(uintptr(height), 0, 0, 0, uintptr(weight), italicFlag, 0, 0,
 		c_DEFAULT_CHARSET, 0, 0, c_CLEARTYPE_QUALITY, 0, uintptr(unsafe.Pointer(face)))
 	if hfont == 0 {
 		procDeleteDC.Call(dc)
@@ -204,6 +212,11 @@ func (f *windowsFont) Draw(dst *image.RGBA, text string, col color.RGBA, x, y in
 	stride := f.dibW * 4
 	bits := unsafe.Slice((*byte)(f.dibBits), stride*f.dibH)
 
+	if !opaque(dst, r) {
+		f.drawMask(dst, s, col, x, y, r, bits, stride)
+		return
+	}
+
 	// The pixels under the text into the bitmap, RGBA to BGRA
 	for py := 0; py < r.Dy(); py++ {
 		src := dst.Pix[dst.PixOffset(r.Min.X, r.Min.Y+py):]
@@ -234,4 +247,40 @@ func (f *windowsFont) Draw(dst *image.RGBA, text string, col color.RGBA, x, y in
 			d[px*4], d[px*4+1], d[px*4+2] = byte(nr), byte(ng), byte(nb)
 		}
 	}
+}
+
+// opaque tells whether all the pixels of r are opaque
+func opaque(img *image.RGBA, r image.Rectangle) bool {
+	for py := r.Min.Y; py < r.Max.Y; py++ {
+		row := img.Pix[img.PixOffset(r.Min.X, py):]
+		for px := 0; px < r.Dx(); px++ {
+			if row[px*4+3] != 255 {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// drawMask draws the text where the pixels under it aren't all opaque
+// (e.g. an image with a transparent background): ClearType has nothing to
+// blend with there, so GDI draws white text on black, which is the coverage,
+// and the text is blended in grayscale with it as the alpha.
+func (f *windowsFont) drawMask(dst *image.RGBA, s []uint16, col color.RGBA, x, y int, r image.Rectangle, bits []byte, stride int) {
+	for py := 0; py < r.Dy(); py++ {
+		clear(bits[py*stride : py*stride+r.Dx()*4])
+	}
+	procSetTextColor.Call(f.dc, 0xFFFFFF)
+	procExtTextOutW.Call(f.dc, uintptr(int32(x-r.Min.X)), uintptr(int32(y-r.Min.Y)), 0, 0,
+		uintptr(unsafe.Pointer(&s[0])), uintptr(len(s)), 0)
+	procGdiFlush.Call()
+
+	mask := make([]byte, r.Dx()*r.Dy())
+	for py := 0; py < r.Dy(); py++ {
+		row := bits[py*stride:]
+		for px := 0; px < r.Dx(); px++ {
+			mask[py*r.Dx()+px] = byte((int(row[px*4]) + int(row[px*4+1]) + int(row[px*4+2])) / 3)
+		}
+	}
+	blendMask(dst, col, mask, r.Dx(), r.Dy(), r.Dx(), false, r.Min.X, r.Min.Y, r)
 }

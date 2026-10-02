@@ -78,7 +78,7 @@ func clearRenderedTexts() {
 func DrawText(rgba *image.RGBA, text string, textColor color.Color, fontFamily string, fontSize float64, x int, y int, clipX int, clipY int, clipWidth int, clipHeight int) {
 	// A system font is drawn straight onto the pixels under it: its subpixel
 	// antialiasing depends on them, so there is no image to cache
-	if sf := systemFontFor(fontFamily, fontSize); sf != nil {
+	if sf := systemFontFor(fontFamily, fontSize, text); sf != nil {
 		sf.Draw(rgba, text, colorToRGBA(textColor), x, y, image.Rect(clipX, clipY, clipX+clipWidth, clipY+clipHeight))
 		return
 	}
@@ -115,6 +115,13 @@ func DrawText(rgba *image.RGBA, text string, textColor color.Color, fontFamily s
 	if textBounds.Dx() <= 0 || textBounds.Dy() <= 0 {
 		return
 	}
+	// On the baseline of the system font the other text is drawn with
+	if ascent, _, ok := nativeMetrics(fontFamily, fontSize); ok {
+		withFace(fontFamily, fontSize, func(face font.Face) {
+			m := face.Metrics()
+			y += ascent - ((m.Ascent + m.Descent).Ceil() - m.Descent.Ceil())
+		})
+	}
 
 	dstRect := image.Rect(x, y, x+textBounds.Dx(), y+textBounds.Dy())
 	clipRect := image.Rect(clipX, clipY, clipX+clipWidth, clipY+clipHeight)
@@ -132,7 +139,7 @@ func DrawText(rgba *image.RGBA, text string, textColor color.Color, fontFamily s
 // width of the whole text. Advances and kerning are added up the same way
 // as in MeasureText and in drawing, so the cursor stays on the characters.
 func GetCharPositions(fontFamily string, fontSize float64, text string) ([]int, error) {
-	if sf := systemFontFor(fontFamily, fontSize); sf != nil {
+	if sf := systemFontFor(fontFamily, fontSize, text); sf != nil {
 		return sf.Positions(text), nil
 	}
 	stringLenInRunes := len([]rune(text))
@@ -161,7 +168,7 @@ func GetCharPositions(fontFamily string, fontSize float64, text string) ([]int, 
 }
 
 func MeasureText(fontFamily string, fontSize float64, text string) (int, int, error) {
-	if sf := systemFontFor(fontFamily, fontSize); sf != nil {
+	if sf := systemFontFor(fontFamily, fontSize, text); sf != nil {
 		positions := sf.Positions(text)
 		ascent, descent := sf.Metrics()
 		return positions[len(positions)-1], ascent + descent, nil
@@ -173,6 +180,9 @@ func MeasureText(fontFamily string, fontSize float64, text string) (int, int, er
 		textWidth = font.MeasureString(face, text).Ceil()
 		textHeight = (metrics.Ascent + metrics.Descent).Ceil()
 	})
+	if ascent, descent, ok := nativeMetrics(fontFamily, fontSize); ok {
+		textHeight = ascent + descent
+	}
 	return textWidth, textHeight, err
 }
 

@@ -88,3 +88,24 @@ func blendMask(dst *image.RGBA, col color.RGBA, mask []byte, maskW, maskH, strid
 		}
 	}
 }
+
+// FontData is a font file the application handed to the system's text
+// engine (see RegisterFontData): the family name, the weight and the style
+// the system knows it by
+type FontData struct {
+	Name   string
+	Weight int
+	Italic bool
+}
+
+// RegisterFontData hands a TrueType or OpenType file to the system's text
+// engine, for this process only, so OpenFontData draws it like a system
+// font (GDI with ClearType on Windows). ErrSystemTextNotSupported elsewhere.
+func RegisterFontData(data []byte) (FontData, error) {
+	return registerFontData(data)
+}
+
+// OpenFontData opens a font of RegisterFontData with the em size in pixels
+func OpenFontData(fd FontData, pixelSize float64) (SystemFont, error) {
+	return openFontData(fd, pixelSize)
+}
