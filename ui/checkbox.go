@@ -48,11 +48,46 @@ type EventCheckboxStateChanged struct {
 }
 
 func (c *Checkbox) SetChecked(checked bool) {
-	if c.GetPropBool("checked", false) == checked {
+	if c.GetPropBool("checked", false) == checked && !c.Indeterminate() {
 		return
 	}
 
 	c.SetProp("checked", checked)
+	c.SetProp("indeterminate", false)
+	c.stateChanged(checked)
+}
+
+// SetTristate lets a click put the checkbox into the third, indeterminate
+// state ("leave as it is", "mixed"): unchecked -> checked -> indeterminate
+func (c *Checkbox) SetTristate(tristate bool) {
+	c.SetProp("tristate", tristate)
+}
+
+func (c *Checkbox) Tristate() bool {
+	return c.GetPropBool("tristate", false)
+}
+
+// SetIndeterminate puts the checkbox into the third state (drawn with a
+// dash); Checked is false then. SetChecked leaves it
+func (c *Checkbox) SetIndeterminate(indeterminate bool) {
+	if c.Indeterminate() == indeterminate {
+		return
+	}
+	c.SetProp("indeterminate", indeterminate)
+	if indeterminate {
+		c.SetProp("checked", false)
+	}
+	c.stateChanged(c.Checked())
+}
+
+func (c *Checkbox) Indeterminate() bool {
+	return c.GetPropBool("indeterminate", false)
+}
+
+func (c *Checkbox) stateChanged(checked bool) {
+	if c.form != nil {
+		c.form.Update()
+	}
 	f := c.GetPropFunction("onstatechanged")
 	if f != nil {
 		var ev EventCheckboxStateChanged
@@ -82,9 +117,14 @@ func (c *Checkbox) draw(cnv *Canvas) {
 	cnv.SetFontSize(c.FontSize())
 	cnv.DrawText(textX, 0, c.Width()-textX, c.Height(), c.Text())
 
-	fill, border, mark := indicatorColors(&c.Widget, c.Checked())
+	indeterminate := c.Indeterminate()
+	fill, border, mark := indicatorColors(&c.Widget, c.Checked() || indeterminate)
 	cnv.FillFrame(padding, padding, boxSize, boxSize, themeControlRadius, fill, border)
 
+	if indeterminate {
+		// A dash: neither on nor off
+		cnv.DrawLine(padding+boxSize/4, padding+boxSize/2, padding+boxSize-boxSize/4, padding+boxSize/2, 2, mark)
+	}
 	if c.Checked() {
 		tickColor := mark
 		tickWidth := 2
@@ -115,7 +155,14 @@ func (c *Checkbox) buttonProcessMouseUp(button MouseButton, x int, y int, mods K
 	// *Checkbox, so a direct comparison against c never matches even though
 	// the mouse is genuinely over this checkbox. The bounds check above
 	// already confirms that, so toggle unconditionally here.
-	c.SetChecked(!c.Checked())
+	switch {
+	case c.Tristate() && c.Checked():
+		c.SetIndeterminate(true)
+	case c.Indeterminate():
+		c.SetChecked(false)
+	default:
+		c.SetChecked(!c.Checked())
+	}
 
 	return true
 }

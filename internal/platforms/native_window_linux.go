@@ -69,8 +69,16 @@ type nativeWindowPlatform struct {
 	// shown is set by Show(): the event loop runs the timer and paints only
 	// the shown windows. done is closed once the window is closed, for Exec
 	// calls from other goroutines.
-	shown bool
-	done  chan struct{}
+	shown      bool
+	mappedOnce bool // the window was shown at least once: the initial state is set
+
+	// A window shown maximized is not painted until the window manager gives it
+	// the full size (a resize or the first Expose): otherwise the first frame is
+	// laid out for the normal size in a corner of the big window.
+	// awaitDeadline ends the wait without a WM
+	awaitMaximize bool
+	awaitDeadline time.Time
+	done          chan struct{}
 
 	// modalChildCount counts this window's currently-open ShowModal children.
 	// While > 0, the event loop drops keyboard/mouse callbacks for this window:
@@ -317,6 +325,18 @@ func (c *nativeWindow) Show() {
 	}
 	c.platform.shown = true
 
+	// A window created maximized is mapped maximized: the state is put into
+	// _NET_WM_STATE before the first map, so the window manager opens it at
+	// the full size at once instead of showing it at its own size first
+	if c.showMaximized && !c.platform.mappedOnce {
+		atoms := []uintptr{c.platform.netWMStateMaximizedHorz, c.platform.netWMStateMaximizedVert}
+		xChangeProperty(c.platform.display, c.platform.window, c.platform.netWMState, xXAAtom, 32,
+			xPropModeReplace, unsafe.Pointer(&atoms[0]), int32(len(atoms)))
+		c.platform.awaitMaximize = true
+		c.platform.awaitDeadline = time.Now().Add(maximizeWaitLimit)
+	}
+	c.platform.mappedOnce = true
+
 	xMapRaised(c.platform.display, c.platform.window)
 	xFlush(c.platform.display)
 }
@@ -441,6 +461,7 @@ func (c *nativeWindow) idle(tick bool) {
 		if c.windowWidth != c.platform.pendingWidth || c.windowHeight != c.platform.pendingHeight {
 			c.windowWidth = c.platform.pendingWidth
 			c.windowHeight = c.platform.pendingHeight
+			c.platform.awaitMaximize = false // the full size is here
 			if c.onResize != nil {
 				c.onResize(c.windowWidth, c.windowHeight)
 			}
@@ -449,12 +470,48 @@ func (c *nativeWindow) idle(tick bool) {
 
 	if tick && !c.platform.closed && c.onTimer != nil {
 		c.onTimer()
+		// The timer may have closed the window (a dialog whose work is done):
+		// it is not painted any more
+		if atomic.LoadInt32(&c.platform.closeRequested) != 0 && !c.inputBlocked() {
+			c.doClose()
+			return
+		}
+	}
+
+	if c.platform.awaitMaximize {
+		if time.Now().Before(c.platform.awaitDeadline) {
+			return // painted once the size is known (needPaint stays set)
+		}
+		c.platform.awaitMaximize = false
 	}
 
 	if !c.platform.closed && c.platform.needPaint.Swap(false) {
 		c.paint()
 	}
 }
+
+// looksMaximized: the window fills its monitor (without the frame; panels of
+// the desktop may take up to maximizedPanelsHeight of the height)
+func (c *nativeWindow) looksMaximized() bool {
+	c.updateWindowPos()
+	_, _, monWidth, monHeight := monitorRectForWindow(c.platform.display, c.platform.screen,
+		c.windowPosX, c.windowPosY, c.windowWidth, c.windowHeight)
+	left, right, top, bottom, ok := c.getFrameExtents()
+	if !ok {
+		return false
+	}
+	width := c.windowWidth + left + right
+	height := c.windowHeight + top + bottom
+	const tolerance = 2
+	return width >= monWidth-tolerance && width <= monWidth+tolerance &&
+		height <= monHeight+tolerance && height >= monHeight-maximizedPanelsHeight
+}
+
+// maximizedPanelsHeight: the most the panels of the desktop take of a monitor
+const maximizedPanelsHeight = 120
+
+// maximizeWaitLimit: how long a window shown maximized waits for its size
+const maximizeWaitLimit = 500 * time.Millisecond
 
 // processEvent handles one X event of this window
 func (c *nativeWindow) processEvent(event *xEvent) {
@@ -487,6 +544,11 @@ func (c *nativeWindow) processEvent(event *xEvent) {
 	case xExpose:
 		// The whole window is painted anyway: once, after the queue
 		c.platform.needPaint.Store(true)
+		// Visible: when the size is already the maximized one (a window saved
+		// maximized is created with that size), there is no resize to wait for
+		if c.platform.awaitMaximize && c.looksMaximized() {
+			c.platform.awaitMaximize = false
+		}
 	case xMapNotify:
 		mapEvent := (*xMapEvent)(unsafe.Pointer(event))
 		fmt.Printf("Window became visible. Window ID: %d\n", mapEvent.Window)

@@ -21,6 +21,7 @@ form.Exec()
 - **`Invoke(f func())`**: run `f` on the UI thread, then repaint the form. Safe from any goroutine.
 - **`Hide()` / `Show()` / `IsHidden()`**: hide the window (taskbar button and all) and bring it back; the form stays open. See [TrayIcon](trayicon.md).
 - **`ShowToast(text, kind)` / `ShowToastFor(text, kind, duration)`**: a short message in the corner, see [Toasts](toast.md).
+- **`KeyModifiers() ui.KeyModifiers`**: which of Shift, Ctrl, Alt (Cmd on macOS) are held right now, not only inside a key event - e.g. to show what the function keys do with them; read it in a timer. Call it on the UI thread.
 - **`SetOnFilesDropped(func(files []string, x, y int))`**: files dropped from the system outside the drop targets, see [Drag and drop](dragdrop.md).
 
 ## File dialogs

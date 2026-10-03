@@ -164,3 +164,41 @@ func TestMenuKeyboard(t *testing.T) {
 		t.Errorf("mnemonic L: %v", clicks)
 	}
 }
+
+func TestShortcutPunctuationAndNumpad(t *testing.T) {
+	for s, want := range map[string]Shortcut{
+		`Ctrl+\`:      {Key: KeyBackslash, Ctrl: true},
+		"Alt+NumPlus": {Key: KeyNumpadPlus, Alt: true},
+		"NumMinus":    {Key: KeyNumpadMinus},
+		"NumMultiply": {Key: KeyNumpadAsterisk},
+		"NumDivide":   {Key: KeyNumpadSlash},
+		"Ctrl+.":      {Key: KeyDot, Ctrl: true},
+	} {
+		got, err := ParseShortcut(s)
+		if err != nil || got != want {
+			t.Errorf("%s: %+v %v", s, got, err)
+		}
+	}
+	if runtime.GOOS != "darwin" {
+		if got := MustParseShortcut("Ctrl+NumPlus").String(); got != "Ctrl+Num +" {
+			t.Errorf("String: %q", got)
+		}
+		if got := MustParseShortcut(`Ctrl+\`).String(); got != `Ctrl+\` {
+			t.Errorf("String: %q", got)
+		}
+	}
+}
+
+func TestTypingKeysStayInTextBox(t *testing.T) {
+	for _, k := range []Key{KeyDot, KeyNumpadPlus, KeyA, KeySpace, KeyNumpad5} {
+		if !textEditingKey(k, KeyModifiers{}) {
+			t.Errorf("%v: not a text editing key", k)
+		}
+		if !textEditingKey(k, KeyModifiers{Shift: true}) {
+			t.Errorf("Shift+%v: not a text editing key", k)
+		}
+	}
+	if textEditingKey(KeyDot, KeyModifiers{Ctrl: true}) || textEditingKey(KeyF5, KeyModifiers{}) {
+		t.Error("Ctrl+. and F5 are shortcuts")
+	}
+}

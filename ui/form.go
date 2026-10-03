@@ -378,6 +378,19 @@ func (c *Form) Size() (int, int) {
 	return c.width, c.height
 }
 
+// KeyModifiers returns which of Shift, Ctrl, Alt (and Cmd on macOS) are held
+// right now - not only inside a key event. A program can show what the
+// keys do with them, like the function key bar of a file manager that changes
+// while Shift is held: read it in a timer.
+// Call it on the UI thread. Before the window is shown it returns the state of
+// the last key event.
+func (c *Form) KeyModifiers() KeyModifiers {
+	if c.wnd != nil {
+		return c.wnd.KeyModifiers()
+	}
+	return c.lastKeyboardModifiers
+}
+
 func (c *Form) IsMaximized() bool {
 	if c.wnd != nil {
 		return c.wnd.IsMaximized()
@@ -657,6 +670,9 @@ func (c *Form) applyTheme() {
 }
 
 func (c *Form) processPaint(rgba *image.RGBA) {
+	if c.wnd == nil {
+		return // closed: the native window goes away with the next turn of the loop
+	}
 	c.paintScaled(rgba, c.wnd.Scale())
 }
 
@@ -926,6 +942,15 @@ func (c *Form) FocusedWidget() Widgeter {
 
 func (c *Form) processKeyDown(keyCode Key, mods KeyModifiers) bool {
 	c.tooltipSuppress()
+	// Diagnostics of keys that seem lost: where the key goes
+	focused := "none"
+	if c.focusedWidget != nil {
+		focused = c.focusedWidget.TypeName() + " " + c.focusedWidget.Name()
+		if c.WidgetById(c.focusedWidget.Id()) == nil {
+			focused += " (not in the form)"
+		}
+	}
+	fmt.Printf("Key dispatch: form=%q focused=%s popups=%d\n", c.title, focused, len(c.topWidget.PopupWidgets))
 
 	if c.lastKeyboardModifiers != mods {
 		c.lastKeyboardModifiers = mods

@@ -41,6 +41,9 @@ type Table struct {
 	selectingRows bool
 
 	clearSelectionOnEmptyClick bool
+	hotTracking                bool // the current cell follows the mouse (a drop-down list)
+	cellEditor                 *TextBox
+	cellEditorCancel           func()
 
 	// Selection
 	currentCellX int
@@ -63,6 +66,7 @@ type Table struct {
 	onCellChanged       func(row int, col int, text string, data interface{}) bool
 	onCellMouseDblClick func()
 	onCellMouseDown     func(button MouseButton, row int, col int, x int, y int, mods KeyModifiers)
+	onCellMouseUp       func(button MouseButton, row int, col int, x int, y int, mods KeyModifiers)
 
 	headerWidget  *tableHeader
 	editorTextBox *TextBox
@@ -1194,9 +1198,27 @@ func (c *Table) ProcessMouseDown(button MouseButton, x int, y int, mods KeyModif
 }
 
 func (c *Table) onMouseUp(button MouseButton, x int, y int, mods KeyModifiers) bool {
+	resizing := c.columnResizingIndex >= 0
 	c.columnResizingIndex = -1
 	c.selectionDragging = false
+	if c.onCellMouseUp != nil && !resizing {
+		col, row := c.cellByPosition(x, y)
+		c.onCellMouseUp(button, row, col, x, y, mods)
+	}
 	return true
+}
+
+// SetOnCellMouseUp is called when a mouse button is released over the table;
+// row and col are -1 outside the cells
+func (c *Table) SetOnCellMouseUp(callback func(button MouseButton, row int, col int, x int, y int, mods KeyModifiers)) {
+	c.onCellMouseUp = callback
+}
+
+// SetHotTracking makes the current cell follow the mouse, as in a drop-down
+// list: the cell under the mouse is lit and the mouse is a hand over it
+// (cells with the selection disabled are skipped)
+func (c *Table) SetHotTracking(enabled bool) {
+	c.hotTracking = enabled
 }
 
 type EventTableCellMouseDblClick struct {
@@ -1442,6 +1464,16 @@ func (c *Table) onMouseMove(x int, y int, mods KeyModifiers) bool {
 		// would already extend the selection to the neighbor
 		dx, dy := x-c.selectionDragStartX, y-c.selectionDragStartY
 		c.selectionDragStarted = dx*dx+dy*dy > tableDragThreshold*tableDragThreshold
+	}
+	if c.hotTracking && !c.selectionDragging {
+		col, row := c.cellByPosition(x, y)
+		if row >= 0 && col >= 0 && !c.getCellObj(row, col).selectionDisabled {
+			// A hand over the items that can be chosen, as over links
+			c.SetMouseCursor(MouseCursorPointer)
+			if row != c.currentCellY || col != c.currentCellX {
+				c.SetCurrentCell2(row, col)
+			}
+		}
 	}
 	if c.selectionDragging && c.selectionDragStarted {
 		col, row := c.cellByPositionClamped(x, y)
@@ -2065,6 +2097,84 @@ func (c *Table) EditCurrentCell(enteredText string) {
 	})
 	c.AddWidgetOnTable(c.editorTextBox, c.currentCellY, c.currentCellX, 1, 1)
 	c.editorTextBox.Focus()
+}
+
+// EditCell opens a one-line editor over the cells [col, col+colSpan) of the
+// row, with the text in it (in-place renaming of file managers). onDone gets
+// the text: accepted is true on Enter and when the editor loses the focus,
+// false on Esc; the cell itself is not changed. Returns the editor (to select
+// a part of the text, for example), nil if the cell is out of the table.
+func (c *Table) EditCell(row, col, colSpan int, text string, onDone func(text string, accepted bool)) *TextBox {
+	if row < 0 || row >= c.rowCount || col < 0 || colSpan < 1 || col+colSpan > c.columnCount {
+		return nil
+	}
+	c.CancelCellEditor()
+
+	editor := NewTextBox()
+	editor.SetText(text)
+	editor.MoveCursorToEnd()
+	editor.SelectAllText()
+	done := false
+	// refocus: back to the table on Enter and Esc; not when the focus went elsewhere
+	finish := func(accepted, refocus bool) {
+		if done {
+			return
+		}
+		done = true
+		value := editor.Text()
+		c.removeInnerWidget(editor)
+		if c.cellEditor == editor {
+			c.cellEditor = nil
+		}
+		c.form.Update()
+		if refocus {
+			c.Focus()
+		}
+		if onDone != nil {
+			onDone(value, accepted)
+		}
+	}
+	editor.SetOnTextBoxKeyDown(func() {
+		ev := CurrentEvent().Parameter.(*EventTextboxKeyDown)
+		switch ev.Key {
+		case KeyEnter:
+			finish(true, true)
+			ev.Processed = true
+		case KeyEsc:
+			finish(false, true)
+			ev.Processed = true
+		}
+	})
+	editor.SetOnFocusLost(func() { finish(true, false) })
+	c.cellEditorCancel = func() { finish(false, c.form.FocusedWidget() == editor) }
+	c.cellEditor = editor
+
+	c.ScrollEnsureVisible(c.columnOffset(col), c.rowOffset(row)+c.rowHeight1)
+	c.AddWidgetOnTable(editor, row, col, colSpan, 1)
+	editor.Focus()
+	return editor
+}
+
+// CancelCellEditor closes the editor of EditCell, if one is open, as Esc does
+func (c *Table) CancelCellEditor() {
+	if c.cellEditor != nil && c.cellEditorCancel != nil {
+		c.cellEditorCancel()
+	}
+}
+
+// IsEditingCell tells whether the editor of EditCell is open
+func (c *Table) IsEditingCell() bool {
+	return c.cellEditor != nil
+}
+
+func (c *Table) removeInnerWidget(w Widgeter) {
+	for i, in := range c.innerWidgets {
+		if in.widget == w {
+			c.innerWidgets = append(c.innerWidgets[:i], c.innerWidgets[i+1:]...)
+			break
+		}
+	}
+	c.RemoveWidget(w)
 }
 
 func (c *Table) CopySelectionToClipboard() {

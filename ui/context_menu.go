@@ -52,6 +52,20 @@ func (c *ContextMenu) SetOnShow(f func()) {
 	c.onShow = f
 }
 
+// ShowContextMenu opens a menu at (x, y) of the form's client area, from code:
+// e.g. a list of the recent directories on a hotkey. The menu doesn't have to
+// belong to a widget (see Widget.SetContextMenu)
+func (c *Form) ShowContextMenu(menu *ContextMenu, x int, y int) {
+	if menu == nil {
+		return
+	}
+	menu.attachToForm(menu, c)
+	menu.ShowMenu(x, y)
+	if active := menu.activeItem(); active == nil {
+		menu.activateFirst()
+	}
+}
+
 func (c *ContextMenu) ShowMenu(x int, y int) {
 	c.dropDown = false
 	c.show(x, y)

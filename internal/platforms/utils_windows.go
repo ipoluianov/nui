@@ -61,8 +61,9 @@ var (
 
 	procGetSystemMetrics = user32.NewProc("GetSystemMetrics")
 
-	procIsZoomed    = user32.NewProc("IsZoomed")
-	procGetKeyState = user32.NewProc("GetKeyState")
+	procIsZoomed         = user32.NewProc("IsZoomed")
+	procGetKeyState      = user32.NewProc("GetKeyState")
+	procGetAsyncKeyState = user32.NewProc("GetAsyncKeyState")
 
 	procEnableWindow        = user32.NewProc("EnableWindow")
 	procGetWindowLongPtrW   = user32.NewProc("GetWindowLongPtrW")
@@ -907,6 +908,20 @@ const (
 	VK_CONTROL = 0x11
 	VK_MENU    = 0x12 // Это клавиша ALT
 )
+
+// currentModifierState is the state of the keys right now (GetAsyncKeyState),
+// not as of the last message like getModifierState
+func currentModifierState() KeyModifiers {
+	isPressed := func(vk int) bool {
+		ret, _, _ := procGetAsyncKeyState.Call(uintptr(vk))
+		return (uint16(ret) & 0x8000) != 0
+	}
+	return KeyModifiers{
+		Ctrl:  isPressed(VK_CONTROL),
+		Alt:   isPressed(VK_MENU),
+		Shift: isPressed(VK_SHIFT),
+	}
+}
 
 func getModifierState() KeyModifiers {
 	// Highest bit (0x8000) indicates the key is pressed

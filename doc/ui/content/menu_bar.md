@@ -65,4 +65,6 @@ form.AddShortcut("F5", refresh)                         // a shortcut without a 
   the next main menu), Left closes a submenu (or opens the previous main menu), Escape closes.
 - A focused text field keeps its own keys (Ctrl+C/V/X/A/Z/Y, Delete, the arrows...): a menu item
   with the shortcut Ctrl+C runs only when no text field has the focus.
+- Keys of the numeric keypad: `NumPlus`, `NumMinus`, `NumMultiply`, `NumDivide` (shown as
+  "Num +", ...); punctuation keys by their characters: `Ctrl+\`, `Ctrl+.`, `Alt+/`.
 - `ui.ParseShortcut(s)` / `ui.MustParseShortcut(s)` give a `ui.Shortcut` (`String()`, `Matches`).

@@ -6,6 +6,8 @@ import (
 	"image/draw"
 	"sync/atomic"
 	"time"
+
+	"github.com/ebitengine/purego/objc"
 )
 
 // Cocoa has one shared NSApplication run loop for the whole process; only the
@@ -305,8 +307,15 @@ func (c *nativeWindow) IsMaximized() bool {
 	return isWindowZoomed(c.hwnd)
 }
 
+// KeyModifiers is the state of the keys right now: [NSEvent modifierFlags]
 func (c *nativeWindow) KeyModifiers() KeyModifiers {
-	return c.platform.keyModifiers
+	flags := objc.Send[uint64](objc.ID(objc.GetClass("NSEvent")), objc.RegisterName("modifierFlags"))
+	return KeyModifiers{
+		Shift: flags&nsEventModifierFlagShift != 0,
+		Ctrl:  flags&nsEventModifierFlagControl != 0,
+		Alt:   flags&nsEventModifierFlagOption != 0,
+		Cmd:   flags&nsEventModifierFlagCommand != 0,
+	}
 }
 
 func (c *nativeWindow) DrawTimeUs() int64 {

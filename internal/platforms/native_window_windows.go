@@ -443,7 +443,7 @@ func (c *nativeWindow) IsMaximized() bool {
 }
 
 func (c *nativeWindow) KeyModifiers() KeyModifiers {
-	return getModifierState()
+	return currentModifierState()
 }
 
 func (c *nativeWindow) DrawTimeUs() int64 {

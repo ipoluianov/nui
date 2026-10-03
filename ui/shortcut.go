@@ -35,11 +35,23 @@ var shortcutKeys = func() map[string]Key {
 		"ESCAPE": KeyEsc, "RETURN": KeyEnter, "DEL": KeyDelete, "INS": KeyInsert,
 		"PGUP": KeyPageUp, "PGDN": KeyPageDown, "UP": KeyArrowUp, "DOWN": KeyArrowDown,
 		"LEFT": KeyArrowLeft, "RIGHT": KeyArrowRight, "PLUS": KeyEqual, "MINUS": KeyMinus,
+		// The keys of the numeric keypad
+		"NUMPLUS": KeyNumpadPlus, "NUMMINUS": KeyNumpadMinus, "NUMMULTIPLY": KeyNumpadAsterisk,
+		"NUMSTAR": KeyNumpadAsterisk, "NUMDIVIDE": KeyNumpadSlash, "NUMSLASH": KeyNumpadSlash,
+		// The punctuation keys by their characters
+		`\`: KeyBackslash, "/": KeySlash, ",": KeyComma, ".": KeyDot, ";": KeySemicolon,
+		"'": KeyApostrophe, "[": KeyLeftBracket, "]": KeyRightBracket, "`": KeyGrave,
 	} {
 		m[name] = k
 	}
 	return m
 }()
+
+// punctuationKeys are shown as their characters
+var punctuationKeys = map[Key]string{
+	KeyBackslash: `\`, KeySlash: "/", KeyComma: ",", KeyDot: ".", KeySemicolon: ";",
+	KeyApostrophe: "'", KeyLeftBracket: "[", KeyRightBracket: "]", KeyGrave: "`",
+}
 
 // ParseShortcut parses a shortcut like "Ctrl+S", "Ctrl+Shift+Z", "Alt+F4",
 // "F5" or "Delete". "Mod" is Cmd on macOS and Ctrl elsewhere: "Mod+S" saves
@@ -119,6 +131,18 @@ func (s Shortcut) String() string {
 		key = "Right"
 	case KeyEqual:
 		key = "+"
+	case KeyNumpadPlus:
+		key = "Num +"
+	case KeyNumpadMinus:
+		key = "Num -"
+	case KeyNumpadAsterisk:
+		key = "Num *"
+	case KeyNumpadSlash:
+		key = "Num /"
+	default:
+		if ch, ok := punctuationKeys[s.Key]; ok {
+			key = ch
+		}
 	}
 	if runtime.GOOS == "darwin" {
 		var b strings.Builder
@@ -269,11 +293,32 @@ func textEditingKey(key Key, mods KeyModifiers) bool {
 		return false
 	}
 	ctrl := mods.Ctrl || mods.Cmd
+	// A key that types a character is the text box's: a shortcut like "." or
+	// "Num +" must not fire while the user types it
+	if !ctrl && typingKey(key) {
+		return true
+	}
 	switch key {
 	case KeyA, KeyC, KeyV, KeyX, KeyZ, KeyY:
 		return ctrl
 	case KeyArrowLeft, KeyArrowRight, KeyArrowUp, KeyArrowDown, KeyHome, KeyEnd,
 		KeyBackspace, KeyDelete:
+		return true
+	}
+	return false
+}
+
+// typingKey: the keys that type a character (without Ctrl, Alt, Cmd)
+func typingKey(key Key) bool {
+	switch {
+	case key >= KeyA && key <= KeyZ, key >= Key0 && key <= Key9,
+		key >= KeyNumpad0 && key <= KeyNumpad9:
+		return true
+	}
+	switch key {
+	case KeySpace, KeyMinus, KeyEqual, KeyComma, KeyDot, KeySlash, KeySemicolon,
+		KeyApostrophe, KeyLeftBracket, KeyRightBracket, KeyBackslash, KeyGrave,
+		KeyNumpadPlus, KeyNumpadMinus, KeyNumpadAsterisk, KeyNumpadSlash, KeyNumpadDot:
 		return true
 	}
 	return false

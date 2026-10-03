@@ -992,6 +992,21 @@ func (c *TextBox) SelectAllText() {
 	c.selectionRightY = len(lines) - 1
 }
 
+// SelectRange selects the runes [from, to) of the first line and puts the
+// cursor at the end of the selection (as file managers select a name
+// without its extension)
+func (c *TextBox) SelectRange(from, to int) {
+	runes := []rune(c.Lines()[0])
+	to = max(0, min(to, len(runes)))
+	from = max(0, min(from, to))
+	c.moveCursor(to, 0, KeyModifiers{})
+	c.selectionLeftX, c.selectionLeftY = from, 0
+	c.selectionRightX, c.selectionRightY = to, 0
+	if c.form != nil {
+		c.form.Update()
+	}
+}
+
 func (c *TextBox) MoveCursorToEnd() {
 	lines := c.Lines()
 	runes := []rune(lines[c.cursorPosY])
