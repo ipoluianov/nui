@@ -173,6 +173,9 @@ func drainWakePipe() {
 // openDisplay returns the shared X connection, opening it on the first call
 func openDisplay() uintptr {
 	if xDisplay == 0 {
+		if x11LoadError != nil {
+			panic(x11LoadError)
+		}
 		xDisplay = xOpenDisplay(0)
 		if xDisplay == 0 {
 			panic("Unable to open X display")

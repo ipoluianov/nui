@@ -402,15 +402,22 @@ func dlopenFirst(names ...string) (uintptr, error) {
 	return 0, fmt.Errorf("nui: unable to load any of %v: %w", names, lastErr)
 }
 
+// x11LoadError is why libX11/libc were not loaded (nil - loaded). A program
+// that imports nui but shows no windows (e.g. a server mode on a machine
+// without X11) keeps working; opening the display reports this error.
+var x11LoadError error
+
 func init() {
 	libX11, err := dlopenFirst("libX11.so.6", "libX11.so")
 	if err != nil {
-		panic(err)
+		x11LoadError = err
+		return
 	}
 
 	libc, err := dlopenFirst("libc.so.6", "libc.so")
 	if err != nil {
-		panic(err)
+		x11LoadError = err
+		return
 	}
 
 	purego.RegisterLibFunc(&xOpenDisplay, libX11, "XOpenDisplay")
