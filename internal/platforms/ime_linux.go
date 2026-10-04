@@ -7,13 +7,16 @@ import (
 	"unsafe"
 )
 
-// Text input on Linux goes through an X input method (XIM): the one of
-// XMODIFIERS (ibus, fcitx: Chinese, Japanese, Korean input), or Xlib's own
-// local one, which does the keyboard layout's characters in UTF-8 (Cyrillic,
-// Greek...), dead keys and Compose. Each window has an input context; the
-// event loop gives every event to XFilterEvent first, and the text of a key
-// press comes from Xutf8LookupString. XLookupString, without an input
-// method, gives Latin-1 only.
+// Text input on Linux goes through Xlib's own local input method: it does the
+// keyboard layout's characters in UTF-8 (Cyrillic, Greek...), dead keys and
+// Compose. Each window has an input context; the event loop gives every event
+// to XFilterEvent first, and the text of a key press comes from
+// Xutf8LookupString. XLookupString, without an input method, gives Latin-1 only.
+//
+// The input method servers of XMODIFIERS (ibus, fcitx over XIM) are not used:
+// XIM keeps the key events until the server answers, and when the server once
+// does not answer, no key reaches any window of the program again while the
+// mouse keeps working.
 
 const (
 	xFocusIn       = 9
@@ -45,15 +48,10 @@ var (
 	xim uintptr
 )
 
-// openInputMethod opens the input method of XMODIFIERS, or else the local one
+// openInputMethod opens the local input method, whatever XMODIFIERS tells
 func openInputMethod(display uintptr) {
-	xSetLocaleModifiers("")
+	xSetLocaleModifiers("@im=none")
 	xim = xOpenIM(display, 0, 0, 0)
-	if xim == 0 {
-		// The input method server of XMODIFIERS isn't running
-		xSetLocaleModifiers("@im=none")
-		xim = xOpenIM(display, 0, 0, 0)
-	}
 }
 
 // createInputContext makes the window's input context
