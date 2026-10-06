@@ -448,14 +448,19 @@ func processXEvents() {
 // idle does what waits for the queued events to be handled: closing, laying
 // out for the latest size, the timer and painting
 func (c *nativeWindow) idle(tick bool) {
-	if c.platform.closed || !c.platform.shown {
+	if c.platform.closed {
 		return
 	}
 
 	// A close requested while a modal dialog of this window is open waits
-	// until the dialog is gone (see Close)
+	// until the dialog is gone (see Close). Checked before shown: a hidden
+	// window (e.g. in the tray) must close too, or Exec never returns.
 	if atomic.LoadInt32(&c.platform.closeRequested) != 0 && !c.inputBlocked() {
 		c.doClose()
+		return
+	}
+
+	if !c.platform.shown {
 		return
 	}
 
