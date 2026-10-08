@@ -309,6 +309,10 @@ func (c *nativeWindow) IsMaximized() bool {
 
 // KeyModifiers is the state of the keys right now: [NSEvent modifierFlags]
 func (c *nativeWindow) KeyModifiers() KeyModifiers {
+	// modifierFlags reports the keys held in any application
+	if !isKeyWindow(c.hwnd) {
+		return KeyModifiers{}
+	}
 	flags := objc.Send[uint64](objc.ID(objc.GetClass("NSEvent")), objc.RegisterName("modifierFlags"))
 	return KeyModifiers{
 		Shift: flags&nsEventModifierFlagShift != 0,

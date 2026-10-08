@@ -137,6 +137,7 @@ var (
 	selMiniaturize                              = objc.RegisterName("miniaturize:")
 	selZoom                                     = objc.RegisterName("zoom:")
 	selIsZoomed                                 = objc.RegisterName("isZoomed")
+	selIsKeyWindow                              = objc.RegisterName("isKeyWindow")
 	selStyleMask                                = objc.RegisterName("styleMask")
 	selSetStyleMask                             = objc.RegisterName("setStyleMask:")
 	selStandardWindowButton                     = objc.RegisterName("standardWindowButton:")
@@ -1233,6 +1234,16 @@ func restoreWindow(id windowId) {
 	if objc.Send[bool](win, selIsZoomed) {
 		win.Send(selZoom, objc.ID(0))
 	}
+}
+
+// isKeyWindow: the window gets the keyboard input (it is active and its
+// application is in front)
+func isKeyWindow(id windowId) bool {
+	win, ok := cocoaWindows[int(id)]
+	if !ok {
+		return false
+	}
+	return objc.Send[bool](win, selIsKeyWindow)
 }
 
 func isWindowZoomed(id windowId) bool {

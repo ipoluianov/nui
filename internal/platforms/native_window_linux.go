@@ -66,6 +66,10 @@ type nativeWindowPlatform struct {
 	allowMinimize bool
 	allowMaximize bool
 
+	// focused: the window has the keyboard focus (FocusIn/FocusOut); the
+	// modifiers held while another window is active are not ours
+	focused bool
+
 	// shown is set by Show(): the event loop runs the timer and paints only
 	// the shown windows. done is closed once the window is closed, for Exec
 	// calls from other goroutines.
@@ -652,6 +656,7 @@ func (c *nativeWindow) processEvent(event *xEvent) {
 
 	case xFocusIn:
 		c.setInputFocus(true)
+		c.platform.focused = true
 
 	case xFocusOut:
 		c.setInputFocus(false)
@@ -659,8 +664,11 @@ func (c *nativeWindow) processEvent(event *xEvent) {
 		// Skip the temporary focus changes of keyboard grabs (e.g. the
 		// WM's own shortcuts) and focus moving into our own subwindows
 		if (focusEvent.Mode == xNotifyNormal || focusEvent.Mode == xNotifyWhileGrabbed) &&
-			focusEvent.Detail != xNotifyInferior && c.onDeactivate != nil {
-			c.onDeactivate()
+			focusEvent.Detail != xNotifyInferior {
+			c.platform.focused = false
+			if c.onDeactivate != nil {
+				c.onDeactivate()
+			}
 		}
 
 	case xEnterNotify:
@@ -1050,6 +1058,10 @@ func (c *nativeWindow) IsMaximized() bool {
 }
 
 func (c *nativeWindow) KeyModifiers() KeyModifiers {
+	// XQueryPointer reports the keys held in any window
+	if !c.platform.focused {
+		return KeyModifiers{}
+	}
 	return c.getModifierState()
 }
 

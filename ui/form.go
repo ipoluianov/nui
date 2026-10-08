@@ -381,7 +381,8 @@ func (c *Form) Size() (int, int) {
 // KeyModifiers returns which of Shift, Ctrl, Alt (and Cmd on macOS) are held
 // right now - not only inside a key event. A program can show what the
 // keys do with them, like the function key bar of a file manager that changes
-// while Shift is held: read it in a timer.
+// while Shift is held: read it in a timer. While another window or application
+// is active nothing is held for this window.
 // Call it on the UI thread. Before the window is shown it returns the state of
 // the last key event.
 func (c *Form) KeyModifiers() KeyModifiers {

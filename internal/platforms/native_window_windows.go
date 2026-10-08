@@ -443,6 +443,10 @@ func (c *nativeWindow) IsMaximized() bool {
 }
 
 func (c *nativeWindow) KeyModifiers() KeyModifiers {
+	// GetAsyncKeyState reports the keys held in any application
+	if active, _, _ := procGetForegroundWindow.Call(); active != uintptr(c.hwnd) {
+		return KeyModifiers{}
+	}
 	return currentModifierState()
 }
 

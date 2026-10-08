@@ -61,9 +61,10 @@ var (
 
 	procGetSystemMetrics = user32.NewProc("GetSystemMetrics")
 
-	procIsZoomed         = user32.NewProc("IsZoomed")
-	procGetKeyState      = user32.NewProc("GetKeyState")
-	procGetAsyncKeyState = user32.NewProc("GetAsyncKeyState")
+	procIsZoomed            = user32.NewProc("IsZoomed")
+	procGetKeyState         = user32.NewProc("GetKeyState")
+	procGetAsyncKeyState    = user32.NewProc("GetAsyncKeyState")
+	procGetForegroundWindow = user32.NewProc("GetForegroundWindow")
 
 	procEnableWindow        = user32.NewProc("EnableWindow")
 	procGetWindowLongPtrW   = user32.NewProc("GetWindowLongPtrW")
