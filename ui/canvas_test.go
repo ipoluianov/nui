@@ -68,3 +68,36 @@ func TestDrawLineFClip(t *testing.T) {
 		t.Fatalf("right edge = %d, want full", got)
 	}
 }
+
+// The triangle is filled inside, left alone outside and cut by the clip
+func TestFillTriangle(t *testing.T) {
+	cnv, img := newTestCanvas(40, 30)
+	cnv.TranslateAndClip(5, 5, 20, 20) // the triangle goes past the clip on the right
+	cnv.FillTriangle(0, 0, 30, 0, 0, 18, white)
+	cases := []struct {
+		x, y int
+		want uint8
+	}{
+		{7, 7, 255},  // inside
+		{24, 6, 255}, // inside, at the edge of the clip
+		{26, 6, 0},   // inside the triangle, outside the clip
+		{20, 18, 0},  // below the slanted edge
+		{3, 3, 0},    // outside the translation
+	}
+	for _, tc := range cases {
+		if got := img.RGBAAt(tc.x, tc.y).R; got != tc.want {
+			t.Errorf("pixel %d,%d = %d, want %d", tc.x, tc.y, got, tc.want)
+		}
+	}
+}
+
+// On a HiDPI canvas the logical triangle takes the scaled pixels
+func TestFillTriangleScaled(t *testing.T) {
+	img := image.NewRGBA(image.Rect(0, 0, 40, 40))
+	cnv := NewCanvasScaled(img, 2)
+	cnv.SetDirectTranslateAndClip(0, 0, 20, 20)
+	cnv.FillTriangle(0, 0, 10, 0, 0, 10, white)
+	if img.RGBAAt(3, 3).A != 255 || img.RGBAAt(14, 3).A != 255 || img.RGBAAt(17, 17).A != 0 {
+		t.Fatalf("scaled: %v %v %v", img.RGBAAt(3, 3), img.RGBAAt(14, 3), img.RGBAAt(17, 17))
+	}
+}

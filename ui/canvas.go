@@ -9,6 +9,7 @@ import (
 
 	"github.com/fogleman/gg"
 	xdraw "golang.org/x/image/draw"
+	"golang.org/x/image/vector"
 )
 
 // canvasState keeps the translation and the clip in pixels of the image;
@@ -1043,18 +1044,43 @@ func (c *Canvas) FillRoundedRect(x int, y int, width int, height int, radius int
 
 // FillTriangle fills the triangle with corners (x1,y1), (x2,y2), (x3,y3).
 func (c *Canvas) FillTriangle(x1, y1, x2, y2, x3, y3 int, colr color.Color) {
-	dc := gg.NewContextForRGBA(c.rgba)
-	dc.DrawRectangle(float64(c.state.clipX), float64(c.state.clipY), float64(c.state.clipW), float64(c.state.clipH))
-	dc.Clip()
-	dc.Translate(float64(c.state.translateX), float64(c.state.translateY))
-	dc.Scale(c.scale, c.scale)
+	c.fillPolygon([][2]float64{{float64(x1), float64(y1)}, {float64(x2), float64(y2)}, {float64(x3), float64(y3)}}, colr)
+}
 
-	dc.SetColor(colr)
-	dc.MoveTo(float64(x1), float64(y1))
-	dc.LineTo(float64(x2), float64(y2))
-	dc.LineTo(float64(x3), float64(y3))
-	dc.ClosePath()
-	dc.Fill()
+// fillPolygon fills the polygon of logical points with antialiased edges.
+// The coverage is computed in a mask of the polygon's size within the clip,
+// not of the whole image: the arrows of the combo boxes and the num boxes
+// are drawn on every frame.
+func (c *Canvas) fillPolygon(pts [][2]float64, colr color.Color) {
+	if len(pts) < 3 {
+		return
+	}
+	px := make([][2]float64, len(pts))
+	minX, minY := math.Inf(1), math.Inf(1)
+	maxX, maxY := math.Inf(-1), math.Inf(-1)
+	for i, p := range pts {
+		x := float64(c.state.translateX) + p[0]*c.scale
+		y := float64(c.state.translateY) + p[1]*c.scale
+		px[i] = [2]float64{x, y}
+		minX, minY = math.Min(minX, x), math.Min(minY, y)
+		maxX, maxY = math.Max(maxX, x), math.Max(maxY, y)
+	}
+	clip := image.Rect(c.state.clipX, c.state.clipY, c.state.clipX+c.state.clipW, c.state.clipY+c.state.clipH)
+	b := image.Rect(int(math.Floor(minX)), int(math.Floor(minY)), int(math.Ceil(maxX)), int(math.Ceil(maxY))).
+		Intersect(clip).Intersect(c.rgba.Rect)
+	if b.Empty() {
+		return
+	}
+	z := vector.NewRasterizer(b.Dx(), b.Dy())
+	ox, oy := float32(b.Min.X), float32(b.Min.Y)
+	z.MoveTo(float32(px[0][0])-ox, float32(px[0][1])-oy)
+	for _, p := range px[1:] {
+		z.LineTo(float32(p[0])-ox, float32(p[1])-oy)
+	}
+	z.ClosePath()
+	mask := image.NewAlpha(image.Rect(0, 0, b.Dx(), b.Dy()))
+	z.Draw(mask, mask.Rect, image.Opaque, image.Point{})
+	draw.DrawMask(c.rgba, b, image.NewUniform(colr), image.Point{}, mask, image.Point{}, draw.Over)
 }
 
 func (c *Canvas) DrawImage(x int, y int, img image.Image) {

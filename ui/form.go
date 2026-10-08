@@ -628,6 +628,11 @@ func (c *Form) realUpdate() {
 	}
 }
 
+// minUpdateInterval is the least time between two repaints of a form: the
+// updates asked for sooner are joined and painted by the timer. It is a
+// frame of a 60 Hz screen, so drawing with the mouse follows it closely.
+const minUpdateInterval = 16 * time.Millisecond
+
 func (c *Form) Update() {
 	if c == nil {
 		return
@@ -640,7 +645,7 @@ func (c *Form) Update() {
 		return
 	}
 	c.needUpdate = true
-	if time.Since(c.lastUpdateTime) > 50*time.Millisecond {
+	if time.Since(c.lastUpdateTime) > minUpdateInterval {
 		c.realUpdate()
 	}
 }
