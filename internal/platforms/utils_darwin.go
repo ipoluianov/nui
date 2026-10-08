@@ -55,6 +55,12 @@ func go_on_window_deactivate(hwnd windowId) {
 	}
 }
 
+func go_on_window_activate(hwnd windowId) {
+	if win, ok := hwnds[hwnd]; ok && win.onActivate != nil {
+		win.onActivate()
+	}
+}
+
 // go_on_key_down returns true if the window handled the key
 func go_on_key_down(hwnd windowId, code int) bool {
 	key := Key(ConvertMacOSKeyToNuiKey(code))

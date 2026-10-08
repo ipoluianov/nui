@@ -217,6 +217,7 @@ var (
 	selWindowShouldClose                               = objc.RegisterName("windowShouldClose:")
 	selWindowWillClose                                 = objc.RegisterName("windowWillClose:")
 	selWindowDidResignKey                              = objc.RegisterName("windowDidResignKey:")
+	selWindowDidBecomeKey                              = objc.RegisterName("windowDidBecomeKey:")
 
 	selAcceptsFirstResponder = objc.RegisterName("acceptsFirstResponder")
 	selBecomeFirstResponder  = objc.RegisterName("becomeFirstResponder")
@@ -569,6 +570,12 @@ func nuiWindowDidResignKey(self objc.ID, _ objc.SEL, notification objc.ID) {
 	go_on_window_deactivate(wndID(win))
 }
 
+// nuiWindowDidBecomeKey: the window got keyboard focus.
+func nuiWindowDidBecomeKey(self objc.ID, _ objc.SEL, notification objc.ID) {
+	win := objc.Send[objc.ID](notification, selObject)
+	go_on_window_activate(wndID(win))
+}
+
 /////////////////////////////////////////////////////
 // NUIPaintView: full-window content NSView hosting the software framebuffer
 // and input.
@@ -875,6 +882,7 @@ func registerNuiClasses() {
 			{Cmd: selWindowShouldClose, Fn: nuiWindowShouldClose},
 			{Cmd: selWindowWillClose, Fn: nuiWindowWillClose},
 			{Cmd: selWindowDidResignKey, Fn: nuiWindowDidResignKey},
+			{Cmd: selWindowDidBecomeKey, Fn: nuiWindowDidBecomeKey},
 		},
 	)
 	if err != nil {

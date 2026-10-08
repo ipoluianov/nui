@@ -71,6 +71,12 @@ type Form struct {
 
 	onGlobalKeyDown func(keyCode Key, mods KeyModifiers) bool
 
+	// active: the window has the keyboard focus; the callbacks are called
+	// when it changes
+	active        bool
+	onActivated   func()
+	onDeactivated func()
+
 	needUpdate         bool
 	lastFreeMemoryTime time.Time
 
@@ -413,6 +419,23 @@ func (c *Form) SetAllowMaximize(allow bool) {
 	}
 }
 
+// SetOnActivated sets the function called when the window becomes active:
+// shown, or the user came back to it from another window or application
+func (c *Form) SetOnActivated(f func()) {
+	c.onActivated = f
+}
+
+// SetOnDeactivated sets the function called when the window stops being
+// active: the user switched to another window or application
+func (c *Form) SetOnDeactivated(f func()) {
+	c.onDeactivated = f
+}
+
+// IsActive reports whether the window has the keyboard focus
+func (c *Form) IsActive() bool {
+	return c.active
+}
+
 func (c *Form) SetOnGlobalKeyDown(onGlobalKeyDown func(keyCode Key, mods KeyModifiers) bool) {
 	c.onGlobalKeyDown = onGlobalKeyDown
 }
@@ -495,6 +518,7 @@ func (c *Form) createWindow(maximized bool) {
 	c.wnd.OnTimer(c.processTimer)
 	c.wnd.OnMove(c.processWindowMove)
 	c.wnd.OnDeactivate(c.processDeactivate)
+	c.wnd.OnActivate(c.processActivate)
 	c.wnd.OnCloseRequest(c.processWindowClose)
 	c.wnd.OnFilesDropped(c.processFilesDropped)
 	c.wnd.SetAllowMinimize(c.allowMinimize)

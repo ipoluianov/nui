@@ -58,6 +58,7 @@ type nativeWindow struct {
 	onCloseRequest func() bool
 	onTimer        func()
 	onDeactivate   func()
+	onActivate     func()
 	onFilesDropped func(files []string, x, y int)
 }
 
@@ -134,6 +135,10 @@ func (c *nativeWindow) OnTimer(f func()) {
 
 func (c *nativeWindow) OnDeactivate(f func()) {
 	c.onDeactivate = f
+}
+
+func (c *nativeWindow) OnActivate(f func()) {
+	c.onActivate = f
 }
 
 // growBuffer grows *buf to fit size bytes, if needed. Each window (and

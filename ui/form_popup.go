@@ -297,4 +297,19 @@ func (c *Form) destroyPopupWindows() {
 func (c *Form) processDeactivate() {
 	c.tooltipHide()
 	c.closePopups()
+	if c.active {
+		c.active = false
+		if c.onDeactivated != nil {
+			c.onDeactivated()
+		}
+	}
+}
+
+func (c *Form) processActivate() {
+	if !c.active {
+		c.active = true
+		if c.onActivated != nil {
+			c.onActivated()
+		}
+	}
 }

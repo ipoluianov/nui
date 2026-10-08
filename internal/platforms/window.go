@@ -45,6 +45,9 @@ type Window interface {
 	// OnDeactivate is called when the window loses activation (keyboard
 	// focus): the user switched to another window or application
 	OnDeactivate(func())
+	// OnActivate is called when the window gets activation (keyboard focus);
+	// it may come more than once in a row
+	OnActivate(func())
 	// OnFilesDropped is called when files dragged from the system (e.g. from
 	// the file manager) are dropped on the window, at (x, y) in client
 	// coordinates

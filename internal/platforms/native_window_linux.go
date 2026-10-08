@@ -657,6 +657,12 @@ func (c *nativeWindow) processEvent(event *xEvent) {
 	case xFocusIn:
 		c.setInputFocus(true)
 		c.platform.focused = true
+		focusEvent := (*xFocusChangeEvent)(unsafe.Pointer(event))
+		// The same filter as for FocusOut below
+		if (focusEvent.Mode == xNotifyNormal || focusEvent.Mode == xNotifyWhileGrabbed) &&
+			focusEvent.Detail != xNotifyInferior && c.onActivate != nil {
+			c.onActivate()
+		}
 
 	case xFocusOut:
 		c.setInputFocus(false)

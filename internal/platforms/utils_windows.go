@@ -433,8 +433,12 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 		return 0
 
 	case c_WM_ACTIVATE:
-		if wParam&0xFFFF == c_WA_INACTIVE && win != nil && win.onDeactivate != nil {
-			win.onDeactivate()
+		if wParam&0xFFFF == c_WA_INACTIVE {
+			if win != nil && win.onDeactivate != nil {
+				win.onDeactivate()
+			}
+		} else if win != nil && win.onActivate != nil {
+			win.onActivate()
 		}
 		// No return: DefWindowProc sets the keyboard focus on activation
 
