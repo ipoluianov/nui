@@ -219,7 +219,7 @@ func (p *popupWindow) SetMouseCursor(cursor MouseCursor) {
 	if p.closed {
 		return
 	}
-	xDefineCursor(p.display, p.window, xCreateFontCursor(p.display, xCursorShape(cursor)))
+	xDefineCursor(p.display, p.window, fontCursor(p.display, xCursorShape(cursor)))
 	xFlush(p.display)
 }
 

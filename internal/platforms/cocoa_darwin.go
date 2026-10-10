@@ -35,6 +35,7 @@ package platforms
 
 import (
 	"math"
+	"runtime"
 	"time"
 	"unsafe"
 
@@ -292,6 +293,10 @@ var (
 	cgDataProviderRelease        func(provider uintptr)
 	cgColorSpaceRelease          func(space uintptr)
 
+	cgDataProviderCreateWithCFData func(data uintptr) uintptr
+	cfDataCreateFn                 func(allocator uintptr, bytes unsafe.Pointer, length int) uintptr
+	cfReleaseFn                    func(cf uintptr)
+
 	dispatchMainQueue uintptr
 	dispatchAsyncFn   func(queue uintptr, block uintptr)
 	dispatchSyncFn    func(queue uintptr, block uintptr)
@@ -337,6 +342,14 @@ func init() {
 	purego.RegisterLibFunc(&cgImageRelease, cgHandle, "CGImageRelease")
 	purego.RegisterLibFunc(&cgDataProviderRelease, cgHandle, "CGDataProviderRelease")
 	purego.RegisterLibFunc(&cgColorSpaceRelease, cgHandle, "CGColorSpaceRelease")
+	purego.RegisterLibFunc(&cgDataProviderCreateWithCFData, cgHandle, "CGDataProviderCreateWithCFData")
+
+	cfHandle, err := purego.Dlopen("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation", purego.RTLD_NOW|purego.RTLD_GLOBAL)
+	if err != nil {
+		panic(err)
+	}
+	purego.RegisterLibFunc(&cfDataCreateFn, cfHandle, "CFDataCreate")
+	purego.RegisterLibFunc(&cfReleaseFn, cfHandle, "CFRelease")
 
 	purego.RegisterLibFunc(&dispatchAsyncFn, libSystemHandle, "dispatch_async")
 	purego.RegisterLibFunc(&dispatchSyncFn, libSystemHandle, "dispatch_sync")
@@ -424,6 +437,27 @@ func dispatchAsyncMain(fn func()) {
 	block := objc.NewBlock(func(_ objc.Block) { fn() })
 	dispatchAsyncFn(dispatchMainQueue, uintptr(block))
 	block.Release()
+}
+
+// newCGImageRGBA makes a CGImage of the RGBA pixels of buf. The pixels are
+// copied into a CFData the image owns: CoreGraphics may read them after
+// drawRect returns (deferred drawing), when buf - Go memory, referenced by
+// nothing the GC sees - may be freed already. 0 if out of memory.
+func newCGImageRGBA(buf []byte, width, height int, colorSpace uintptr) uintptr {
+	data := cfDataCreateFn(0, unsafe.Pointer(&buf[0]), len(buf))
+	runtime.KeepAlive(buf)
+	if data == 0 {
+		return 0
+	}
+	provider := cgDataProviderCreateWithCFData(data)
+	cfReleaseFn(data) // the provider keeps it
+	if provider == 0 {
+		return 0
+	}
+	image := cgImageCreate(uintptr(width), uintptr(height), 8, 32, uintptr(width*4), colorSpace,
+		cgImageAlphaPremultipliedLast|cgBitmapByteOrder32Big, provider, 0, false, cgRenderingIntentDefault)
+	cgDataProviderRelease(provider) // the image keeps it
+	return image
 }
 
 func withAutoreleasePool(fn func()) {
@@ -806,9 +840,7 @@ func nuiViewDrawRect(self objc.ID, _ objc.SEL, _, _, _, _ float64) {
 
 	ctx := objc.Send[uintptr](objc.ID(clsNSGraphicsContext).Send(selCurrentContext), selCGContext)
 	colorSpace := cgColorSpaceCreateDeviceRGB()
-	provider := cgDataProviderCreateWithData(0, unsafe.Pointer(&buf[0]), uintptr(dataSize), 0)
-	image := cgImageCreate(uintptr(pixelW), uintptr(pixelH), 8, 32, uintptr(stride), colorSpace,
-		cgImageAlphaPremultipliedLast|cgBitmapByteOrder32Big, provider, 0, false, cgRenderingIntentDefault)
+	image := newCGImageRGBA(buf, pixelW, pixelH, colorSpace)
 
 	bounds := objc.Send[nsRect](self, selBounds)
 	dest := nsRect{
@@ -824,7 +856,6 @@ func nuiViewDrawRect(self objc.ID, _ objc.SEL, _, _, _, _ float64) {
 	cgContextRestoreGState(ctx)
 
 	cgImageRelease(image)
-	cgDataProviderRelease(provider)
 	cgColorSpaceRelease(colorSpace)
 
 	go_on_declare_draw_time(id, int(time.Since(start).Microseconds()))

@@ -23,8 +23,6 @@ type TextBox struct {
 
 	dragingCursor bool
 
-	blockUpdate bool
-
 	padding int
 
 	cursorVisible         bool
@@ -183,6 +181,11 @@ func (c *TextBox) redraw() {
 }
 
 func (c *TextBox) SetProp(key string, value any) {
+	if key == "text" {
+		// The selection is of the old text: applied to the new one it pointed
+		// past its lines (a panic). The new text clears it anyway.
+		c.clearSelection()
+	}
 	c.Widget.SetProp(key, value)
 	if key == "text" {
 		c.setText(c.GetPropString("text", ""), false)
@@ -764,9 +767,7 @@ func (c *TextBox) moveCursor(posX int, posY int, modifiers KeyModifiers) {
 		c.selectionRightY = c.cursorPosY
 	}
 
-	if !c.blockUpdate {
-		c.ensureVisibleCursor()
-	}
+	c.ensureVisibleCursor()
 	c.form.Update()
 }
 
@@ -851,11 +852,7 @@ func (c *TextBox) clearSelection() {
 
 func (c *TextBox) modifyText(cmd textboxModifyCommand, modifiers KeyModifiers, data interface{}) {
 	c.redraw()
-	// Pasting inserts the text a character at a time, through here again
-	// (blockUpdate): the whole paste is one step
-	if !c.blockUpdate {
-		c.recordUndo(cmd)
-	}
+	c.recordUndo(cmd)
 
 	valid := true
 	selectedTextRemoved, lines, curPosX, curPosY := c.removeSelectedText(modifiers)
@@ -940,21 +937,42 @@ func (c *TextBox) modifyText(cmd textboxModifyCommand, modifiers KeyModifiers, d
 		}
 	case textboxModifyCommandInsertString:
 		{
-			c.blockUpdate = true
-			runes := string(data.(string))
-			for _, ch := range runes {
-				if ch < 32 {
-					if ch == 10 {
-						c.insertReturn(modifiers)
+			// The whole text at once. (It used to be typed a character at a
+			// time, each one rebuilding and measuring all the text: pasting
+			// a few kilobytes froze the window for seconds.) Kept as typing
+			// does: a line break only in a multiline box, no other control
+			// characters.
+			var b strings.Builder
+			for _, ch := range data.(string) {
+				if ch == '\n' {
+					if c.Multiline() {
+						b.WriteRune(ch)
 					}
+					continue
 				}
-
-				c.KeyChar(ch, modifiers)
+				if ch < 32 {
+					continue
+				}
+				b.WriteRune(ch)
 			}
-			lines = c.Lines()
-			curPosX = c.cursorPosX
-			curPosY = c.cursorPosY
-			c.blockUpdate = false
+			parts := strings.Split(b.String(), "\n")
+			runes := []rune(lines[curPosY])
+			left, right := string(runes[:curPosX]), string(runes[curPosX:])
+			if len(parts) == 1 {
+				lines[curPosY] = left + parts[0] + right
+				curPosX += utf8.RuneCountInString(parts[0])
+			} else {
+				last := parts[len(parts)-1]
+				newLines := make([]string, 0, len(lines)+len(parts)-1)
+				newLines = append(newLines, lines[:curPosY]...)
+				newLines = append(newLines, left+parts[0])
+				newLines = append(newLines, parts[1:len(parts)-1]...)
+				newLines = append(newLines, last+right)
+				newLines = append(newLines, lines[curPosY+1:]...)
+				lines = newLines
+				curPosY += len(parts) - 1
+				curPosX = utf8.RuneCountInString(last)
+			}
 		}
 	}
 
@@ -964,20 +982,17 @@ func (c *TextBox) modifyText(cmd textboxModifyCommand, modifiers KeyModifiers, d
 		c.updateInnerSize()
 		c.moveCursor(curPosX, curPosY, modifiers)
 
-		if !c.blockUpdate {
-			c.clearSelection()
-			c.updateInnerSize()
-			// The next typing at this place joins this undo step
-			c.lastEditX, c.lastEditY = c.cursorPosX, c.cursorPosY
+		c.clearSelection()
+		c.updateInnerSize()
+		// The next typing at this place joins this undo step
+		c.lastEditX, c.lastEditY = c.cursorPosX, c.cursorPosY
 
-			f := c.GetPropFunction("ontextchanged")
-			if f != nil {
-				PushEvent(nil)
-				f()
-				PopEvent()
-			}
+		f := c.GetPropFunction("ontextchanged")
+		if f != nil {
+			PushEvent(nil)
+			f()
+			PopEvent()
 		}
-
 	}
 
 	c.form.Update()

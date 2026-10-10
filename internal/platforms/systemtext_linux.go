@@ -40,6 +40,7 @@ var ft struct {
 	renderGlyph     func(slot unsafe.Pointer, mode uint32) int32
 	getKerning      func(face unsafe.Pointer, left, right, mode uint32, kerning *[2]int64) int32
 	libSetLcdFilter func(lib unsafe.Pointer, filter uint32) int32
+	doneFace        func(face unsafe.Pointer) int32
 }
 
 // FT_FaceRec, FT_SizeRec and FT_GlyphSlotRec field offsets
@@ -85,6 +86,7 @@ func loadFreeType() error {
 		purego.RegisterLibFunc(&ft.renderGlyph, h, "FT_Render_Glyph")
 		purego.RegisterLibFunc(&ft.getKerning, h, "FT_Get_Kerning")
 		purego.RegisterLibFunc(&ft.libSetLcdFilter, h, "FT_Library_SetLcdFilter")
+		purego.RegisterLibFunc(&ft.doneFace, h, "FT_Done_Face")
 		if ft.initFreeType(&ft.lib) != 0 {
 			ft.err = fmt.Errorf("%w: FT_Init_FreeType failed", ErrSystemTextNotSupported)
 		}
@@ -208,12 +210,22 @@ func openSystemFont(name string, pixelSize float64) (SystemFont, error) {
 	}, nil
 }
 
+// ftLibMu guards the FreeType library shared by all the fonts: FreeType
+// requires a lock around FT_New_Face and FT_Done_Face on a library used by
+// several threads, and FT_Library_SetLcdFilter changes the library itself.
+// (The fonts are safe for concurrent use; the glyphs of a font are guarded
+// by its own mutex.)
+var ftLibMu sync.Mutex
+
 func newFTFace(fc fcFont, pixelSize float64) (*ftFace, error) {
+	ftLibMu.Lock()
+	defer ftLibMu.Unlock()
 	var face unsafe.Pointer
 	if e := ft.newFace(ft.lib, fc.file, fc.index, &face); e != 0 {
 		return nil, fmt.Errorf("nui: FreeType can't open %s (error %d)", fc.file, e)
 	}
 	if e := ft.setCharSize(face, 0, int64(math.Round(pixelSize*64)), 72, 72); e != 0 {
+		ft.doneFace(face)
 		return nil, fmt.Errorf("nui: FreeType can't size %s (error %d)", fc.file, e)
 	}
 

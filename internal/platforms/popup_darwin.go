@@ -4,7 +4,6 @@ import (
 	"image"
 	"math"
 	"sync"
-	"unsafe"
 
 	"github.com/ebitengine/purego/objc"
 )
@@ -207,15 +206,12 @@ func nuiPopupViewDrawRect(self objc.ID, _ objc.SEL, _, _, _, _ float64) {
 
 	ctx := objc.Send[uintptr](objc.ID(clsNSGraphicsContext).Send(selCurrentContext), selCGContext)
 	colorSpace := cgColorSpaceCreateDeviceRGB()
-	provider := cgDataProviderCreateWithData(0, unsafe.Pointer(&buf[0]), uintptr(dataSize), 0)
-	cgImg := cgImageCreate(uintptr(pixelW), uintptr(pixelH), 8, 32, uintptr(stride), colorSpace,
-		cgImageAlphaPremultipliedLast|cgBitmapByteOrder32Big, provider, 0, false, cgRenderingIntentDefault)
+	cgImg := newCGImageRGBA(buf, pixelW, pixelH, colorSpace)
 
 	dest := nsRect{bounds.Origin, nsSize{float64(width), float64(height)}}
 	cgContextDrawImage(ctx, dest, cgImg)
 
 	cgImageRelease(cgImg)
-	cgDataProviderRelease(provider)
 	cgColorSpaceRelease(colorSpace)
 }
 

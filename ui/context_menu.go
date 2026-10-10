@@ -92,7 +92,11 @@ func (c *ContextMenu) show(x int, y int) {
 }
 
 func (c *ContextMenu) showMenu(x int, y int, parentMenu *ContextMenu) {
-	c.CloseAfterPopupWidget(parentMenu)
+	// The popups are in the list of the form's panel, not of this menu:
+	// the submenus open from parentMenu so far close
+	if parentMenu != nil && c.form != nil {
+		c.form.Panel().CloseAfterPopupWidget(parentMenu)
+	}
 	c.parentMenu = parentMenu
 	c.active = nil
 	c.dropDown = false

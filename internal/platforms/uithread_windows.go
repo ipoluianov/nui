@@ -63,7 +63,11 @@ func wakeUIThread() {
 	if wakePending.Swap(true) {
 		return
 	}
-	procPostMessageW.Call(invokeHwnd, c_WM_NUI_INVOKE, 0, 0)
+	if ok, _, _ := procPostMessageW.Call(invokeHwnd, c_WM_NUI_INVOKE, 0, 0); ok == 0 {
+		// Not queued (the queue is full): the next call tries again, instead
+		// of every call skipping a message that never comes
+		wakePending.Store(false)
+	}
 }
 
 func invokeWndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {

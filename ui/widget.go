@@ -400,8 +400,9 @@ func (c *Widget) MinWidth() int {
 	calcFromChildren := !c.allowScrollX
 
 	if calcFromChildren {
-		_, _, _, allCellPadding := c.makeColumnsInfo(c.Width())
-		columnsInfo, _, _, _ := c.makeColumnsInfo(c.Width() - (panelPadding + allCellPadding + panelPadding))
+		cells := c.gridCells()
+		_, _, _, allCellPadding := c.makeColumnsInfo(c.Width(), cells)
+		columnsInfo, _, _, _ := c.makeColumnsInfo(c.Width()-(panelPadding+allCellPadding+panelPadding), cells)
 		for _, columnInfo := range columnsInfo {
 			result += columnInfo.minWidth
 		}
@@ -430,8 +431,9 @@ func (c *Widget) MinHeight() int {
 	calcFromChildren := !c.allowScrollY
 
 	if calcFromChildren {
-		_, _, _, allCellPadding := c.makeRowsInfo(c.Height())
-		rowsInfo, _, _, _ := c.makeRowsInfo(c.Height() - (panelPadding + allCellPadding + panelPadding + c.insetTop))
+		cells := c.gridCells()
+		_, _, _, allCellPadding := c.makeRowsInfo(c.Height(), cells)
+		rowsInfo, _, _, _ := c.makeRowsInfo(c.Height()-(panelPadding+allCellPadding+panelPadding+c.insetTop), cells)
 		for _, rowInfo := range rowsInfo {
 			result += rowInfo.minHeight
 		}
@@ -1613,6 +1615,14 @@ func (c *Widget) SetMaxHeight(maxHeight int) {
 
 func (c *Widget) AppendPopupWidget(w Widgeter) {
 	if w != nil {
+		// A popup that is open already moves to the top, it isn't added
+		// twice: a copy left in the list would stay open after the close
+		for i, p := range c.PopupWidgets {
+			if p.Id() == w.Id() {
+				c.PopupWidgets = append(c.PopupWidgets[:i], c.PopupWidgets[i+1:]...)
+				break
+			}
+		}
 		w.setPreviousFocusedWidget(c.form.focusedWidget)
 		c.PopupWidgets = append(c.PopupWidgets, w)
 		w.SetParentWidgetId(c.form.Panel().Id())
@@ -1644,9 +1654,9 @@ func (c *Widget) CloseAfterPopupWidget(w Widgeter) {
 			}
 		}
 
-		if foundIndex < len(c.PopupWidgets) {
-			c.PopupWidgets = append(c.PopupWidgets[:foundIndex], c.PopupWidgets[foundIndex+1:]...)
-		}
+		// All the popups above w are closed: all go from the list, not only
+		// the first of them
+		c.PopupWidgets = c.PopupWidgets[:foundIndex]
 		c.ClearFocus()
 		c.form.syncPopupWindows()
 		c.form.updateHover()
@@ -1734,11 +1744,12 @@ func (c *Widget) updateLayout(oldWidth, oldHeight, newWidth, newHeight int) {
 		panelPadding := c.GetPropInt("padding", 2)
 		cellPadding := c.GetPropInt("spacing", 2)
 
-		_, minX, maxX, allCellPaddingX := c.makeColumnsInfo(fullWidth)
-		columnsInfo, _, _, _ := c.makeColumnsInfo(fullWidth - (panelPadding + allCellPaddingX + panelPadding))
+		cells := c.gridCells()
+		_, minX, maxX, allCellPaddingX := c.makeColumnsInfo(fullWidth, cells)
+		columnsInfo, _, _, _ := c.makeColumnsInfo(fullWidth-(panelPadding+allCellPaddingX+panelPadding), cells)
 
-		_, minY, maxY, allCellPaddingY := c.makeRowsInfo(fullHeight)
-		rowsInfo, _, _, _ := c.makeRowsInfo(fullHeight - (panelPadding + allCellPaddingY + panelPadding + c.insetTop))
+		_, minY, maxY, allCellPaddingY := c.makeRowsInfo(fullHeight, cells)
+		rowsInfo, _, _, _ := c.makeRowsInfo(fullHeight-(panelPadding+allCellPaddingY+panelPadding+c.insetTop), cells)
 
 		/*if strings.Contains(c.name, "Top") {
 			fmt.Println("RowsInfo:")
@@ -1756,7 +1767,7 @@ func (c *Widget) updateLayout(oldWidth, oldHeight, newWidth, newHeight int) {
 				yOffset := panelPadding + c.insetTop
 				for y := minY; y <= maxY; y++ {
 					if rowInfo, ok := rowsInfo[y]; ok {
-						w := c.getWidgetInGridCell(x, y)
+						w := cells[gridCell{x, y}]
 						if w != nil {
 
 							cX := xOffset
@@ -1841,7 +1852,7 @@ func (c *Widget) updateLayout(oldWidth, oldHeight, newWidth, newHeight int) {
 	fmt.Println(prefix+"Widget", c.name, "layout updated:", "type", c.typeName, "Width:", c.w, "Height:", c.h, "InnerWidth:", c.innerWidth, "InnerHeight:", c.innerHeight, "Duration:", duration)*/
 }
 
-func (c *Widget) makeColumnsInfo(fullWidth int) (map[int]*ContainerGridColumnInfo, int, int, int) {
+func (c *Widget) makeColumnsInfo(fullWidth int, cells map[gridCell]Widgeter) (map[int]*ContainerGridColumnInfo, int, int, int) {
 	//fmt.Println("makeColumnsInfo", makeColumnsInfoCounter)
 
 	// panelPadding := c.GetPropInt("padding", 2)
@@ -1881,7 +1892,7 @@ func (c *Widget) makeColumnsInfo(fullWidth int) (map[int]*ContainerGridColumnInf
 		found := false
 
 		for y := minY; y <= maxY; y++ {
-			w := c.getWidgetInGridCell(x, y)
+			w := cells[gridCell{x, y}]
 			if w != nil {
 				if w.XExpandable() {
 					colInfo.expandable = true // Found expandable by X
@@ -1896,7 +1907,7 @@ func (c *Widget) makeColumnsInfo(fullWidth int) (map[int]*ContainerGridColumnInf
 			colInfo.maxWidth = MinInt
 
 			for y := minY; y <= maxY; y++ {
-				w := c.getWidgetInGridCell(x, y)
+				w := cells[gridCell{x, y}]
 				if w != nil {
 					wMinWidth := w.MinWidth()
 					if wMinWidth > colInfo.minWidth {
@@ -1914,7 +1925,7 @@ func (c *Widget) makeColumnsInfo(fullWidth int) (map[int]*ContainerGridColumnInf
 			colInfo.maxWidth = MinInt
 
 			for y := minY; y <= maxY; y++ {
-				w := c.getWidgetInGridCell(x, y)
+				w := cells[gridCell{x, y}]
 				if w != nil {
 					wMinWidth := w.MinWidth()
 					if wMinWidth > colInfo.minWidth {
@@ -2014,7 +2025,7 @@ func (c *Widget) makeColumnsInfo(fullWidth int) (map[int]*ContainerGridColumnInf
 
 }
 
-func (c *Widget) makeRowsInfo(fullHeight int) (map[int]*ContainerGridRowInfo, int, int, int) {
+func (c *Widget) makeRowsInfo(fullHeight int, cells map[gridCell]Widgeter) (map[int]*ContainerGridRowInfo, int, int, int) {
 	cellPadding := c.GetPropInt("spacing", 2)
 
 	// Определяем минимальный и максимальный индекс строк
@@ -2051,7 +2062,7 @@ func (c *Widget) makeRowsInfo(fullHeight int) (map[int]*ContainerGridRowInfo, in
 
 		// If any widget in the row is expandable, set the expandable flag for the row
 		for x := minX; x <= maxX; x++ {
-			w := c.getWidgetInGridCell(x, y)
+			w := cells[gridCell{x, y}]
 			if w != nil {
 				if w.YExpandable() {
 					rowInfo.expandable = true // Found expandable by Y
@@ -2066,7 +2077,7 @@ func (c *Widget) makeRowsInfo(fullHeight int) (map[int]*ContainerGridRowInfo, in
 			rowInfo.maxHeight = MinInt
 
 			for x := minX; x <= maxX; x++ {
-				w := c.getWidgetInGridCell(x, y)
+				w := cells[gridCell{x, y}]
 				if w != nil {
 					wMinHeight := w.MinHeight()
 					if wMinHeight > rowInfo.minHeight {
@@ -2084,7 +2095,7 @@ func (c *Widget) makeRowsInfo(fullHeight int) (map[int]*ContainerGridRowInfo, in
 			rowInfo.maxHeight = MinInt
 
 			for x := minX; x <= maxX; x++ {
-				w := c.getWidgetInGridCell(x, y)
+				w := cells[gridCell{x, y}]
 				if w != nil {
 					wMinHeight := w.MinHeight()
 					if wMinHeight > rowInfo.minHeight {
@@ -2183,6 +2194,28 @@ func (c *Widget) makeRowsInfo(fullHeight int) (map[int]*ContainerGridRowInfo, in
 	return rowsInfo, minY, maxY, allCellPadding
 }
 
+// gridCell is a cell of a container's grid: column x, row y
+type gridCell struct{ x, y int }
+
+// gridCells maps the cells of the grid to their widgets, as
+// getWidgetInGridCell finds them: the first visible widget of the cell in
+// the order they were added. Made once per pass of the layout - looking up
+// every cell among all the children made laying out a container of N
+// widgets O(N^2), and adding N widgets O(N^3).
+func (c *Widget) gridCells() map[gridCell]Widgeter {
+	cells := make(map[gridCell]Widgeter, len(c.widgets))
+	for _, w := range c.widgets {
+		if !w.IsVisible() {
+			continue
+		}
+		cell := gridCell{w.GridX(), w.GridY()}
+		if _, ok := cells[cell]; !ok {
+			cells[cell] = w
+		}
+	}
+	return cells
+}
+
 func (c *Widget) getWidgetInGridCell(x, y int) Widgeter {
 	for _, w := range c.widgets {
 		if w.GridX() == x && w.GridY() == y {
@@ -2207,7 +2240,7 @@ func (c *Widget) XExpandable() bool {
 		return c.layoutCacheXExpandable
 	}
 
-	colsInfo, _, _, _ := c.makeColumnsInfo(1000)
+	colsInfo, _, _, _ := c.makeColumnsInfo(1000, c.gridCells())
 	for _, ci := range colsInfo {
 		if ci.expandable {
 			c.layoutCacheXExpandableValid = true
@@ -2235,7 +2268,7 @@ func (c *Widget) YExpandable() bool {
 		return c.layoutCacheYExpandable
 	}
 
-	rowsInfo, _, _, _ := c.makeRowsInfo(1000)
+	rowsInfo, _, _, _ := c.makeRowsInfo(1000, c.gridCells())
 	for _, ri := range rowsInfo {
 		if ri.expandable {
 			c.layoutCacheYExpandableValid = true

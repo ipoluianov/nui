@@ -3,6 +3,7 @@ package platforms
 import (
 	"errors"
 	"fmt"
+	"runtime"
 	"strings"
 	"syscall"
 	"unsafe"
@@ -191,6 +192,10 @@ func openFileDialog(parent Window, opts OpenFileDialogOptions) ([]string, error)
 		flags |= ofnAllowMultiSelect
 	}
 
+	var pin runtime.Pinner
+	defer pin.Unpin()
+	pinAll(&pin, &filter[0], &fileBuf[0], titlePtr, initialDirPtr)
+
 	ofn := openFileNameW{
 		lStructSize:     uint32(unsafe.Sizeof(openFileNameW{})),
 		hwndOwner:       ownerHwnd(parent),
@@ -227,6 +232,10 @@ func saveFileDialog(parent Window, opts SaveFileDialogOptions) (string, error) {
 		initialDirPtr, _ = syscall.UTF16PtrFromString(opts.DefaultDirectory)
 	}
 
+	var pin runtime.Pinner
+	defer pin.Unpin()
+	pinAll(&pin, &filter[0], &fileBuf[0], titlePtr, initialDirPtr)
+
 	ofn := openFileNameW{
 		lStructSize:     uint32(unsafe.Sizeof(openFileNameW{})),
 		hwndOwner:       ownerHwnd(parent),
@@ -244,6 +253,19 @@ func saveFileDialog(parent Window, opts SaveFileDialogOptions) (string, error) {
 	}
 
 	return syscall.UTF16ToString(fileBuf), nil
+}
+
+// pinAll pins the buffers a dialog structure refers to by uintptr fields
+// (nil ones are skipped). The dialog runs a modal loop calling back into Go
+// (paint, timers): without the pin a buffer on the goroutine stack could
+// move as the stack grows, and one on the heap - referenced by nothing the
+// GC sees - could be freed, while the dialog still reads or writes it.
+func pinAll(pin *runtime.Pinner, ptrs ...*uint16) {
+	for _, p := range ptrs {
+		if p != nil {
+			pin.Pin(p)
+		}
+	}
 }
 
 func commDlgError(api string) error {
@@ -266,13 +288,18 @@ func selectDirectoryDialog(parent Window, opts SelectDirectoryDialogOptions) (st
 		titlePtr, _ = syscall.UTF16PtrFromString(opts.Title)
 	}
 
+	var pin runtime.Pinner
+	defer pin.Unpin()
+
 	var lpData uintptr
 	if opts.DefaultDirectory != "" {
 		initialDir, _ := syscall.UTF16PtrFromString(opts.DefaultDirectory)
+		pinAll(&pin, initialDir)
 		lpData = uintptr(unsafe.Pointer(initialDir))
 	}
 
 	displayName := make([]uint16, 4096)
+	pinAll(&pin, &displayName[0], titlePtr)
 
 	bi := browseInfoW{
 		hwndOwner:      ownerHwnd(parent),

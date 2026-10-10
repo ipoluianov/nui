@@ -3,8 +3,6 @@ package platforms
 import (
 	"image"
 	"image/color"
-	"math/rand"
-	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -26,9 +24,14 @@ type nativeWindowPlatform struct {
 	canvasBuffer []byte
 	bgColor      color.RGBA
 
-	// Scratch buffer for drawImageToHDC's RGBA->BGRA conversion, sized to
-	// this window's own paint chunk.
-	pixBuffer []byte
+	// back is the DIB the frames are copied to the window from (see
+	// backBuffer); repaintAt, if set, is when a frame that didn't get to the
+	// window is painted again
+	back      backBuffer
+	repaintAt time.Time
+
+	// icon is the HICON of SetAppIcon, destroyed when replaced
+	icon uintptr
 
 	// Every window is created on the UI thread (the main OS thread), so one
 	// message loop there serves them all (see runLoopUntil) and every
@@ -48,6 +51,33 @@ type nativeWindowPlatform struct {
 // ///////////////////////////////////////////////////
 // Window creation and management
 
+// windowClassName is the class of all the windows; they all have the same
+// window procedure, style and brush. (A class per window, with a unique
+// name, used to be registered and never unregistered: a long-running
+// application opening dialogs ran out of class atoms.)
+const windowClassName = "NUIWindow"
+
+var registerWindowClassOnce sync.Once
+
+// registerWindowClass registers the class of the windows once
+func registerWindowClass() (hInstance uintptr, className *uint16) {
+	hInstance, _, _ = procGetModuleHandleW.Call(0)
+	className, _ = syscall.UTF16PtrFromString(windowClassName)
+	registerWindowClassOnce.Do(func() {
+		wndClass := t_WNDCLASSEXW{
+			cbSize:        uint32(unsafe.Sizeof(t_WNDCLASSEXW{})),
+			style:         c_CS_OWNDC, /*| c_CS_DBLCLKS*/
+			lpfnWndProc:   syscall.NewCallback(wndProc),
+			hInstance:     syscall.Handle(hInstance),
+			hCursor:       0,
+			hbrBackground: 5,
+			lpszClassName: className,
+		}
+		procRegisterClassExW.Call(uintptr(unsafe.Pointer(&wndClass)))
+	})
+	return hInstance, className
+}
+
 // createWindow creates the window on the UI thread (see CreateWindow), which
 // makes the window belong to it: the UI thread's message loop gets its
 // messages and calls wndProc.
@@ -57,12 +87,6 @@ func createWindow(title string, posX int, posY int, width int, height int, cente
 	c.showMaximized = maximized
 	c.platform.done = make(chan struct{})
 
-	// Create a unique class name
-	dt := time.Now().Format("2006-01-02-15-04-05")
-	randomNumber := rand.Intn(1024 * 1024)
-	tempClassName := "WCL" + dt + strconv.Itoa(randomNumber)
-	className, _ := syscall.UTF16PtrFromString(tempClassName)
-
 	c.platform.bgColor = color.RGBA{0x1F, 0x1F, 0x1F, 255}
 
 	// Set default window title
@@ -71,20 +95,7 @@ func createWindow(title string, posX int, posY int, width int, height int, cente
 	// Set default cursor
 	c.currentCursor = MouseCursorArrow
 
-	// Get the instance handle
-	hInstance, _, _ := procGetModuleHandleW.Call(0)
-
-	// Register the window class
-	wndClass := t_WNDCLASSEXW{
-		cbSize:        uint32(unsafe.Sizeof(t_WNDCLASSEXW{})),
-		style:         c_CS_OWNDC, /*| c_CS_DBLCLKS*/
-		lpfnWndProc:   syscall.NewCallback(wndProc),
-		hInstance:     syscall.Handle(hInstance),
-		hCursor:       0,
-		hbrBackground: 5,
-		lpszClassName: className,
-	}
-	procRegisterClassExW.Call(uintptr(unsafe.Pointer(&wndClass)))
+	hInstance, className := registerWindowClass()
 
 	windowFlags := uint32(c_WS_OVERLAPPEDWINDOW)
 	if c.showMaximized {
@@ -138,6 +149,7 @@ func createWindow(title string, posX int, posY int, width int, height int, cente
 	c.enableFileDrop()
 
 	procSetTimer.Call(uintptr(c.hwnd), timerID1ms, 1, 0)
+	registerSessionNotification(uintptr(c.hwnd))
 
 	return &c
 }
@@ -164,10 +176,15 @@ func (c *nativeWindow) Hide() {
 	procShowWindow.Call(uintptr(c.hwnd), c_SW_HIDE)
 }
 
+// Update paints the window. On the UI thread it paints at once; from another
+// thread it only invalidates the window, and the UI thread paints it.
+// (UpdateWindow there sends WM_PAINT to the UI thread and waits for it: a
+// UI callback waiting for that goroutine meanwhile was a deadlock.)
 func (c *nativeWindow) Update() {
-	// Update the window
 	procInvalidateRect.Call(uintptr(c.hwnd), 0, 0)
-	procUpdateWindow.Call(uintptr(c.hwnd))
+	if isUIThread() {
+		procUpdateWindow.Call(uintptr(c.hwnd))
+	}
 }
 
 // Exec waits until the window is closed. On the UI thread it runs the
@@ -276,6 +293,17 @@ func (c *nativeWindow) SetAppIcon(icon *image.RGBA) {
 
 	procSendMessageW.Call(uintptr(c.hwnd), c_WM_SETICON, c_ICON_BIG, uintptr(hIcon))
 	procSendMessageW.Call(uintptr(c.hwnd), c_WM_SETICON, c_ICON_SMALL, uintptr(hIcon))
+	// The window doesn't use the previous icon any more
+	c.destroyIcon()
+	c.platform.icon = uintptr(hIcon)
+}
+
+// destroyIcon frees the icon of the last SetAppIcon
+func (c *nativeWindow) destroyIcon() {
+	if c.platform.icon != 0 {
+		procDestroyIcon.Call(c.platform.icon)
+		c.platform.icon = 0
+	}
 }
 
 func (c *nativeWindow) SetBackgroundColor(color color.RGBA) {

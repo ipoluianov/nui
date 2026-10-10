@@ -197,7 +197,9 @@ func (t *trayIcon) emit(member string, args ...any) {
 }
 
 func (t *trayIcon) SetIcon(icon *image.RGBA) {
+	t.mu.Lock()
 	t.icon = icon
+	t.mu.Unlock()
 	t.props.SetMust(sniInterface, "IconPixmap", []sniPixmap{toSNIPixmap(icon)})
 	t.emit("NewIcon")
 }
@@ -216,6 +218,9 @@ func (t *trayIcon) OnClick(f func()) {
 }
 
 func (t *trayIcon) SetMenu(items []TrayMenuItem) {
+	// A copy: the D-Bus goroutines read the menu while the caller may
+	// change its slice (to change the menu, SetMenu is called again)
+	items = copyTrayMenu(items)
 	t.mu.Lock()
 	t.menu = items
 	t.menuByID = trayMenuIndex(items)
@@ -225,16 +230,32 @@ func (t *trayIcon) SetMenu(items []TrayMenuItem) {
 	t.conn.Emit(menuPath, menuIface+".LayoutUpdated", revision, int32(0))
 }
 
+// copyTrayMenu copies the items and their submenus
+func copyTrayMenu(items []TrayMenuItem) []TrayMenuItem {
+	if items == nil {
+		return nil
+	}
+	res := make([]TrayMenuItem, len(items))
+	for i, item := range items {
+		item.Items = copyTrayMenu(item.Items)
+		res[i] = item
+	}
+	return res
+}
+
 // ShowNotification shows a desktop notification (org.freedesktop.Notifications)
 // with the tray icon's image. A new notification replaces the previous one.
 func (t *trayIcon) ShowNotification(title, text string) error {
 	hints := map[string]dbus.Variant{}
-	if t.icon != nil {
-		b := t.icon.Bounds()
+	t.mu.Lock()
+	icon := t.icon
+	t.mu.Unlock()
+	if icon != nil {
+		b := icon.Bounds()
 		pix := make([]byte, 0, b.Dx()*b.Dy()*4)
 		for y := b.Min.Y; y < b.Max.Y; y++ {
-			i := t.icon.PixOffset(b.Min.X, y)
-			pix = append(pix, t.icon.Pix[i:i+b.Dx()*4]...)
+			i := icon.PixOffset(b.Min.X, y)
+			pix = append(pix, icon.Pix[i:i+b.Dx()*4]...)
 		}
 		// (iiibiiay): width, height, rowstride, has alpha, bits per sample, channels, data
 		hints["image-data"] = dbus.MakeVariant(struct {

@@ -293,7 +293,8 @@ func (c *Table) PreviousCurrentCellY() int {
 
 func (c *Table) SetRowHeight(height int) {
 	c.customRowHeight = true
-	c.rowHeight1 = height
+	// At least a pixel: the rows under a point are found dividing by it
+	c.rowHeight1 = max(height, 1)
 	c.updateInnerSize()
 	c.form.UpdateLayout()
 	c.form.Update()
@@ -481,6 +482,46 @@ func (c *Table) updateInnerWidgetsLayout() {
 
 func (c *Table) RowCount() int {
 	return c.rowCount
+}
+
+// ClearRows removes all the rows, as in a new table: the cells with their
+// text, data, images and colors, the selection and the current cell.
+// RowCount becomes 0. An open cell editor is closed without applying it.
+//
+// SetRowCount only changes how many rows are shown: the cells of the rows
+// beyond the count are kept, and come back when the count grows again. To
+// load other data, call ClearRows first, then fill the cells and set the
+// count.
+func (c *Table) ClearRows() {
+	c.form.UpdateBlockPush()
+	defer c.form.UpdateBlockPop()
+
+	// The editors, without their commit on the focus loss
+	c.CancelCellEditor()
+	if editor := c.editorTextBox; editor != nil {
+		hadFocus := c.form != nil && c.form.FocusedWidget() == Widgeter(editor)
+		c.editorTextBox = nil
+		c.removeInnerWidget(editor)
+		if hadFocus {
+			c.Focus()
+		}
+	}
+
+	hadSelection := c.CurrentRow() >= 0 || len(c.selectedRows) > 0 || len(c.selectedCells) > 0
+	c.rows = make(map[int]*tableRow)
+	c.rowCount = 0
+	c.previousCurrentCellX, c.previousCurrentCellY = c.currentCellX, c.currentCellY
+	c.currentCellX, c.currentCellY = 0, 0
+	c.selectionAnchorRow, c.selectionAnchorCol = 0, 0
+	c.selectionDragging = false
+	c.clearSelectionSets()
+	c.updateInnerSize()
+	c.updateInnerWidgetsLayout()
+
+	c.form.Update()
+	if hadSelection && c.onSelectionChanged != nil {
+		c.onSelectionChanged(c.CurrentRow(), c.CurrentColumn())
+	}
 }
 
 func (c *Table) SetRowCount(count int) {
@@ -2015,14 +2056,24 @@ func (c *Table) EditCurrentCell(enteredText string) {
 	}
 
 	if c.editorTextBox != nil {
-		c.RemoveWidget(c.editorTextBox)
+		c.removeInnerWidget(c.editorTextBox)
 		c.editorTextBox = nil
 	}
 
 	c.editorTextBox = NewTextBox()
 
+	// The edit goes to the cell the editor is opened on, even if the current
+	// cell changes meanwhile (e.g. code restoring the selection after a
+	// refresh). It used to go to the current cell at the time of the commit.
+	row, col := c.currentCellY, c.currentCellX
+	commit := func(text string) {
+		if row < c.rowCount && col < c.columnCount { // the cell may be gone
+			c.SetCellText2(row, col, text)
+		}
+	}
+
 	if len(enteredText) == 0 {
-		enteredText = c.GetCellText2(c.currentCellY, c.currentCellX)
+		enteredText = c.GetCellText2(row, col)
 	}
 
 	c.editorTextBox.SetText(enteredText)
@@ -2032,8 +2083,8 @@ func (c *Table) EditCurrentCell(enteredText string) {
 		ev := CurrentEvent().Parameter.(*EventTextboxKeyDown)
 		if ev.Key == KeyEnter {
 			if c.editorTextBox != nil {
-				c.SetCellText2(c.currentCellY, c.currentCellX, c.editorTextBox.Text())
-				c.RemoveWidget(c.editorTextBox)
+				commit(c.editorTextBox.Text())
+				c.removeInnerWidget(c.editorTextBox)
 				c.editorTextBox = nil
 				c.form.Update()
 				c.Focus()
@@ -2043,7 +2094,7 @@ func (c *Table) EditCurrentCell(enteredText string) {
 		}
 		if ev.Key == KeyEsc {
 			if c.editorTextBox != nil {
-				c.RemoveWidget(c.editorTextBox)
+				c.removeInnerWidget(c.editorTextBox)
 				c.editorTextBox = nil
 				c.form.Update()
 				c.Focus()
@@ -2054,14 +2105,14 @@ func (c *Table) EditCurrentCell(enteredText string) {
 	})
 	c.editorTextBox.SetOnFocusLost(func() {
 		if c.editorTextBox != nil {
-			c.SetCellText2(c.currentCellY, c.currentCellX, c.editorTextBox.Text())
-			c.RemoveWidget(c.editorTextBox)
+			commit(c.editorTextBox.Text())
+			c.removeInnerWidget(c.editorTextBox)
 			c.editorTextBox = nil
 			c.form.Update()
 			c.Focus()
 		}
 	})
-	c.AddWidgetOnTable(c.editorTextBox, c.currentCellY, c.currentCellX, 1, 1)
+	c.AddWidgetOnTable(c.editorTextBox, row, col, 1, 1)
 	c.editorTextBox.Focus()
 }
 

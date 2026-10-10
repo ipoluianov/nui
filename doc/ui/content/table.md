@@ -14,7 +14,8 @@ focus, etc.) are available too. The methods below are the ones that belong to
 
 ## Rows & columns
 
-- `SetRowCount(count int)` / `RowCount() int`
+- `SetRowCount(count int)` / `RowCount() int` - how many rows are shown. The cells of the rows beyond the count are kept and come back when the count grows again.
+- `ClearRows()` - removes all the rows (cells, selection, current cell), as in a new table; `RowCount()` becomes 0. To load other data: `ClearRows()`, fill the cells, `SetRowCount(n)`.
 - `SetColumnCount(count int)` / `ColumnCount() int`
 - `SetColumnName(col int, name string)` / `ColumnName(col int) string` - header text for column `col` (header row 0).
 - `SetColumnCellName2(row, col int, name string)` - header text for a specific header row/column, for use with multi-row headers.

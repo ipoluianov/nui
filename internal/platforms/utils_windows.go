@@ -231,10 +231,6 @@ const (
 	c_WM_PAINT = 0x000F
 )
 
-var (
-	procGetClipBox = gdi32.NewProc("GetClipBox")
-)
-
 const (
 	c_HORZRES   = 8
 	c_VERTRES   = 10
@@ -275,94 +271,55 @@ func getNativeWindowByHandle(hwnd windowId) *nativeWindow {
 	return nil
 }
 
-func getHDCSize(hdc uintptr) (width int32, height int32) {
+// clientSize is the size of the client area of the window in physical pixels
+func clientSize(hwnd uintptr) (width, height int32) {
 	var r rect
-	procGetClipBox.Call(hdc, uintptr(unsafe.Pointer(&r)))
+	procGetClientRect.Call(hwnd, uintptr(unsafe.Pointer(&r)))
 	return r.right - r.left, r.bottom - r.top
 }
 
-const chunkHeight = 100
-
-// ensurePixBuffer grows this window's own RGBA->BGRA scratch buffer.
-func (c *nativeWindow) ensurePixBuffer(size int) []byte {
-	return growBuffer(&c.platform.pixBuffer, size)
-}
-
-func (c *nativeWindow) drawImageToHDC(img *image.RGBA, hdc uintptr, width, height int32) {
-	drawRGBAToHDC(img, hdc, width, height, &c.platform.pixBuffer)
-}
-
-// drawRGBAToHDC blits img to hdc, converting RGBA->BGRA in chunks through
-// the caller's scratch buffer.
-func drawRGBAToHDC(img *image.RGBA, hdc uintptr, width, height int32, scratch *[]byte) {
-	imgStride := img.Stride
-	totalHeight := int(height)
-
-	pixBuffer := growBuffer(scratch, int(width)*4*chunkHeight)
-
-	for y := 0; y < totalHeight; y += chunkHeight {
-		h := chunkHeight
-		if y+h > totalHeight {
-			h = totalHeight - y
-		}
-
-		bi := t_BITMAPINFO{
-			Header: t_BITMAPINFOHEADER{
-				Size:        uint32(unsafe.Sizeof(t_BITMAPINFOHEADER{})),
-				Width:       width,
-				Height:      -int32(h),
-				Planes:      1,
-				BitCount:    32,
-				Compression: 0,
-			},
-		}
-
-		srcOffset := y * imgStride
-		dataSize := int(width) * 4 * h
-
-		_ = srcOffset
-		_ = dataSize
-		copy(pixBuffer[:dataSize], img.Pix[srcOffset:srcOffset+dataSize])
-
-		// Convert RGBA to BGRA
-		//RgbaToBgraSIMD(pixBuffer[:dataSize])
-		for i := 0; i < dataSize; i += 4 {
-			b := pixBuffer[i+0]
-			g := pixBuffer[i+1]
-			r := pixBuffer[i+2]
-			a := pixBuffer[i+3]
-			pixBuffer[i+0] = r
-			pixBuffer[i+1] = g
-			pixBuffer[i+2] = b
-			pixBuffer[i+3] = a
-		}
-
-		ptr := uintptr(unsafe.Pointer(&pixBuffer[0]))
-
-		_ = ptr
-		_ = bi
-
-		procSetDIBitsToDevice.Call(
-			hdc,
-			0, uintptr(y), // xDest, yDest
-			uintptr(width), uintptr(h), // w, h
-			0, 0, // xSrc, ySrc
-			0, uintptr(h), // Start scan line, number of scan lines
-			ptr,
-			uintptr(unsafe.Pointer(&bi)),
-			0,
-		)
+// drawRGBAToHDC copies the top-left width x height pixels of img to hdc with
+// SetDIBitsToDevice, in one call. The fallback of backBuffer.present when no
+// DIB section can be made.
+func drawRGBAToHDC(img *image.RGBA, hdc uintptr, width, height int32) bool {
+	pix := make([]uint32, int(width)*int(height))
+	copyRGBAToBGRA(pix, int(width), img, int(width), int(height))
+	bi := t_BITMAPINFO{
+		Header: t_BITMAPINFOHEADER{
+			Size:     uint32(unsafe.Sizeof(t_BITMAPINFOHEADER{})),
+			Width:    width,
+			Height:   -height,
+			Planes:   1,
+			BitCount: 32,
+		},
 	}
+	lines, _, _ := procSetDIBitsToDevice.Call(
+		hdc,
+		0, 0, // xDest, yDest
+		uintptr(width), uintptr(height),
+		0, 0, // xSrc, ySrc
+		0, uintptr(height), // start scan line, number of scan lines
+		uintptr(unsafe.Pointer(&pix[0])),
+		uintptr(unsafe.Pointer(&bi)),
+		c_DIB_RGB_COLORS,
+	)
+	return lines != 0
 }
 
-// Sanity caps on a single window's paintable area, not a shared buffer size.
-const maxCanvasWidth = 6000
-const maxCanvasHeight = 4000
+// Sanity caps on a single window's paintable area, not a shared buffer size:
+// above any real screen setup (a window maximized over several 4K monitors
+// is ~11500 pixels wide), so they never cut off a part of a window.
+const maxCanvasWidth = 16384
+const maxCanvasHeight = 16384
 
 // ensureCanvasBuffer grows this window's own paint buffer to fit size bytes, if needed.
 func (c *nativeWindow) ensureCanvasBuffer(size int) []byte {
 	return growBuffer(&c.platform.canvasBuffer, size)
 }
+
+// repaintRetryDelay is when a window whose frame didn't get to the screen
+// is painted again
+const repaintRetryDelay = 100 * time.Millisecond
 
 // fillCanvasBuffer paints buf with this window's solid background color.
 func fillCanvasBuffer(buf []byte, col color.RGBA) {
@@ -384,35 +341,37 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 
 	switch msg {
 	case c_WM_PAINT:
-
 		dtBegin := time.Now()
 
 		var ps t_PAINTSTRUCT
 		hdc, _, _ := procBeginPaint.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&ps)))
-
-		if win == nil {
+		if win == nil || hdc == 0 {
 			procEndPaint.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&ps)))
 			return 0
 		}
 
-		hdcWidth, hdcHeight := getHDCSize(hdc)
-		if hdcWidth > maxCanvasWidth {
-			hdcWidth = maxCanvasWidth
-		}
-
-		if hdcHeight > maxCanvasHeight {
-			hdcHeight = maxCanvasHeight
+		// The whole client area is painted, whatever part of it is invalid:
+		// the update region clips the copy to the screen. (The size used to
+		// come from the clip box of the DC, which is only the invalid part:
+		// a partial invalidation - frequent on virtual machines and over RDP
+		// - painted the top-left corner of the window into it at 0, 0,
+		// outside the region, and the invalid part stayed unpainted.)
+		width, height := clientSize(uintptr(hwnd))
+		width = min(width, maxCanvasWidth)
+		height = min(height, maxCanvasHeight)
+		if width <= 0 || height <= 0 { // minimized
+			procEndPaint.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&ps)))
+			return 0
 		}
 
 		// Clear the canvas to this window's own background color.
-		canvasDataBufferSize := int(hdcWidth * hdcHeight * 4)
-		buf := win.ensureCanvasBuffer(canvasDataBufferSize)
+		buf := win.ensureCanvasBuffer(int(width) * int(height) * 4)
 		fillCanvasBuffer(buf, win.platform.bgColor)
 
 		img := &image.RGBA{
 			Pix:    buf,
-			Stride: int(hdcWidth) * 4,
-			Rect:   image.Rect(0, 0, int(hdcWidth), int(hdcHeight)),
+			Stride: int(width) * 4,
+			Rect:   image.Rect(0, 0, int(width), int(height)),
 		}
 
 		// The buffer is in physical pixels; the scale tells the canvas so
@@ -420,7 +379,9 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 			win.onPaint(img)
 		}
 
-		win.drawImageToHDC(img, hdc, hdcWidth, hdcHeight)
+		if !win.platform.back.present(img, hdc, width, height) {
+			win.platform.repaintAt = time.Now().Add(repaintRetryDelay)
+		}
 
 		procEndPaint.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&ps)))
 
@@ -430,6 +391,18 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 			win.drawTimesIndex = 0
 		}
 
+		return 0
+
+	case c_WM_ERASEBKGND:
+		// WM_PAINT paints every pixel. Erasing with the class brush first
+		// shows a white rectangle until the paint comes, and over a slow
+		// connection (RDP) that rectangle may be what stays on the screen.
+		return 1
+
+	case c_WM_DISPLAYCHANGE, c_WM_WTSSESSION_CHANGE:
+		// A new display mode, a session connected again or unlocked: the
+		// screen may not hold the window's content any more
+		procInvalidateRect.Call(uintptr(hwnd), 0, 0)
 		return 0
 
 	case c_WM_ACTIVATE:
@@ -456,6 +429,11 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 
 	case c_WM_DESTROY:
 		procKillTimer.Call(uintptr(hwnd), timerID1ms)
+		unregisterSessionNotification(uintptr(hwnd))
+		if win != nil {
+			win.platform.back.release()
+			win.destroyIcon()
+		}
 		appWindowsMu.Lock()
 		delete(app.windows, windowId(hwnd))
 		appWindowsMu.Unlock()
@@ -559,12 +537,13 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 			win.onMouseMove(x, y)
 		}
 
+		if win == nil {
+			return 0
+		}
 		if !win.mouseInside {
 			win.mouseInside = true
-			if win != nil {
-				win.lastSetCursor = MouseCursorNotDefined
-			}
-			if win != nil && win.onMouseEnter != nil {
+			win.lastSetCursor = MouseCursorNotDefined
+			if win.onMouseEnter != nil {
 				win.onMouseEnter()
 			}
 
@@ -710,9 +689,11 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 		return 0*/
 
 	case c_WM_MOUSELEAVE:
-		win.mouseInside = false
-		if win != nil && win.onMouseLeave != nil {
-			win.onMouseLeave()
+		if win != nil {
+			win.mouseInside = false
+			if win.onMouseLeave != nil {
+				win.onMouseLeave()
+			}
 		}
 		return 0
 
@@ -771,6 +752,10 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 
 	case c_WM_TIMER:
 		if wParam == timerID1ms {
+			if win != nil && !win.platform.repaintAt.IsZero() && time.Now().After(win.platform.repaintAt) {
+				win.platform.repaintAt = time.Time{}
+				procInvalidateRect.Call(uintptr(hwnd), 0, 0)
+			}
 			if win != nil && win.onTimer != nil {
 				if time.Since(win.timerLastDT) > time.Millisecond*10 {
 					win.onTimer()
@@ -834,6 +819,9 @@ func loadMouseCursor(cursor MouseCursor) uintptr {
 func createHICONFromRGBA(img *image.RGBA) syscall.Handle {
 	width := img.Bounds().Dx()
 	height := img.Bounds().Dy()
+	if width <= 0 || height <= 0 {
+		return 0
+	}
 
 	pixels := make([]byte, 0, width*height*4)
 

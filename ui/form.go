@@ -5,7 +5,6 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
-	"runtime"
 	"runtime/debug"
 	"sort"
 	"sync"
@@ -16,9 +15,12 @@ import (
 )
 
 type Form struct {
-	wnd   platforms.Window
-	title string
-	icon  *image.RGBA
+	wnd platforms.Window
+	// closed is set when the window is closed, by Close or by the user; a
+	// later Show opens a new one
+	closed bool
+	title  string
+	icon   *image.RGBA
 
 	posX int
 	posY int
@@ -77,8 +79,7 @@ type Form struct {
 	onActivated   func()
 	onDeactivated func()
 
-	needUpdate         bool
-	lastFreeMemoryTime time.Time
+	needUpdate bool
 
 	lastUpdateTime time.Time
 
@@ -128,6 +129,17 @@ func unregisterWidget(id string) {
 	allwidgetsMtx.Lock()
 	delete(allwidgets, id)
 	allwidgetsMtx.Unlock()
+}
+
+// unregisterFormWidgets removes the widgets of the form from the registry
+func unregisterFormWidgets(form *Form) {
+	allwidgetsMtx.Lock()
+	defer allwidgetsMtx.Unlock()
+	for id, w := range allwidgets {
+		if w.Form() == form {
+			delete(allwidgets, id)
+		}
+	}
 }
 
 func lookupWidget(id string) (Widgeter, bool) {
@@ -308,7 +320,30 @@ func (c *Form) Close() {
 		}
 		c.wnd = nil
 	}
+	c.markClosed()
+}
+
+// markClosed forgets the closed form: the open forms and the registry of the
+// widgets no longer refer to it, so a form the application drops is freed
+// with all its widgets. (Every dialog and message box used to stay in memory.)
+// A later Show registers the widgets again (see createWindow).
+func (c *Form) markClosed() {
+	c.closed = true
 	unregisterOpenForm(c)
+	unregisterFormWidgets(c)
+}
+
+// reopen registers the widgets of a closed form again, before it gets a new
+// window
+func (c *Form) reopen() {
+	if !c.closed {
+		return
+	}
+	c.closed = false
+	c.topWidget.attachToForm(c.topWidget, c)
+	if c.menuBar != nil {
+		c.menuBar.attachToForm(c.menuBar, c)
+	}
 }
 
 // RequestClose closes the window as if the user clicked its close button:
@@ -483,6 +518,7 @@ func (c *Form) layoutMenuBar() {
 }
 
 func (c *Form) createWindow(maximized bool) {
+	c.reopen()
 	// No explicit position and no parent to center on (ShowModal already
 	// resolves posX/posY via centerOnForm before this runs) - center on the
 	// screen instead of leaving it to the OS/window manager's default spot.
@@ -541,7 +577,9 @@ func (c *Form) createWindow(maximized bool) {
 // another goroutine, Show opens it there and waits for it (see InvokeSync).
 func (c *Form) Show() {
 	platforms.RunOnUIThread(func() {
-		if c.wnd != nil {
+		// A form closed by the user still has its (destroyed) window: it gets
+		// a new one, as after Close
+		if c.wnd != nil && !c.closed {
 			c.wnd.Show()
 			c.hidden = false
 			c.forceUpdate()
@@ -685,7 +723,7 @@ func (c *Form) processWindowClose() bool {
 		return false
 	}
 	c.closeToasts()
-	unregisterOpenForm(c)
+	c.markClosed()
 	return true
 }
 
@@ -1194,10 +1232,7 @@ func (c *Form) ParentForm() *Form {
 }
 
 func (c *Form) processTimer() {
-	if time.Since(c.lastFreeMemoryTime) > 30*time.Second {
-		c.freeMemory()
-		c.lastFreeMemoryTime = time.Now()
-	}
+	freeOSMemory()
 
 	if c.menuBar != nil {
 		c.menuBar.ProcessTimer()
@@ -1236,8 +1271,28 @@ func (c *Form) Move(x, y int) {
 	}
 }
 
-func (c *Form) freeMemory() {
-	runtime.GC()
+// freeOSMemoryInterval is how often the memory the program no longer uses is
+// returned to the system
+const freeOSMemoryInterval = 5 * time.Minute
+
+// lastFreeOSMemory is when freeOSMemory last ran. UI thread only.
+var lastFreeOSMemory time.Time
+
+// freeOSMemory returns the unused memory to the system now and then, once
+// for the whole process. (Every open form used to force two full garbage
+// collections - runtime.GC, then FreeOSMemory, which collects too - every
+// 30 s on the UI thread: a periodic stall growing with the heap and the
+// number of forms. The Go runtime returns memory by itself as well.)
+func freeOSMemory() {
+	now := time.Now()
+	if lastFreeOSMemory.IsZero() {
+		lastFreeOSMemory = now
+		return
+	}
+	if now.Sub(lastFreeOSMemory) < freeOSMemoryInterval {
+		return
+	}
+	lastFreeOSMemory = now
 	debug.FreeOSMemory()
 }
 

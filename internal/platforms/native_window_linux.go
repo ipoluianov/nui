@@ -1153,10 +1153,29 @@ func (c *nativeWindow) changeMouseCursor(mouseCursor MouseCursor) bool {
 	if c.platform.closed {
 		return false
 	}
-	cursor := xCreateFontCursor(c.platform.display, xCursorShape(mouseCursor))
+	cursor := fontCursor(c.platform.display, xCursorShape(mouseCursor))
 	xDefineCursor(c.platform.display, c.platform.window, cursor)
 	xFlush(c.platform.display)
 	return true
+}
+
+var (
+	fontCursorsMu sync.Mutex
+	fontCursors   = map[uint32]uintptr{}
+)
+
+// fontCursor returns the cursor of the X cursor font shape, made once: the
+// cursors live as long as the shared X connection. (One used to be made on
+// every cursor change and never freed - a hover over the widgets changes it.)
+func fontCursor(display uintptr, shape uint32) uintptr {
+	fontCursorsMu.Lock()
+	defer fontCursorsMu.Unlock()
+	if cursor, ok := fontCursors[shape]; ok {
+		return cursor
+	}
+	cursor := xCreateFontCursor(display, shape)
+	fontCursors[shape] = cursor
+	return cursor
 }
 
 // xCursorShape returns the X cursor font shape for the cursor kind.
@@ -1338,8 +1357,9 @@ func (c *nativeWindow) SetAppIcon(icon *image.RGBA) {
 	data[1] = uintptr(height)
 
 	i := 2
-	for y := 0; y < height; y++ {
-		for x := 0; x < width; x++ {
+	b := icon.Bounds()
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
 			offset := icon.PixOffset(x, y)
 			r := icon.Pix[offset]
 			g := icon.Pix[offset+1]
@@ -1372,12 +1392,18 @@ func (c *nativeWindow) drawImageRGBA(display uintptr, window uintptr, img image.
 
 // putImageRGBA copies the top-left width x height pixels of img to window.
 func putImageRGBA(display uintptr, window uintptr, img *image.RGBA, width, height int) {
+	if width <= 0 || height <= 0 {
+		return
+	}
 	dataSize := width * height * 4
 
 	// XDestroyImage (via destroyXImage below) frees this buffer through
 	// libX11's own free(), so it has to come from the same libc malloc, not
 	// Go's allocator.
 	cBuffer := libcMalloc(uintptr(dataSize))
+	if cBuffer == nil {
+		return // out of memory: this frame is not shown, the next one may be
+	}
 
 	// Copied converting RGBA to the BGRA of the X image in one pass, a
 	// pixel at a time as a little-endian uint32 (all the Linux targets are)

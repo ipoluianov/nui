@@ -50,6 +50,9 @@ func (c *TimeChartMemorySource) GetData(from, to time.Time, groupDuration time.D
 // does not change how points are grouped. It is the same aggregation a server should do before sending
 // data to the chart.
 func TimeChartDownsample(points []TimeChartPoint, from, to time.Time, groupDuration time.Duration) []TimeChartPoint {
+	if to.Before(from) {
+		return []TimeChartPoint{} // an inverted range has no points
+	}
 	i0 := sort.Search(len(points), func(i int) bool { return !points[i].DT.Before(from) })
 	i1 := sort.Search(len(points), func(i int) bool { return points[i].DT.After(to) })
 	if i0 > 0 {

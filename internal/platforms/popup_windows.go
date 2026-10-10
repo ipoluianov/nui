@@ -61,7 +61,7 @@ type popupWindow struct {
 	hCursor     uintptr // the cursor set by SetMouseCursor, 0 for the class cursor
 
 	canvasBuffer []byte
-	pixBuffer    []byte
+	back         backBuffer // owner's thread only, see backBuffer
 }
 
 var (
@@ -220,6 +220,9 @@ func popupWndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintp
 		popupsMu.Lock()
 		delete(popups, hwnd)
 		popupsMu.Unlock()
+		if p != nil {
+			p.back.release()
+		}
 		return 0
 	}
 
@@ -253,7 +256,7 @@ func (p *popupWindow) paint(hdc uintptr) {
 		p.onPaint(img)
 	}
 
-	drawRGBAToHDC(img, hdc, width, height, &p.pixBuffer)
+	p.back.present(img, hdc, width, height)
 }
 
 func popupMouseButton(msg uint32) MouseButton {

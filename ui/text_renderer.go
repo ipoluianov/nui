@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -39,6 +40,14 @@ var renderedTextsMu sync.Mutex
 var renderedTexts = make(map[string]*renderedText)
 var renderedTextLastClearDT time.Time
 
+// renderedTextsBytes is the size of the pixels of renderedTexts. Above
+// renderedTextsMaxBytes the least recently drawn texts go: a text that
+// changes on every frame (a counter, a clock, axis labels) adds a new image
+// each time, too fast for the eviction by age alone.
+var renderedTextsBytes int
+
+const renderedTextsMaxBytes = 64 << 20
+
 // Registered in a variable initializer: those run before any init(), and
 // init() in theme.go already measures text
 var _ = mustRegisterFont(FontFamilySans, fontNotoSans)
@@ -55,6 +64,7 @@ func mustRegisterFont(family string, data []byte) bool {
 func clearAllRenderedTexts() {
 	renderedTextsMu.Lock()
 	renderedTexts = make(map[string]*renderedText)
+	renderedTextsBytes = 0
 	renderedTextsMu.Unlock()
 }
 
@@ -70,8 +80,34 @@ func clearRenderedTexts() {
 	renderedTextLastClearDT = time.Now()
 	for k, rt := range renderedTexts {
 		if time.Since(rt.lastAccessDT) > 30*time.Second {
-			delete(renderedTexts, k)
+			deleteRenderedText(k, rt)
 		}
+	}
+}
+
+// deleteRenderedText must be called with renderedTextsMu held.
+func deleteRenderedText(key string, rt *renderedText) {
+	delete(renderedTexts, key)
+	renderedTextsBytes -= len(rt.textImage.Pix)
+}
+
+// trimRenderedTexts drops the least recently drawn texts down to 3/4 of
+// renderedTextsMaxBytes, if over it: the sort is rare that way. Must be
+// called with renderedTextsMu held.
+func trimRenderedTexts() {
+	if renderedTextsBytes <= renderedTextsMaxBytes {
+		return
+	}
+	all := make([]*renderedText, 0, len(renderedTexts))
+	for _, rt := range renderedTexts {
+		all = append(all, rt)
+	}
+	sort.Slice(all, func(i, j int) bool { return all[i].lastAccessDT.Before(all[j].lastAccessDT) })
+	for _, rt := range all {
+		if renderedTextsBytes <= renderedTextsMaxBytes*3/4 {
+			break
+		}
+		deleteRenderedText(rt.key, rt)
 	}
 }
 
@@ -106,8 +142,13 @@ func DrawText(rgba *image.RGBA, text string, textColor color.Color, fontFamily s
 		img.textImage = textImage
 
 		renderedTextsMu.Lock()
+		if old, ok := renderedTexts[key]; ok { // drawn meanwhile by another goroutine
+			deleteRenderedText(key, old)
+		}
 		renderedTexts[key] = &img
+		renderedTextsBytes += len(textImage.Pix)
 		clearRenderedTexts()
+		trimRenderedTexts()
 		renderedTextsMu.Unlock()
 	}
 

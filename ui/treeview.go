@@ -246,7 +246,8 @@ func (c *TreeView) SetOnColumnResize(callback func(col int, newWidth int)) {
 
 func (c *TreeView) SetRowHeight(height int) {
 	c.customRowHeight = true
-	c.rowHeight = height
+	// At least a pixel: the rows under a point are found dividing by it
+	c.rowHeight = max(height, 1)
 	c.updateInnerSize()
 }
 

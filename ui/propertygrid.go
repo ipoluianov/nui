@@ -203,13 +203,20 @@ func (c *PropertyGrid) AddString(category, name, value string) *Property {
 
 // AddInt adds a whole number property edited in a number box, from min to max
 func (c *PropertyGrid) AddInt(category, name string, value, min, max int) *Property {
+	return c.addWhole(category, name, float64(value), float64(min), float64(max))
+}
+
+// addWhole is AddInt with the value and the limits as float64: the limits of
+// a 64-bit field don't fit an int once converted to float64 (2^63-1 becomes
+// 2^63), nor do the values of a uint64 above the int range
+func (c *PropertyGrid) addWhole(category, name string, value, min, max float64) *Property {
 	box := NewNumBox()
 	box.SetDecimals(0)
-	box.SetMin(float64(min))
-	box.SetMax(float64(max))
-	box.SetValue(float64(value))
+	box.SetMin(min)
+	box.SetMax(max)
+	box.SetValue(value)
 	p := c.add(category, name, box)
-	p.get = func() any { return int(math.Round(box.Value())) }
+	p.get = func() any { return int(saturateInt64(box.Value())) }
 	p.set = func(v any) {
 		if f, ok := toFloat64(v); ok {
 			box.SetValue(f)
@@ -499,14 +506,17 @@ func (c *PropertyGrid) addField(f reflect.StructField, fv reflect.Value, name, c
 		return c.AddString(category, name, fv.String())
 	case reflect.Bool:
 		return c.AddBool(category, name, fv.Bool())
+	// Without min/max tags a whole number can take any value of its type.
+	// (The limits used to be ±1e9: a larger value showed as 1e9, and any edit
+	// wrote that into the object.)
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		lo := max(tagFloat("min", -1e9), float64(minIntOf(fv.Type())))
-		hi := min(tagFloat("max", 1e9), float64(maxIntOf(fv.Type())))
-		return c.AddInt(category, name, int(fv.Int()), int(lo), int(hi))
+		lo := max(tagFloat("min", math.Inf(-1)), float64(minIntOf(fv.Type())))
+		hi := min(tagFloat("max", math.Inf(1)), float64(maxIntOf(fv.Type())))
+		return c.addWhole(category, name, float64(fv.Int()), lo, hi)
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		lo := max(tagFloat("min", 0), 0)
-		hi := min(tagFloat("max", 1e9), float64(maxUintOf(fv.Type())))
-		return c.AddInt(category, name, int(fv.Uint()), int(lo), int(hi))
+		hi := min(tagFloat("max", math.Inf(1)), float64(maxUintOf(fv.Type())))
+		return c.addWhole(category, name, float64(fv.Uint()), lo, hi)
 	case reflect.Float32, reflect.Float64:
 		p := c.AddFloat(category, name, fv.Float(), int(tagFloat("decimals", 2)))
 		box := p.editor.(*NumBox)
@@ -551,13 +561,13 @@ func (p *Property) writeField() {
 		fv.SetBool(v.(bool))
 		return
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		if f, ok := toFloat64(v); ok {
-			fv.SetInt(int64(math.Round(f)))
+		if f, ok := p.wholeValue(v); ok {
+			fv.SetInt(saturateInt64(f))
 		}
 		return
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		if f, ok := toFloat64(v); ok && f >= 0 {
-			fv.SetUint(uint64(math.Round(f)))
+		if f, ok := p.wholeValue(v); ok && f >= 0 {
+			fv.SetUint(saturateUint64(f))
 		}
 		return
 	case reflect.Float32, reflect.Float64:
@@ -566,9 +576,59 @@ func (p *Property) writeField() {
 		}
 		return
 	}
+	if fv.Type() == timeType {
+		if t, ok := v.(time.Time); ok {
+			fv.Set(reflect.ValueOf(withDateOf(fv.Interface().(time.Time), t)))
+		}
+		return
+	}
 	if rv := reflect.ValueOf(v); rv.IsValid() && rv.Type().AssignableTo(fv.Type()) {
 		fv.Set(rv)
 	}
+}
+
+// wholeValue is the number of a whole number property: read from its number
+// box, not through Value's int, which a uint64 above the int range overflows
+func (p *Property) wholeValue(v any) (float64, bool) {
+	if box, ok := p.editor.(*NumBox); ok {
+		return box.Value(), true
+	}
+	return toFloat64(v)
+}
+
+// withDateOf is old with the date of picked: the date picker edits the date
+// only, the time of day and the location of the field stay. (The field used
+// to get midnight in the local time zone.) A zero time takes picked as is.
+func withDateOf(old, picked time.Time) time.Time {
+	if old.IsZero() {
+		return picked
+	}
+	y, m, d := picked.Date()
+	return time.Date(y, m, d, old.Hour(), old.Minute(), old.Second(), old.Nanosecond(), old.Location())
+}
+
+// saturateInt64 rounds f to an int64, the out of range values to its limits
+func saturateInt64(f float64) int64 {
+	f = math.Round(f)
+	switch {
+	case f >= math.MaxInt64: // 2^63 as a float64
+		return math.MaxInt64
+	case f <= math.MinInt64:
+		return math.MinInt64
+	}
+	return int64(f)
+}
+
+// saturateUint64 rounds f to a uint64, the out of range values to its limits
+func saturateUint64(f float64) uint64 {
+	f = math.Round(f)
+	switch {
+	case f <= 0:
+		return 0
+	case f >= math.MaxUint64: // 2^64 as a float64
+		return math.MaxUint64
+	}
+	return uint64(f)
 }
 
 // Refresh shows the current values of the struct given to SetObject, after

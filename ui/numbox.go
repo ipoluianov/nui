@@ -109,7 +109,7 @@ func NewNumBox() *NumBox {
 
 	c.SetOnFocusLost(func() {
 		// Commit when focus is lost.
-		c.commitText(true)
+		c.commitText()
 	})
 
 	c.SetValue(0)
@@ -536,7 +536,7 @@ func (c *NumBox) onMouseWheel(deltaY int) {
 		return
 	}
 	// When user is editing, first commit to keep wheel behavior predictable.
-	c.commitText(true)
+	c.commitText()
 
 	step := c.Step()
 	if step == 0 || math.IsNaN(step) || math.IsInf(step, 0) {
@@ -641,7 +641,7 @@ func (c *NumBox) onKeyDown(key Key, mods KeyModifiers) bool {
 	case KeyEnter:
 		// Commit and let Enter through, like a single-line TextBox,
 		// so the form's accept button (e.g. OK of a dialog) is pressed
-		c.commitText(true)
+		c.commitText()
 		return false
 	}
 	return false
@@ -794,8 +794,12 @@ func (c *NumBox) parseText(text string) (float64, bool) {
 	return v, true
 }
 
-func (c *NumBox) commitText(force bool) {
-	if !force && !c.editingText {
+// commitText applies the text the user typed, if any. Without an edit it
+// does nothing: the text shown is the value rounded to the decimals, and
+// parsing it back used to round the value itself - a Tab through the box
+// turned 3.14159 into 3.14 (and PropertyGrid wrote that into the object).
+func (c *NumBox) commitText() {
+	if !c.editingText {
 		return
 	}
 	if v, ok := c.parseText(c.text); ok {
@@ -812,7 +816,7 @@ func (c *NumBox) stepBy(delta float64) {
 		return
 	}
 	// If user is editing, commit current text first so stepping is predictable.
-	c.commitText(true)
+	c.commitText()
 
 	v := c.clamp(c.value + delta)
 	// Round to decimals to stabilize drift.

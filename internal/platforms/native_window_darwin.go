@@ -25,6 +25,9 @@ type nativeWindowPlatform struct {
 
 	// Throttles go_on_timer per window; must not be shared across windows.
 	lastTimerTick time.Time
+
+	// bgColor clears the frame before onPaint
+	bgColor color.RGBA
 }
 
 /*type NativeWindow struct {
@@ -89,7 +92,7 @@ func createWindow(title string, posX int, posY int, width int, height int, cente
 
 	c.showMaximized = maximized
 
-	initCanvasBufferBackground(color.RGBA{0, 50, 0, 255})
+	c.platform.bgColor = color.RGBA{0, 50, 0, 255}
 
 	c.hwnd = initWindow()
 	// Register before Resize so ObjC-triggered go_on_resize reaches Go with a populated hwnds map.
@@ -131,8 +134,12 @@ func (c *nativeWindow) Hide() {
 	hideWindow(c.hwnd)
 }
 
+// Update and Close may be called from any goroutine (see Window): AppKit
+// and the window maps belong to the main thread, so from another one they
+// run there, without waiting (a wait could deadlock with a main thread
+// waiting for the caller).
 func (c *nativeWindow) Update() {
-	updateWindow(c.hwnd)
+	onMainThread(func() { updateWindow(c.hwnd) })
 }
 
 // Exec runs the ONE shared NSApplication run loop for the whole process, not
@@ -146,8 +153,17 @@ func (c *nativeWindow) Exec() {
 }
 
 func (c *nativeWindow) Close() bool {
-	closeWindowById(c.hwnd)
+	onMainThread(func() { closeWindowById(c.hwnd) })
 	return true
+}
+
+// onMainThread runs f at once on the main thread, later from another one
+func onMainThread(f func()) {
+	if isMainThread() {
+		f()
+		return
+	}
+	dispatchAsyncMain(f)
 }
 
 // ShowModal shows the window as an app-modal dialog. Unlike Linux/Windows this call
@@ -180,7 +196,7 @@ func (c *nativeWindow) SetAppIcon(icon *image.RGBA) {
 }
 
 func (c *nativeWindow) SetBackgroundColor(color color.RGBA) {
-	initCanvasBufferBackground(color)
+	c.platform.bgColor = color
 	c.Update()
 }
 

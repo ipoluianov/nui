@@ -189,30 +189,6 @@ func GetScreenSize() (width, height int) {
 	return getScreenWidth(), getScreenHeight()
 }
 
-const maxCanvasWidth = 10000
-const maxCanvasHeight = 5000
-
-var canvasBufferBackground = make([]byte, maxCanvasWidth*maxCanvasHeight*4)
-var canvasBufferBackgroundColor color.Color
-
-// Filling the 200MB background buffer is expensive; every createWindow() call used to redo it
-// with the same default color and stall the main thread. Skip it when the color didn't change.
-func initCanvasBufferBackground(col color.Color) {
-	if canvasBufferBackgroundColor == col {
-		return
-	}
-	canvasBufferBackgroundColor = col
-
-	r, g, b, a := col.RGBA()
-	rb, gb, bb, ab := byte(b), byte(g), byte(r), byte(a)
-	for i := 0; i < len(canvasBufferBackground); i += 4 {
-		canvasBufferBackground[i+0] = rb
-		canvasBufferBackground[i+1] = gb
-		canvasBufferBackground[i+2] = bb
-		canvasBufferBackground[i+3] = ab
-	}
-}
-
 var macToPCScanCode = map[int]Key{
 	0x00: KeyA,
 	0x01: KeyS,
@@ -484,10 +460,28 @@ func (c *nativeWindow) windowDeclareDrawTime(dt int) {
 	}
 }
 
+// fillRGBA fills img with col: the first row pixel by pixel, the other rows
+// copied from it
+func fillRGBA(img *image.RGBA, col color.RGBA) {
+	w, h := img.Rect.Dx(), img.Rect.Dy()
+	if w <= 0 || h <= 0 {
+		return
+	}
+	row := img.Pix[:w*4]
+	for i := 0; i < len(row); i += 4 {
+		row[i], row[i+1], row[i+2], row[i+3] = col.R, col.G, col.B, col.A
+	}
+	for y := 1; y < h; y++ {
+		copy(img.Pix[y*img.Stride:y*img.Stride+w*4], row)
+	}
+}
+
 func (c *nativeWindow) windowPaint(rgba *image.RGBA) {
 
-	imgDataSize := rgba.Rect.Dx() * rgba.Rect.Dy() * 4
-	copy(rgba.Pix[:imgDataSize], canvasBufferBackground)
+	// Cleared to the window's own background color. (A process-wide 200 MB
+	// buffer of the color, written as BGR into the RGBA frame, used to be
+	// copied here.)
+	fillRGBA(rgba, c.platform.bgColor)
 
 	if c.onPaint != nil {
 		c.onPaint(rgba)
