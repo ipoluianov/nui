@@ -65,6 +65,9 @@ type Window interface {
 	Move(width int, height int)
 	MoveToCenterOfScreen()
 	Resize(width int, height int)
+	// SetMinSize keeps the user from making the client area smaller than
+	// width x height (logical pixels)
+	SetMinSize(width int, height int)
 	MinimizeWindow()
 	MaximizeWindow()
 	// RestoreWindow returns a maximized window to its normal size

@@ -17,6 +17,7 @@ var (
 	gdi32    = syscall.NewLazyDLL("gdi32.dll")
 
 	procCreateWindowExW  = user32.NewProc("CreateWindowExW")
+	procGetWindowRect    = user32.NewProc("GetWindowRect")
 	procDefWindowProcW   = user32.NewProc("DefWindowProcW")
 	procDispatchMessageW = user32.NewProc("DispatchMessageW")
 	procGetMessageW      = user32.NewProc("GetMessageW")
@@ -245,6 +246,22 @@ const (
 type rect struct {
 	left, top, right, bottom int32
 }
+
+type point struct {
+	x, y int32
+}
+
+// minMaxInfo mirrors MINMAXINFO, the lParam of WM_GETMINMAXINFO
+type minMaxInfo struct {
+	reserved     point
+	maxSize      point
+	maxPosition  point
+	minTrackSize point
+	maxTrackSize point
+}
+
+// c_WM_GETMINMAXINFO asks the window for its smallest and largest sizes
+const c_WM_GETMINMAXINFO = 0x0024
 
 func loadPngFromBytes(bs []byte) (*image.RGBA, error) {
 	img, err := png.Decode(bytes.NewReader(bs))
@@ -722,6 +739,15 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 			}
 		}
 		return 0
+
+	case c_WM_GETMINMAXINFO:
+		if win != nil && lParam != 0 {
+			if w, h, ok := win.minTrackSize(); ok {
+				mmi := (*minMaxInfo)(unsafe.Pointer(lParam))
+				mmi.minTrackSize = point{w, h}
+				return 0
+			}
+		}
 
 	case c_WM_DPICHANGED:
 		if win != nil {

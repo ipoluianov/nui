@@ -251,6 +251,12 @@ func (c *nativeWindow) Resize(width, height int) {
 	setWindowSize(c.hwnd, width, height) // NSWindow setContentSize
 }
 
+// SetMinSize keeps the user from making the content of the window smaller
+// than width x height (NSWindow setContentMinSize)
+func (c *nativeWindow) SetMinSize(width, height int) {
+	setWindowMinSize(c.hwnd, width, height)
+}
+
 func (c *nativeWindow) MinimizeWindow() {
 	minimizeWindow(c.hwnd)
 }

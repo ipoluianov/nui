@@ -58,6 +58,53 @@ func inputFrameColors(w *Widget) (fill, border color.RGBA) {
 	return
 }
 
+// drawScrollBarTrack fills the room of a scroll bar: a faint shade of the
+// text color, so it suits any background and shows the room is taken.
+func drawScrollBarTrack(cnv *Canvas, x, y, width, height int) {
+	cnv.FillRect(x, y, width, height, withAlpha(CurrentPalette().Text, 22))
+}
+
+// The directions of the scroll bar arrows
+const (
+	arrowUp = iota
+	arrowDown
+	arrowLeft
+	arrowRight
+)
+
+// drawScrollBarButton draws an arrow button of a scroll bar: the arrow in
+// the text color, faint when the content can't scroll that way; a shade
+// under it when the mouse is over it or it is held.
+func drawScrollBarButton(cnv *Canvas, x, y, width, height, dir int, hovered, pressed, enabled bool) {
+	p := CurrentPalette()
+	if enabled && pressed {
+		cnv.FillRect(x, y, width, height, withAlpha(p.Text, 60))
+	} else if enabled && hovered {
+		cnv.FillRect(x, y, width, height, withAlpha(p.Text, 30))
+	}
+	alpha := uint8(170)
+	if !enabled {
+		alpha = 60
+	}
+	col := withAlpha(p.Text, alpha)
+
+	// A triangle twice as wide as high, centered in the button
+	s := min(width, height)
+	half := max(2, s*2/7)   // half of the base
+	depth := max(1, half/2) // half of the height
+	cx, cy := x+width/2, y+height/2
+	switch dir {
+	case arrowUp:
+		cnv.FillTriangle(cx-half, cy+depth, cx+half, cy+depth, cx, cy-depth, col)
+	case arrowDown:
+		cnv.FillTriangle(cx-half, cy-depth, cx+half, cy-depth, cx, cy+depth, col)
+	case arrowLeft:
+		cnv.FillTriangle(cx+depth, cy-half, cx+depth, cy+half, cx-depth, cy, col)
+	case arrowRight:
+		cnv.FillTriangle(cx-depth, cy-half, cx-depth, cy+half, cx+depth, cy, col)
+	}
+}
+
 // drawScrollBarThumb draws a scroll bar thumb in the rectangle: a rounded
 // bar of the text color, translucent so it suits any background, inset so
 // it doesn't touch the edges.

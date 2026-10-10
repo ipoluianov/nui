@@ -1023,6 +1023,16 @@ func (c *nativeWindow) Resize(width, height int) {
 	xResizeWindow(c.platform.display, c.platform.window, uint32(width), uint32(height))
 }
 
+// SetMinSize keeps the user from making the window smaller than
+// width x height
+func (c *nativeWindow) SetMinSize(width, height int) {
+	if c.platform.closed {
+		return
+	}
+	width, height = clampWindowSize(width, height)
+	setWindowMinSizeX(c.platform.display, c.platform.window, width, height)
+}
+
 func (c *nativeWindow) PosX() int {
 	return c.windowPosX
 }

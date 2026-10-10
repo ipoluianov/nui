@@ -211,6 +211,7 @@ func NewComboBoxPopup() *comboBoxPopup {
 	c.InitWidget()
 	c.SetTypeName("ComboBoxPopup")
 	c.SetAbsolutePositioning(true)
+	c.scrollBarInset = 1 // inside the border
 	c.SetRole("popup")
 	c.SetAutoFillBackground(true)
 	c.SetOnPostPaint(c.drawBorder)
@@ -257,21 +258,19 @@ func (c *comboBoxPopup) rebuildVisualElements() {
 	contentHeight := len(c.items) * itemHeight
 	height := min(contentHeight, comboBoxPopupMaxVisibleItems*itemHeight)
 
-	itemWidth := width
-	if contentHeight > height {
-		// Keep the items from under the scroll bar
-		itemWidth -= c.scrollBarYSize
-	}
+	c.SetAllowScroll(false, true)
+	c.SetSize(width, height)
+	c.SetInnerSize(width, contentHeight)
 
+	// The items take the view: the scroll bar has its own room
+	itemWidth := c.ViewportWidth()
 	yOffset := 0
 	for _, item := range c.items {
 		item.SetPosition(0, yOffset)
 		item.SetSize(itemWidth, itemHeight)
 		yOffset += itemHeight
 	}
-	c.SetSize(width, height)
-	c.SetAllowScroll(false, true)
-	c.SetInnerSize(width, contentHeight)
+	c.SetInnerSize(itemWidth, contentHeight)
 	c.scrollToSelected()
 }
 
@@ -302,13 +301,18 @@ func (c *comboBoxPopup) scrollToItem(index int) {
 // own width), grows to fit the widest item text when that text wouldn't
 // otherwise fit, and never exceeds comboBoxPopupMaxWidth.
 func (c *comboBoxPopup) contentWidth() int {
+	// A long list scrolls: the scroll bar takes room next to the text
+	barRoom := 0
+	if len(c.items) > comboBoxPopupMaxVisibleItems {
+		barRoom = c.scrollBarYRoom(true)
+	}
 	width := c.triggerWidth
 	for _, item := range c.items {
 		textWidth, _, err := MeasureText(item.FontFamily(), item.FontSize(), item.text)
 		if err != nil {
 			continue
 		}
-		itemWidth := comboBoxItemPadding*2 + textWidth
+		itemWidth := comboBoxItemPadding*2 + textWidth + barRoom
 		if itemWidth > width {
 			width = itemWidth
 		}

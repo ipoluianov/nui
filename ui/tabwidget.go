@@ -6,7 +6,7 @@ type TabWidget struct {
 	Widget
 	pages        []tabWidgetPage
 	panelTop     *tabWidgetHeader
-	panelContent *Panel
+	panelContent *tabWidgetContent
 	currentPage  int
 
 	headerHeight       int
@@ -40,12 +40,58 @@ func NewTabWidget() *TabWidget {
 	c.panelTop.onTabChanged = c.onTabChanged
 	c.AddWidget(0, 0, c.panelTop)
 
-	c.panelContent = NewPanel()
+	c.panelContent = newTabWidgetContent(&c)
 	c.AddWidget(1, 0, c.panelContent)
 
 	c.SetOnPostPaint(c.drawPost)
 
 	return &c
+}
+
+// tabWidgetContent shows the current page. Its minimum size is of the
+// largest page, not only of the current one, as in Qt: the window doesn't
+// change its size when another tab is chosen.
+type tabWidgetContent struct {
+	Panel
+	tabs *TabWidget
+}
+
+func newTabWidgetContent(tabs *TabWidget) *tabWidgetContent {
+	var c tabWidgetContent
+	c.InitWidget()
+	c.SetTypeName("Panel")
+	c.tabs = tabs
+	return &c
+}
+
+func (c *tabWidgetContent) MinWidth() int {
+	result := c.Panel.MinWidth()
+	padding := c.GetPropInt("padding", 2)
+	for _, page := range c.tabs.pages {
+		if page.widget.IsVisible() {
+			result = max(result, page.widget.MinWidth()+padding*2)
+		}
+	}
+	return result
+}
+
+func (c *tabWidgetContent) MinHeight() int {
+	result := c.Panel.MinHeight()
+	padding := c.GetPropInt("padding", 2)
+	for _, page := range c.tabs.pages {
+		if page.widget.IsVisible() {
+			result = max(result, page.widget.MinHeight()+padding*2)
+		}
+	}
+	return result
+}
+
+// ClearLayoutCache clears the pages not shown now too: their sizes count
+func (c *tabWidgetContent) ClearLayoutCache() {
+	c.Panel.ClearLayoutCache()
+	for _, page := range c.tabs.pages {
+		page.widget.ClearLayoutCache()
+	}
 }
 
 func (c *TabWidget) onTabChanged(index int) {

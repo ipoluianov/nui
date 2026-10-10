@@ -175,6 +175,7 @@ func NewTable() *Table {
 	c.SetXExpandable(true)
 	c.SetYExpandable(true)
 	c.SetAllowScroll(true, true)
+	c.scrollBarInset = 1 // inside the border
 
 	c.SetAutoFillBackground(true)
 	c.SetRole("base")
@@ -1393,7 +1394,7 @@ func (c *Table) ProcessKeyDown(key Key, mods KeyModifiers) bool {
 	}
 
 	if key == KeyPageUp {
-		pageSizeInRows := c.Height() / c.rowHeight1
+		pageSizeInRows := c.pageSizeInRows()
 		targetRow := c.currentCellY - pageSizeInRows
 		if targetRow < 0 {
 			targetRow = 0
@@ -1406,7 +1407,7 @@ func (c *Table) ProcessKeyDown(key Key, mods KeyModifiers) bool {
 	}
 
 	if key == KeyPageDown {
-		pageSizeInRows := c.Height() / c.rowHeight1
+		pageSizeInRows := c.pageSizeInRows()
 		targetRow := c.currentCellY + pageSizeInRows
 		if targetRow >= c.rowCount {
 			targetRow = c.rowCount - 1
@@ -1561,7 +1562,7 @@ func (c *Table) draw(cnv *Canvas) {
 		cnv.SetColor(c.ForegroundColor())
 		cnv.SetHAlign(HAlignCenter)
 		cnv.SetVAlign(VAlignCenter)
-		cnv.DrawText(0, 0, c.Width(), c.Height(), c.modeLoadingText)
+		cnv.DrawText(c.scrollX, c.scrollY, c.ViewportWidth(), c.ViewportHeight(), c.modeLoadingText)
 		return
 	}
 
@@ -1729,7 +1730,7 @@ func (c *Table) draw(cnv *Canvas) {
 	// Draw cell borders
 	if c.cellBorderWidth > 0 {
 		cnv.Save()
-		cnv.SetDirectTranslateAndClip(cnv.TranslatedX()+c.scrollX, cnv.TranslatedY()+c.scrollY+c.headerHeight(), c.Width(), c.Height()-c.headerHeight())
+		cnv.TranslateAndClip(c.scrollX, c.scrollY+c.headerHeight(), c.ViewportWidth(), c.ViewportHeight()-c.headerHeight())
 		for rowIndex := visibleRow1; rowIndex < visibleRow2+1; rowIndex++ {
 			x1 := 0
 			y1 := rowIndex*c.rowHeight1 - c.scrollY
@@ -1753,7 +1754,9 @@ func (c *Table) draw(cnv *Canvas) {
 }
 
 func (c *Table) drawPost(cnv *Canvas) {
-	// Draw header
+	// Draw header, in the view: not over the scroll bars
+	cnv.Save()
+	c.clipToViewport(cnv)
 	for headerRowIndex := 0; headerRowIndex < c.headerRowsCount; headerRowIndex++ {
 		for colIndex := 0; colIndex < c.columnCount; colIndex++ {
 			needToDisplay := true
@@ -1826,6 +1829,7 @@ func (c *Table) drawPost(cnv *Canvas) {
 			cnv.DrawRect(x, y, cellWidth+1, cellHeight+1)
 		}
 	}
+	cnv.Restore()
 
 	/*
 		for colIndex := 0; colIndex < c.columnCount; colIndex++ {
@@ -1850,9 +1854,15 @@ func (c *Table) drawPost(cnv *Canvas) {
 	cnv.DrawRect(c.scrollX, c.scrollY, c.Width(), c.Height())
 }
 
+// pageSizeInRows is how many rows PageUp and PageDown move by: the rows the
+// view shows under the header
+func (c *Table) pageSizeInRows() int {
+	return max(1, (c.ViewportHeight()-c.headerHeight())/c.rowHeight1)
+}
+
 func (c *Table) visibleRows() (min int, max int) {
 	min = c.scrollY / c.rowHeight1
-	max = min + (c.Height()-c.headerHeight())/c.rowHeight1
+	max = min + (c.ViewportHeight()-c.headerHeight())/c.rowHeight1
 	min = min - 1
 	max = max + 1
 	if min < 0 {
@@ -1882,11 +1892,7 @@ func (c *Table) columnWidth(col int) int {
 
 // visibleWidth is the width the cells can take: without the vertical scroll bar
 func (c *Table) visibleWidth() int {
-	w := c.Width()
-	if c.allowScrollY && c.innerHeight > c.h {
-		w -= c.scrollBarYSize
-	}
-	return w
+	return c.ViewportWidth()
 }
 
 // contentWidth is the width of all the columns, the stretched one included

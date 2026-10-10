@@ -33,6 +33,11 @@ type nativeWindowPlatform struct {
 	// icon is the HICON of SetAppIcon, destroyed when replaced
 	icon uintptr
 
+	// minWidth and minHeight are the smallest client area of SetMinSize,
+	// logical; 0 if not set
+	minWidth  int
+	minHeight int
+
 	// Every window is created on the UI thread (the main OS thread), so one
 	// message loop there serves them all (see runLoopUntil) and every
 	// callback runs on that thread. closed is set by WM_DESTROY; done is
@@ -354,6 +359,28 @@ func (c *nativeWindow) Resize(width, height int) {
 		uintptr(c.toPhysical(height)),
 		uintptr(flags),
 	)
+}
+
+// SetMinSize keeps the user from making the client area smaller than
+// width x height: see WM_GETMINMAXINFO in wndProc
+func (c *nativeWindow) SetMinSize(width, height int) {
+	c.platform.minWidth = max(width, 0)
+	c.platform.minHeight = max(height, 0)
+}
+
+// minTrackSize is the smallest size of the window, frame included, in
+// physical pixels: the client area of SetMinSize with the frame the window
+// has now
+func (c *nativeWindow) minTrackSize() (width, height int32, ok bool) {
+	if c.platform.minWidth <= 0 && c.platform.minHeight <= 0 {
+		return 0, 0, false
+	}
+	var wr, cr rect
+	procGetWindowRect.Call(uintptr(c.hwnd), uintptr(unsafe.Pointer(&wr)))
+	procGetClientRect.Call(uintptr(c.hwnd), uintptr(unsafe.Pointer(&cr)))
+	frameW := (wr.right - wr.left) - (cr.right - cr.left)
+	frameH := (wr.bottom - wr.top) - (cr.bottom - cr.top)
+	return int32(c.toPhysical(c.platform.minWidth)) + frameW, int32(c.toPhysical(c.platform.minHeight)) + frameH, true
 }
 
 func (c *nativeWindow) MinimizeWindow() {

@@ -135,6 +135,7 @@ var (
 	selScreen                                   = objc.RegisterName("screen")
 	selContentLayoutRect                        = objc.RegisterName("contentLayoutRect")
 	selSetContentSize                           = objc.RegisterName("setContentSize:")
+	selSetContentMinSize                        = objc.RegisterName("setContentMinSize:")
 	selMiniaturize                              = objc.RegisterName("miniaturize:")
 	selZoom                                     = objc.RegisterName("zoom:")
 	selIsZoomed                                 = objc.RegisterName("isZoomed")
@@ -1197,6 +1198,16 @@ func setWindowSize(id windowId, width, height int) {
 		return
 	}
 	win.Send(selSetContentSize, nsSize{float64(width), float64(height)})
+}
+
+// setWindowMinSize keeps the user from making the content of the window
+// smaller than width x height
+func setWindowMinSize(id windowId, width, height int) {
+	win, ok := cocoaWindows[int(id)]
+	if !ok {
+		return
+	}
+	win.Send(selSetContentMinSize, nsSize{float64(max(width, 1)), float64(max(height, 1))})
 }
 
 func minimizeWindow(id windowId) {

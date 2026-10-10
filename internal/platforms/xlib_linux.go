@@ -341,6 +341,7 @@ var (
 	xSetWMProtocols       func(display, window uintptr, protocols unsafe.Pointer, count int32) int32
 	xMoveWindow           func(display, window uintptr, x, y int32) int32
 	xResizeWindow         func(display, window uintptr, width, height uint32) int32
+	xSetWMNormalHints     func(display, window uintptr, hints unsafe.Pointer)
 	xDisplayWidth         func(display uintptr, screen int32) int32
 	xDisplayHeight        func(display uintptr, screen int32) int32
 	xGetWindowProperty    func(display, window, property uintptr, longOffset, longLength int64, delete int32, reqType uintptr, actualTypeReturn, actualFormatReturn, nitemsReturn, bytesAfterReturn, propReturn unsafe.Pointer) int32
@@ -468,6 +469,7 @@ func init() {
 	purego.RegisterLibFunc(&xSetWMProtocols, libX11, "XSetWMProtocols")
 	purego.RegisterLibFunc(&xMoveWindow, libX11, "XMoveWindow")
 	purego.RegisterLibFunc(&xResizeWindow, libX11, "XResizeWindow")
+	purego.RegisterLibFunc(&xSetWMNormalHints, libX11, "XSetWMNormalHints")
 	purego.RegisterLibFunc(&xDisplayWidth, libX11, "XDisplayWidth")
 	purego.RegisterLibFunc(&xDisplayHeight, libX11, "XDisplayHeight")
 	purego.RegisterLibFunc(&xGetWindowProperty, libX11, "XGetWindowProperty")
@@ -663,6 +665,43 @@ func setWindowDecorationsX(display, window uintptr, allowMinimize, allowMaximize
 	}
 
 	xChangeProperty(display, window, motifHints, motifHints, 32, xPropModeReplace, unsafe.Pointer(&hints), 5)
+	xFlush(display)
+}
+
+// xSizeHints mirrors XSizeHints (Xutil.h): a C long, then ints
+type xSizeHints struct {
+	Flags      int64
+	X, Y       int32
+	Width      int32
+	Height     int32
+	MinWidth   int32
+	MinHeight  int32
+	MaxWidth   int32
+	MaxHeight  int32
+	WidthInc   int32
+	HeightInc  int32
+	MinAspectX int32
+	MinAspectY int32
+	MaxAspectX int32
+	MaxAspectY int32
+	BaseWidth  int32
+	BaseHeight int32
+	WinGravity int32
+}
+
+// xPMinSize is the flag of XSizeHints.MinWidth/MinHeight
+const xPMinSize = 1 << 4
+
+// setWindowMinSizeX asks the window manager to keep the window at least
+// width x height (WM_NORMAL_HINTS). The window doesn't set other normal
+// hints, so they are replaced whole.
+func setWindowMinSizeX(display, window uintptr, width, height int) {
+	hints := xSizeHints{
+		Flags:     xPMinSize,
+		MinWidth:  int32(width),
+		MinHeight: int32(height),
+	}
+	xSetWMNormalHints(display, window, unsafe.Pointer(&hints))
 	xFlush(display)
 }
 

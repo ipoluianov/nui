@@ -1080,6 +1080,11 @@ func (c *Canvas) fillPolygon(pts [][2]float64, colr color.Color) {
 	z.ClosePath()
 	mask := image.NewAlpha(image.Rect(0, 0, b.Dx(), b.Dy()))
 	z.Draw(mask, mask.Rect, image.Opaque, image.Point{})
+	// The canvas takes color.RGBA as straight alpha, as FillRect does;
+	// image/draw would read it as premultiplied
+	if rgba, ok := colr.(color.RGBA); ok {
+		colr = color.NRGBA{R: rgba.R, G: rgba.G, B: rgba.B, A: rgba.A}
+	}
 	draw.DrawMask(c.rgba, b, image.NewUniform(colr), image.Point{}, mask, image.Point{}, draw.Over)
 }
 

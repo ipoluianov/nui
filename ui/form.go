@@ -28,6 +28,18 @@ type Form struct {
 	width  int
 	height int
 
+	// minWidth and minHeight are the smallest client area the widgets fit
+	// in, see applyMinSize; appliedMinWidth and appliedMinHeight are the
+	// ones the window has
+	minWidth         int
+	minHeight        int
+	appliedMinWidth  int
+	appliedMinHeight int
+	// neededWidth and neededHeight are MinSize when applyMinSize ran last,
+	// before the cut to the screen
+	neededWidth  int
+	neededHeight int
+
 	lastMouseX      int
 	lastMouseY      int
 	lastMouseCursor MouseCursor
@@ -219,6 +231,7 @@ func (c *Form) UpdateLayout() {
 		c.Panel().ClearLayoutCache()
 		// Lays out the panel too, below the menu bar
 		c.layoutMenuBar()
+		c.applyMinSize()
 		for _, popupWidget := range c.Panel().PopupWidgets {
 			if popupWidget != nil {
 				popupWidget.updateLayout(0, 0, 0, 0)
@@ -400,7 +413,11 @@ func toRGBA(img image.Image) *image.RGBA {
 	return rgba
 }
 
+// SetSize sets the size of the client area; it doesn't get smaller than the
+// widgets need, see MinSize
 func (c *Form) SetSize(width, height int) {
+	width = max(width, c.minWidth)
+	height = max(height, c.minHeight)
 	c.width = width
 	c.height = height
 	if c.wnd != nil {
@@ -505,6 +522,58 @@ func (c *Form) MenuBar() *MenuBar {
 
 // layoutMenuBar places the menu bar at the top of the client area and the
 // top widget in the rest of it.
+// MinSize returns the smallest size of the client area the widgets fit in:
+// each of them gets at least its minimum size
+func (c *Form) MinSize() (int, int) {
+	width := c.topWidget.MinWidth()
+	height := c.topWidget.MinHeight()
+	if c.menuBar != nil {
+		height += c.menuBar.barHeight()
+	}
+	return width, height
+}
+
+// applyMinSize keeps the window from getting smaller than the widgets need,
+// as in Qt: the window gets the minimum size, so the user can't make it
+// smaller, and a window smaller than that grows to it. A minimum larger than
+// the screen is cut to the screen: the window shouldn't go off it.
+func (c *Form) applyMinSize() {
+	width, height := c.MinSize()
+	if c.wnd == nil || c.closed {
+		c.minWidth, c.minHeight = width, height
+		c.neededWidth, c.neededHeight = 0, 0
+		return
+	}
+	// The screen is asked only when the need changes: the layout is updated
+	// on every widget added
+	if width != c.neededWidth || height != c.neededHeight || c.appliedMinWidth == 0 {
+		c.neededWidth, c.neededHeight = width, height
+		_, _, areaWidth, areaHeight := c.wnd.ScreenWorkArea(c.wnd.PosX(), c.wnd.PosY())
+		if areaWidth > 0 && areaHeight > 0 {
+			width = min(width, areaWidth)
+			height = min(height, areaHeight)
+		}
+		c.minWidth, c.minHeight = width, height
+	}
+	width, height = c.minWidth, c.minHeight
+	if width != c.appliedMinWidth || height != c.appliedMinHeight {
+		c.appliedMinWidth, c.appliedMinHeight = width, height
+		c.wnd.SetMinSize(width, height)
+	}
+	if c.width < width || c.height < height {
+		c.SetSize(c.width, c.height)
+	}
+}
+
+// growToMinSize makes the size the window opens with at least as large as
+// the widgets need
+func (c *Form) growToMinSize() {
+	c.Panel().ClearLayoutCache()
+	c.applyMinSize()
+	c.width = max(c.width, c.minWidth)
+	c.height = max(c.height, c.minHeight)
+}
+
 func (c *Form) layoutMenuBar() {
 	barHeight := 0
 	if c.menuBar != nil {
@@ -523,6 +592,10 @@ func (c *Form) createWindow(maximized bool) {
 	// resolves posX/posY via centerOnForm before this runs) - center on the
 	// screen instead of leaving it to the OS/window manager's default spot.
 	centerOnScreen := c.posX < 0 && c.posY < 0
+	// A window closed before is gone: the new one gets the minimum size
+	c.wnd = nil
+	c.growToMinSize()
+	c.appliedMinWidth, c.appliedMinHeight = 0, 0
 	c.wnd = platforms.CreateWindow(c.title, c.posX, c.posY, c.width, c.height, centerOnScreen, maximized)
 	c.wnd.OnPaint(c.processPaint)
 	c.wnd.OnResize(c.processResize)
@@ -569,6 +642,7 @@ func (c *Form) createWindow(maximized bool) {
 	}
 	c.wnd.SetDarkMode(IsDarkTheme)
 	c.wnd.SetBackgroundColor(currentPalette.Window)
+	c.applyMinSize()
 	registerOpenForm(c)
 }
 
@@ -621,6 +695,8 @@ func (c *Form) ShowModal(parent *Form) {
 	}
 	platforms.RunOnUIThread(func() {
 		c.parentForm = parent
+		// Centered with the size it opens with
+		c.growToMinSize()
 		if c.posX < 0 && c.posY < 0 {
 			c.centerOnForm(parent)
 		}

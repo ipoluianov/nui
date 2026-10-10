@@ -80,6 +80,7 @@ func NewTextBox() *TextBox {
 	var c TextBox
 	c.InitWidget()
 	c.SetTypeName("TextBox")
+	c.scrollBarInset = 1 // the scroll bars of a multiline box are inside its frame
 
 	c.SetOnKeyDown(func(key Key, mods KeyModifiers) bool {
 		return c.KeyDown(key, mods)
@@ -306,12 +307,17 @@ func (c *TextBox) lineToPasswordChars(line string) string {
 	return line
 }
 
+// ProcessPaint draws the frame on the whole widget, under the text and the
+// scroll bars: the text is drawn in the view only and the frame doesn't
+// scroll with it
+func (c *TextBox) ProcessPaint(cnv *Canvas) {
+	fill, border := inputFrameColors(&c.Widget)
+	cnv.FillFrame(0, 0, c.Width(), c.Height(), themeControlRadius, fill, border)
+	c.Widget.ProcessPaint(cnv)
+}
+
 func (c *TextBox) Draw(ctx *Canvas, width, height int) {
 	p := CurrentPalette()
-
-	// The frame doesn't scroll with the text
-	fill, border := inputFrameColors(&c.Widget)
-	ctx.FillFrame(c.scrollX, c.scrollY, c.Width(), c.Height(), themeControlRadius, fill, border)
 
 	textColor := colorToRGBA(c.ForegroundColor())
 	if !c.Enabled() {

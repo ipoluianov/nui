@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Widget struct {
@@ -66,6 +67,16 @@ type Widget struct {
 	scrollingY                bool
 	scrollingYInitial         int
 	scrollingYInitialMousePos int
+
+	// scrollBarInset is the width of the frame the widget draws around
+	// itself; the scroll bars are placed inside it
+	scrollBarInset int
+
+	// The arrow button or the part of the track held pressed, see
+	// scrollBarMouseDown
+	scrollPressPart     int
+	scrollPressVertical bool
+	scrollPressNext     time.Time
 
 	previousFocusedWidget Widgeter
 
@@ -242,8 +253,8 @@ func (c *Widget) InitWidget() {
 	//c.cellPadding = 6
 	c.SetProp("padding", 2)
 	c.SetProp("spacing", 6)
-	c.scrollBarXSize = 10
-	c.scrollBarYSize = 10
+	c.scrollBarXSize = scrollBarSize
+	c.scrollBarYSize = scrollBarSize
 	c.innerWidth = 0
 	/*c.anchorLeft = true
 	c.anchorTop = true
@@ -407,6 +418,11 @@ func (c *Widget) MinWidth() int {
 			result += columnInfo.minWidth
 		}
 		result = result + panelPadding + allCellPadding + panelPadding
+		// The content scrolls only vertically: the vertical bar may take
+		// room from it
+		if c.allowScrollY && !c.hideScrollbarY {
+			result += c.scrollBarYSize + c.scrollBarInset
+		}
 	}
 
 	c.layoutCacheMinWidthValid = true
@@ -438,6 +454,11 @@ func (c *Widget) MinHeight() int {
 			result += rowInfo.minHeight
 		}
 		result += panelPadding + allCellPadding + panelPadding + c.insetTop
+		// The content scrolls only horizontally: the horizontal bar may
+		// take room from it
+		if c.allowScrollX && !c.hideScrollbarX {
+			result += c.scrollBarXSize + c.scrollBarInset
+		}
 	}
 
 	c.layoutCacheMinHeightValid = true
@@ -679,6 +700,396 @@ func (c *Widget) InnerHeight() int {
 func (c *Widget) SetInnerSize(width, height int) {
 	c.innerWidth = width
 	c.innerHeight = height
+}
+
+///////////////////////////////////////////////////////////
+// Scroll bars
+///////////////////////////////////////////////////////////
+
+// scrollBarSize is the thickness of the scroll bars, also the size of their
+// square arrow buttons
+const scrollBarSize = 14
+
+// scrollBarMinThumb is the shortest a scroll bar thumb gets, so it can
+// still be grabbed when the content is very long
+const scrollBarMinThumb = 16
+
+// scrollBarsVisible tells which scroll bars are shown. A bar has its own
+// room at the edge of the widget and takes it from the view, so one bar
+// can make the other one needed: the content fits the width only until
+// the vertical bar appears. A bar never goes away when the other one
+// appears, so the loop settles in two passes.
+func (c *Widget) scrollBarsVisible() (barX, barY bool) {
+	canX := c.allowScrollX && !c.hideScrollbarX
+	canY := c.allowScrollY && !c.hideScrollbarY
+	if !canX && !canY {
+		return false, false
+	}
+	for i := 0; i < 3; i++ {
+		newY := canY && c.innerHeight > c.h-c.scrollBarXRoom(barX)
+		newX := canX && c.innerWidth > c.w-c.scrollBarYRoom(newY)
+		if newX == barX && newY == barY {
+			break
+		}
+		barX, barY = newX, newY
+	}
+	return
+}
+
+// scrollBarXRoom is the height the horizontal bar takes from the view
+func (c *Widget) scrollBarXRoom(visible bool) int {
+	if !visible {
+		return 0
+	}
+	return c.scrollBarXSize + c.scrollBarInset
+}
+
+// scrollBarYRoom is the width the vertical bar takes from the view
+func (c *Widget) scrollBarYRoom(visible bool) int {
+	if !visible {
+		return 0
+	}
+	return c.scrollBarYSize + c.scrollBarInset
+}
+
+// viewportSize is the size of the visible content area: the widget without
+// its scroll bars
+func (c *Widget) viewportSize() (int, int) {
+	barX, barY := c.scrollBarsVisible()
+	return max(0, c.w-c.scrollBarYRoom(barY)), max(0, c.h-c.scrollBarXRoom(barX))
+}
+
+// ViewportWidth is the width of the visible content area: the widget's
+// width without the vertical scroll bar
+func (c *Widget) ViewportWidth() int {
+	w, _ := c.viewportSize()
+	return w
+}
+
+// ViewportHeight is the height of the visible content area: the widget's
+// height without the horizontal scroll bar
+func (c *Widget) ViewportHeight() int {
+	_, h := c.viewportSize()
+	return h
+}
+
+// The parts of a scroll bar, along it: the arrow buttons at the ends, the
+// track between them and the thumb on the track
+const (
+	scrollPartNone = iota
+	scrollPartLineBack
+	scrollPartLineForward
+	scrollPartPageBack
+	scrollPartPageForward
+	scrollPartThumb
+)
+
+// scrollBarLineStep is how far an arrow button scrolls
+const scrollBarLineStep = 20
+
+// A press on an arrow button or the track repeats while held: first after
+// the delay, then at the interval
+const (
+	scrollBarRepeatDelay    = 350 * time.Millisecond
+	scrollBarRepeatInterval = 50 * time.Millisecond
+)
+
+// scrollBar is the geometry of one scroll bar. Along its axis: the bar from
+// barPos and barLen long, the arrow buttons of btnLen at its ends, the
+// track between them from trackPos and trackLen long, the thumb on the
+// track. Across: the strip from crossPos and crossLen thick. All in the
+// widget's coordinates.
+type scrollBar struct {
+	visible  bool
+	vertical bool
+	barPos   int
+	barLen   int
+	btnLen   int
+	trackPos int
+	trackLen int
+	crossPos int
+	crossLen int
+	thumbPos int
+	thumbLen int
+	view     int // visible length of the content
+	content  int // full length of the content
+	scroll   int
+}
+
+// scrollRange is how far the content scrolls
+func (b scrollBar) scrollRange() int {
+	return max(0, b.content-b.view)
+}
+
+// scrollPerPixel is how much the content scrolls when the thumb moves by
+// one pixel
+func (b scrollBar) scrollPerPixel() float64 {
+	free := b.trackLen - b.thumbLen
+	if free <= 0 {
+		return 0
+	}
+	return float64(b.scrollRange()) / float64(free)
+}
+
+// contains tells if the point in the widget's coordinates is on the bar
+func (b scrollBar) contains(x, y int) bool {
+	along, cross := b.axes(x, y)
+	return b.visible && cross >= b.crossPos && cross < b.crossPos+b.crossLen && along >= b.barPos && along < b.barPos+b.barLen
+}
+
+// axes splits the point into the coordinate along the bar and across it
+func (b scrollBar) axes(x, y int) (along, cross int) {
+	if b.vertical {
+		return y, x
+	}
+	return x, y
+}
+
+// partAt is the part of the bar at the point in the widget's coordinates
+func (b scrollBar) partAt(x, y int) int {
+	if !b.contains(x, y) {
+		return scrollPartNone
+	}
+	along, _ := b.axes(x, y)
+	switch {
+	case along < b.trackPos:
+		return scrollPartLineBack
+	case along >= b.trackPos+b.trackLen:
+		return scrollPartLineForward
+	case b.thumbLen == 0:
+		return scrollPartNone
+	case along < b.thumbPos:
+		return scrollPartPageBack
+	case along >= b.thumbPos+b.thumbLen:
+		return scrollPartPageForward
+	}
+	return scrollPartThumb
+}
+
+func (c *Widget) makeScrollBar(visible, vertical bool, barPos, barLen, crossPos, crossLen, view, content, scroll int) scrollBar {
+	barLen = max(0, barLen)
+	// The buttons are square, unless the bar is too short for them
+	btnLen := min(crossLen, barLen/2)
+	b := scrollBar{
+		visible:  visible,
+		vertical: vertical,
+		barPos:   barPos,
+		barLen:   barLen,
+		btnLen:   btnLen,
+		trackPos: barPos + btnLen,
+		trackLen: barLen - btnLen*2,
+		crossPos: crossPos,
+		crossLen: crossLen,
+		view:     view,
+		content:  content,
+		scroll:   scroll,
+	}
+	if !visible || b.trackLen == 0 || content <= 0 {
+		return b
+	}
+	b.thumbLen = min(b.trackLen, max(scrollBarMinThumb, b.trackLen*view/content))
+	if r := b.scrollRange(); r > 0 {
+		b.thumbPos = b.trackPos + (b.trackLen-b.thumbLen)*min(max(scroll, 0), r)/r
+	} else {
+		b.thumbPos = b.trackPos
+	}
+	return b
+}
+
+// scrollBarX and scrollBarY are the geometry of the horizontal and the
+// vertical scroll bars. Both bars stop short of the corner between them.
+func (c *Widget) scrollBarX() scrollBar {
+	barX, barY := c.scrollBarsVisible()
+	vw, _ := c.viewportSize()
+	inset := c.scrollBarInset
+	right := c.w - inset
+	if barY {
+		right -= c.scrollBarYSize
+	}
+	return c.makeScrollBar(barX, false, inset, right-inset, c.h-inset-c.scrollBarXSize, c.scrollBarXSize, vw, c.innerWidth, c.scrollX)
+}
+
+func (c *Widget) scrollBarY() scrollBar {
+	barX, barY := c.scrollBarsVisible()
+	_, vh := c.viewportSize()
+	inset := c.scrollBarInset
+	bottom := c.h - inset
+	if barX {
+		bottom -= c.scrollBarXSize
+	}
+	return c.makeScrollBar(barY, true, inset, bottom-inset, c.w-inset-c.scrollBarYSize, c.scrollBarYSize, vh, c.innerHeight, c.scrollY)
+}
+
+func (c *Widget) scrollBarOf(vertical bool) scrollBar {
+	if vertical {
+		return c.scrollBarY()
+	}
+	return c.scrollBarX()
+}
+
+// inScrollBars tells if the point in the widget's coordinates is outside
+// the view: on a scroll bar, the corner between them or the frame next to
+// them
+func (c *Widget) inScrollBars(x, y int) bool {
+	vw, vh := c.viewportSize()
+	return (vw < c.w && x >= vw) || (vh < c.h && y >= vh)
+}
+
+// clipToViewport limits the drawing to the view, keeping the content
+// coordinates. Post-paint covers the whole widget and uses it for what
+// must not go over the scroll bars, e.g. the header of a table.
+func (c *Widget) clipToViewport(cnv *Canvas) {
+	vw, vh := c.viewportSize()
+	cnv.TranslateAndClip(c.scrollX, c.scrollY, vw, vh)
+	cnv.translateBy(-c.scrollX, -c.scrollY)
+}
+
+// drawScrollBars draws the visible scroll bars: the tracks in their own
+// room, the arrow buttons at their ends, the thumbs and the corner between
+// the bars
+func (c *Widget) drawScrollBars(cnv *Canvas) {
+	bx, by := c.scrollBarX(), c.scrollBarY()
+	for _, b := range []scrollBar{bx, by} {
+		if b.visible {
+			c.drawScrollBar(cnv, b)
+		}
+	}
+	if bx.visible && by.visible {
+		drawScrollBarTrack(cnv, by.crossPos, bx.crossPos, by.crossLen, bx.crossLen)
+	}
+}
+
+func (c *Widget) drawScrollBar(cnv *Canvas, b scrollBar) {
+	// rect makes a rectangle from the coordinates along and across the bar
+	rect := func(along, alongLen int) (int, int, int, int) {
+		if b.vertical {
+			return b.crossPos, along, b.crossLen, alongLen
+		}
+		return along, b.crossPos, alongLen, b.crossLen
+	}
+	hoverPart := scrollPartNone
+	if c.IsHovered() {
+		hoverPart = b.partAt(c.lastMouseAbsPosX, c.lastMouseAbsPosY)
+	}
+	pressedPart := scrollPartNone
+	if c.scrollPressPart != scrollPartNone && c.scrollPressVertical == b.vertical {
+		pressedPart = c.scrollPressPart
+	}
+
+	x, y, w, h := rect(b.barPos, b.barLen)
+	drawScrollBarTrack(cnv, x, y, w, h)
+
+	// A pressed page part of the track is shaded, as in the classic bars
+	if pressedPart == scrollPartPageBack {
+		x, y, w, h = rect(b.trackPos, b.thumbPos-b.trackPos)
+		drawScrollBarTrack(cnv, x, y, w, h)
+	}
+	if pressedPart == scrollPartPageForward {
+		x, y, w, h = rect(b.thumbPos+b.thumbLen, b.trackPos+b.trackLen-b.thumbPos-b.thumbLen)
+		drawScrollBarTrack(cnv, x, y, w, h)
+	}
+
+	if b.btnLen > 0 {
+		backDir, forwardDir := arrowLeft, arrowRight
+		if b.vertical {
+			backDir, forwardDir = arrowUp, arrowDown
+		}
+		x, y, w, h = rect(b.barPos, b.btnLen)
+		drawScrollBarButton(cnv, x, y, w, h, backDir, hoverPart == scrollPartLineBack, pressedPart == scrollPartLineBack, b.scroll > 0)
+		x, y, w, h = rect(b.trackPos+b.trackLen, b.btnLen)
+		drawScrollBarButton(cnv, x, y, w, h, forwardDir, hoverPart == scrollPartLineForward, pressedPart == scrollPartLineForward, b.scroll < b.scrollRange())
+	}
+
+	if b.thumbLen > 0 {
+		dragging := (b.vertical && c.scrollingY) || (!b.vertical && c.scrollingX)
+		x, y, w, h = rect(b.thumbPos, b.thumbLen)
+		drawScrollBarThumb(cnv, x, y, w, h, hoverPart == scrollPartThumb || dragging)
+	}
+}
+
+// scrollBarMouseDown handles a press on the scroll bars: on a thumb it
+// starts dragging it, on an arrow button it scrolls by a line, on the
+// track by a page towards the press; the buttons and the track repeat
+// while held. It returns false when the press is in the view.
+func (c *Widget) scrollBarMouseDown(button MouseButton, x, y int) bool {
+	if !c.inScrollBars(x, y) {
+		return false
+	}
+	if button != MouseButtonLeft {
+		return true
+	}
+	c.lastMouseAbsPosX = x
+	c.lastMouseAbsPosY = y
+	for _, b := range []scrollBar{c.scrollBarX(), c.scrollBarY()} {
+		part := b.partAt(x, y)
+		switch part {
+		case scrollPartNone:
+			continue
+		case scrollPartThumb:
+			if b.vertical {
+				c.scrollingY = true
+				c.scrollingYInitial = c.scrollY
+				c.scrollingYInitialMousePos = y
+			} else {
+				c.scrollingX = true
+				c.scrollingXInitial = c.scrollX
+				c.scrollingXInitialMousePos = x
+			}
+		default:
+			c.scrollPressPart = part
+			c.scrollPressVertical = b.vertical
+			c.scrollPressNext = time.Now().Add(scrollBarRepeatDelay)
+			c.scrollBarStep(b.vertical, part)
+		}
+		return true
+	}
+	return true
+}
+
+// scrollBarStep scrolls as the part of the bar does: by a line for an arrow
+// button, by a page for the track. A repeated step is made only while the
+// mouse is still on the part: the paging stops when the thumb reaches it.
+func (c *Widget) scrollBarStep(vertical bool, part int) {
+	b := c.scrollBarOf(vertical)
+	if b.partAt(c.lastMouseAbsPosX, c.lastMouseAbsPosY) != part {
+		return
+	}
+	delta := 0
+	switch part {
+	case scrollPartLineBack:
+		delta = -scrollBarLineStep
+	case scrollPartLineForward:
+		delta = scrollBarLineStep
+	case scrollPartPageBack:
+		delta = -b.view
+	case scrollPartPageForward:
+		delta = b.view
+	}
+	if vertical {
+		c.setScrollY(c.scrollY + delta)
+	} else {
+		c.setScrollX(c.scrollX + delta)
+	}
+	c.checkScrolls()
+	if c.form != nil {
+		c.form.Update()
+	}
+}
+
+// scrollBarRepeat repeats the step of the held arrow button or track
+func (c *Widget) scrollBarRepeat() {
+	if c.scrollPressPart == scrollPartNone {
+		return
+	}
+	// The release went elsewhere, e.g. out of the window
+	if c.form == nil || !c.form.mouseLeftButtonPressed {
+		c.scrollPressPart = scrollPartNone
+		return
+	}
+	if now := time.Now(); !now.Before(c.scrollPressNext) {
+		c.scrollPressNext = now.Add(scrollBarRepeatInterval)
+		c.scrollBarStep(c.scrollPressVertical, c.scrollPressPart)
+	}
 }
 
 ///////////////////////////////////////////////////////////
@@ -1069,20 +1480,23 @@ func (c *Widget) SetScrollY(scrollY int) {
 	c.form.Update()
 }
 
+// ScrollEnsureVisible scrolls the content so the point (x1, y1) of it is in
+// the view
 func (c *Widget) ScrollEnsureVisible(x1, y1 int) {
+	vw, vh := c.viewportSize()
 
 	if y1 < c.scrollY {
 		c.setScrollY(y1)
 	}
-	if y1 > c.scrollY+c.Height() {
-		c.setScrollY(y1 - c.Height())
+	if y1 > c.scrollY+vh {
+		c.setScrollY(y1 - vh)
 	}
 
 	if x1 < c.scrollX {
 		c.setScrollX(x1)
 	}
-	if x1 > c.scrollX+c.Width() {
-		c.setScrollX(x1 - c.Width())
+	if x1 > c.scrollX+vw {
+		c.setScrollX(x1 - vw)
 	}
 }
 
@@ -1102,12 +1516,9 @@ func (c *Widget) getWidgetAt(x, y int) Widgeter {
 }
 
 func (c *Widget) findWidgetAt(x, y int) Widgeter {
-	// if it is the bar area, return self
-	if c.allowScrollX && c.innerWidth > c.w && y >= c.h-c.scrollBarXSize {
-		return c
-	}
-	if c.allowScrollY && c.innerHeight > c.h && x >= c.w-c.scrollBarYSize {
-		return c
+	// The scroll bars belong to the widget itself
+	if c.inScrollBars(x, y) {
+		return c.form.WidgetById(c.Id())
 	}
 
 	x += c.scrollX
@@ -1133,9 +1544,11 @@ func (c *Widget) ProcessPaint(cnv *Canvas) {
 		}
 	}
 
-	// Draw using the custom paint function if set
+	// The content is drawn in the view only, out of the scroll bars' room
 	cnv.Save()
-
+	if vw, vh := c.viewportSize(); vw < c.w || vh < c.h {
+		cnv.TranslateAndClip(0, 0, vw, vh)
+	}
 	cnv.translateBy(-c.scrollX, -c.scrollY)
 
 	if c.onCustomPaint != nil {
@@ -1151,28 +1564,17 @@ func (c *Widget) ProcessPaint(cnv *Canvas) {
 		cnv.Restore()
 	}
 
-	if c.onPostPaint != nil {
-		c.onPostPaint(cnv)
-	}
-
 	cnv.Restore()
 
-	// Draw ScrollBarX
-	if !c.hideScrollbarX && c.allowScrollX && c.innerWidth > c.w {
-		scrollBarWidth := c.w * c.w / c.innerWidth
-		scrollBarX := c.scrollX * (c.w - scrollBarWidth) / (c.innerWidth - c.w)
+	c.drawScrollBars(cnv)
 
-		hovered := c.lastMouseAbsPosY >= c.h-c.scrollBarXSize && c.lastMouseAbsPosY < c.h
-		drawScrollBarThumb(cnv, scrollBarX, c.h-c.scrollBarXSize, scrollBarWidth, c.scrollBarXSize, hovered)
-	}
-
-	// Draw ScrollBarY
-	if !c.hideScrollbarY && c.allowScrollY && c.innerHeight > c.h {
-		scrollBarHeight := c.h * c.h / c.innerHeight
-		scrollBarY := c.scrollY * (c.h - scrollBarHeight) / (c.innerHeight - c.h)
-
-		hovered := c.lastMouseAbsPosX >= c.w-c.scrollBarYSize && c.lastMouseAbsPosX < c.w
-		drawScrollBarThumb(cnv, c.w-c.scrollBarYSize, scrollBarY, c.scrollBarYSize, scrollBarHeight, hovered)
+	// Post-paint covers the whole widget, the scroll bars too: it draws
+	// the frames
+	if c.onPostPaint != nil {
+		cnv.Save()
+		cnv.translateBy(-c.scrollX, -c.scrollY)
+		c.onPostPaint(cnv)
+		cnv.Restore()
 	}
 
 	/*if !c.Enabled() {
@@ -1186,78 +1588,8 @@ func (c *Widget) ProcessPaint(cnv *Canvas) {
 }
 
 func (c *Widget) ProcessMouseDown(button MouseButton, x int, y int, mods KeyModifiers) bool {
-	// Determine if the click is within the horizontal scroll bar area
-	if c.allowScrollX && c.innerWidth > c.w && y >= c.h-c.scrollBarXSize {
-		isLeftBar := x < c.w*c.scrollX/c.innerWidth
-		if isLeftBar {
-			// Clicked in the left part of the scroll bar
-			pageSize := c.w * c.w / c.innerWidth
-			c.scrollX -= pageSize // Scroll left
-			if c.scrollX < 0 {
-				c.setScrollX(0)
-			}
-			c.checkScrolls()
-			return true
-		}
-
-		isRightBar := x >= c.w*(c.scrollX+c.w)/c.innerWidth
-		if isRightBar {
-			// Clicked in the right part of the scroll bar
-			pageSize := c.w * c.w / c.innerWidth
-			c.scrollX += pageSize // Scroll right
-			if c.scrollX > c.innerWidth-c.w {
-				c.setScrollX(c.innerWidth - c.w)
-			}
-			c.checkScrolls()
-			return true
-		}
-
-		// Clicked in the scroll bar
-		scrollBarWidth := c.w * c.w / c.innerWidth
-		scrollBarX := c.scrollX * (c.w - scrollBarWidth) / (c.innerWidth - c.w)
-		if x >= scrollBarX && x < scrollBarX+scrollBarWidth {
-			c.scrollingX = true
-			c.scrollingXInitial = c.scrollX
-			c.scrollingXInitialMousePos = x
-			return true
-		}
-	}
-
-	// Determine if the click is within the vertical scroll bar area
-	if c.allowScrollY && c.innerHeight > c.h && x >= c.w-c.scrollBarYSize {
-		isUpperBar := y < c.h*c.scrollY/c.innerHeight
-		if isUpperBar {
-			// Clicked in the upper part of the scroll bar
-			pageSize := c.h * c.h / c.innerHeight
-			c.scrollY -= pageSize // Scroll up
-			if c.scrollY < 0 {
-				c.setScrollY(0)
-			}
-			c.checkScrolls()
-			return true
-		}
-
-		isLowerBar := y >= c.h*(c.scrollY+c.h)/c.innerHeight
-		if isLowerBar {
-			// Clicked in the lower part of the scroll bar
-			pageSize := c.h * c.h / c.innerHeight
-			c.scrollY += pageSize // Scroll down
-			if c.scrollY > c.innerHeight-c.h {
-				c.setScrollY(c.innerHeight - c.h)
-			}
-			c.checkScrolls()
-			return true
-		}
-
-		// Clicked in the scroll bar
-		scrollBarHeight := c.h * c.h / c.innerHeight
-		scrollBarY := c.scrollY * (c.h - scrollBarHeight) / (c.innerHeight - c.h)
-		if y >= scrollBarY && y < scrollBarY+scrollBarHeight {
-			c.scrollingY = true
-			c.scrollingYInitial = c.scrollY
-			c.scrollingYInitialMousePos = y
-			return true
-		}
+	if c.scrollBarMouseDown(button, x, y) {
+		return true
 	}
 
 	// Apply scrolling
@@ -1332,6 +1664,12 @@ func (c *Widget) ProcessMouseUp(button MouseButton, x int, y int, mods KeyModifi
 		return true
 	}
 
+	// The held arrow button or track stops repeating
+	if c.scrollPressPart != scrollPartNone {
+		c.scrollPressPart = scrollPartNone
+		return true
+	}
+
 	x += c.scrollX
 	y += c.scrollY
 
@@ -1352,29 +1690,33 @@ func (c *Widget) ProcessMouseMove(x int, y int, mods KeyModifiers) bool {
 	}
 
 	if c.scrollingX {
-		if c.allowScrollX && c.innerWidth > c.w {
-			k := float64(c.innerWidth) / float64(c.w)
-			newScrollFloat64 := float64(c.scrollingXInitial) + float64(x-c.scrollingXInitialMousePos)*k
-			c.setScrollX(int(newScrollFloat64))
-			c.checkScrolls()
-			return true
-		}
+		k := c.scrollBarX().scrollPerPixel()
+		c.setScrollX(c.scrollingXInitial + int(math.Round(float64(x-c.scrollingXInitialMousePos)*k)))
+		c.checkScrolls()
 		return true
 	}
 
 	if c.scrollingY {
-		if c.allowScrollY && c.innerHeight > c.h {
-			k := float64(c.innerHeight) / float64(c.h)
-			newScrollFloat64 := float64(c.scrollingYInitial) + float64(y-c.scrollingYInitialMousePos)*k
-			c.setScrollY(int(newScrollFloat64))
-			c.checkScrolls()
-			return true
-		}
+		k := c.scrollBarY().scrollPerPixel()
+		c.setScrollY(c.scrollingYInitial + int(math.Round(float64(y-c.scrollingYInitialMousePos)*k)))
+		c.checkScrolls()
 		return true
 	}
 
 	c.lastMouseAbsPosX = x
 	c.lastMouseAbsPosY = y
+
+	// While an arrow button or the track is held, the mouse only tells
+	// where it is: the repeat goes on while it stays on the part
+	if c.scrollPressPart != scrollPartNone {
+		return true
+	}
+
+	// Over the scroll bars the content gets no moves, unless it is being
+	// dragged with the button held
+	if c.inScrollBars(x, y) && !c.form.mouseLeftButtonPressed {
+		return true
+	}
 
 	x += c.scrollX
 	y += c.scrollY
@@ -1460,6 +1802,12 @@ func (c *Widget) ProcessKeyUp(key Key, mods KeyModifiers) bool {
 }
 
 func (c *Widget) ProcessMouseDblClick(button MouseButton, x int, y int, mods KeyModifiers) bool {
+	// On the scroll bars the second press of a double click is one more
+	// press: a quick double click on an arrow scrolls by two lines
+	if c.inScrollBars(x, y) {
+		c.scrollBarMouseDown(button, x, y)
+		return true
+	}
 
 	x += c.scrollX
 	y += c.scrollY
@@ -1514,14 +1862,16 @@ func (c *Widget) ProcessMouseWheel(deltaX, deltaY int) bool {
 		return true
 	}
 
-	if deltaY != 0 && c.allowScrollY && c.InnerHeight() > c.h {
-		c.scrollY -= deltaY * 30 // Adjust the scroll speed as needed
+	vw, vh := c.viewportSize()
+
+	if deltaY != 0 && c.allowScrollY && c.InnerHeight() > vh {
+		c.setScrollY(c.scrollY - deltaY*30) // Adjust the scroll speed as needed
 		c.checkScrolls()
 		return true
 	}
 
-	if deltaX != 0 && c.allowScrollX && c.InnerWidth() > c.w {
-		c.scrollX -= deltaX * 30 // Adjust the scroll speed as needed
+	if deltaX != 0 && c.allowScrollX && c.InnerWidth() > vw {
+		c.setScrollX(c.scrollX - deltaX*30) // Adjust the scroll speed as needed
 		c.checkScrolls()
 		return true
 	}
@@ -1541,6 +1891,8 @@ func (c *Widget) ProcessMouseWheel(deltaX, deltaY int) bool {
 }
 
 func (c *Widget) ProcessTimer() {
+	c.scrollBarRepeat()
+
 	for _, t := range c.timers {
 		t.tick()
 	}
@@ -1550,27 +1902,25 @@ func (c *Widget) ProcessTimer() {
 	}
 }
 
+// checkScrolls keeps the scroll offsets within the content: the view can't
+// go past its end
 func (c *Widget) checkScrolls() {
+	vw, vh := c.viewportSize()
+
 	if c.allowScrollX {
-		if c.scrollX > c.innerWidth-c.w {
-			c.setScrollX(c.innerWidth - c.w)
+		if c.scrollX > c.innerWidth-vw {
+			c.setScrollX(c.innerWidth - vw)
 		}
 		if c.scrollX < 0 {
-			c.setScrollX(0)
-		}
-		if c.innerWidth < c.w {
 			c.setScrollX(0)
 		}
 	}
 
 	if c.allowScrollY {
-		if c.scrollY > c.innerHeight-c.h {
-			c.setScrollY(c.innerHeight - c.h)
+		if c.scrollY > c.innerHeight-vh {
+			c.setScrollY(c.innerHeight - vh)
 		}
 		if c.scrollY < 0 {
-			c.setScrollY(0)
-		}
-		if c.innerHeight < c.h {
 			c.setScrollY(0)
 		}
 	}
@@ -1738,110 +2088,7 @@ func (c *Widget) updateLayout(oldWidth, oldHeight, newWidth, newHeight int) {
 			w.SetPosition(newX, newY)
 		}
 	} else {
-		fullWidth := c.w
-		fullHeight := c.h
-
-		panelPadding := c.GetPropInt("padding", 2)
-		cellPadding := c.GetPropInt("spacing", 2)
-
-		cells := c.gridCells()
-		_, minX, maxX, allCellPaddingX := c.makeColumnsInfo(fullWidth, cells)
-		columnsInfo, _, _, _ := c.makeColumnsInfo(fullWidth-(panelPadding+allCellPaddingX+panelPadding), cells)
-
-		_, minY, maxY, allCellPaddingY := c.makeRowsInfo(fullHeight, cells)
-		rowsInfo, _, _, _ := c.makeRowsInfo(fullHeight-(panelPadding+allCellPaddingY+panelPadding+c.insetTop), cells)
-
-		/*if strings.Contains(c.name, "Top") {
-			fmt.Println("RowsInfo:")
-			for yy := minY; yy <= maxY; yy++ {
-				if rowInfo, ok := rowsInfo[yy]; ok {
-					fmt.Printf("Row %d: minHeight=%d, maxHeight=%d, expandable=%t, height=%d, collapsed=%t\n",
-						yy, rowInfo.minHeight, rowInfo.maxHeight, rowInfo.expandable, rowInfo.height, rowInfo.collapsed)
-				}
-			}
-		}*/
-
-		xOffset := panelPadding //+ c.LeftBorderWidth()
-		for x := minX; x <= maxX; x++ {
-			if colInfo, ok := columnsInfo[x]; ok {
-				yOffset := panelPadding + c.insetTop
-				for y := minY; y <= maxY; y++ {
-					if rowInfo, ok := rowsInfo[y]; ok {
-						w := cells[gridCell{x, y}]
-						if w != nil {
-
-							cX := xOffset
-							cY := yOffset
-
-							wWidth := colInfo.width
-							if wWidth > w.MaxWidth() {
-								wWidth = w.MaxWidth()
-							}
-							wHeight := rowInfo.height
-							if wHeight > w.MaxHeight() {
-								wHeight = w.MaxHeight()
-							}
-
-							// Place widget in the center of the cell
-							//cX += (colInfo.width - wWidth) / 2
-							//cY += (rowInfo.height - wHeight) / 2
-
-							w.SetPosition(cX, cY)
-
-							if w.IsVisible() {
-								w.SetSize(wWidth, wHeight)
-							} else {
-								w.SetSize(0, 0)
-							}
-						}
-
-						yOffset += rowInfo.height
-						if rowInfo.height > 0 && y < maxY {
-							yOffset += cellPadding
-						}
-					}
-				}
-
-				xOffset += colInfo.width
-				if colInfo.width > 0 && x < maxX {
-					xOffset += cellPadding
-				}
-			}
-		}
-
-		for _, w := range c.widgets {
-			if !w.IsVisible() {
-				w.SetSize(0, 0)
-			}
-		}
-
-		if len(c.widgets) > 0 {
-			// Set InnerSize
-			innerWidth := 0
-			innerHeight := 0
-
-			for _, w := range c.widgets {
-				if w.IsVisible() {
-					if w.X()+w.Width() > innerWidth {
-						innerWidth = w.X() + w.Width()
-					}
-					if w.Y()+w.Height() > innerHeight {
-						innerHeight = w.Y() + w.Height()
-					}
-				}
-			}
-
-			if innerWidth < c.w {
-				innerWidth = c.w
-			}
-			if innerHeight < c.h {
-				innerHeight = c.h
-			}
-			c.innerWidth = innerWidth
-			c.innerHeight = innerHeight
-			c.checkScrolls()
-		}
-
+		c.layoutGridInViewport()
 	}
 
 	/*duration := time.Since(dt)
@@ -1850,6 +2097,138 @@ func (c *Widget) updateLayout(oldWidth, oldHeight, newWidth, newHeight int) {
 		prefix += "."
 	}
 	fmt.Println(prefix+"Widget", c.name, "layout updated:", "type", c.typeName, "Width:", c.w, "Height:", c.h, "InnerWidth:", c.innerWidth, "InnerHeight:", c.innerHeight, "Duration:", duration)*/
+}
+
+// layoutGridInViewport lays the children out in the view. The view depends
+// on the scroll bars and the bars on the size of the laid out content, so
+// the layout is repeated while the view changes. The content doesn't
+// shrink when the view does, so a bar that appears stays and two repeats
+// are enough; the last one keeps the smaller view in any case, so the
+// content is never under a bar.
+func (c *Widget) layoutGridInViewport() {
+	vw, vh := c.w, c.h
+	if c.allowScrollX || c.allowScrollY {
+		vw, vh = c.viewportSize()
+	}
+	for pass := 0; ; pass++ {
+		c.layoutGrid(vw, vh)
+		if len(c.widgets) == 0 {
+			return
+		}
+		c.updateInnerSizeFromChildren(vw, vh)
+		newW, newH := c.viewportSize()
+		if newW == vw && newH == vh {
+			break
+		}
+		if pass == 2 {
+			// Still changing: lay out once more in the smaller view
+			vw, vh = min(vw, newW), min(vh, newH)
+			c.layoutGrid(vw, vh)
+			c.updateInnerSizeFromChildren(vw, vh)
+			break
+		}
+		vw, vh = newW, newH
+	}
+	c.checkScrolls()
+}
+
+// layoutGrid places the children in the grid cells within the area of
+// fullWidth x fullHeight
+func (c *Widget) layoutGrid(fullWidth, fullHeight int) {
+	panelPadding := c.GetPropInt("padding", 2)
+	cellPadding := c.GetPropInt("spacing", 2)
+
+	cells := c.gridCells()
+	_, minX, maxX, allCellPaddingX := c.makeColumnsInfo(fullWidth, cells)
+	columnsInfo, _, _, _ := c.makeColumnsInfo(fullWidth-(panelPadding+allCellPaddingX+panelPadding), cells)
+
+	_, minY, maxY, allCellPaddingY := c.makeRowsInfo(fullHeight, cells)
+	rowsInfo, _, _, _ := c.makeRowsInfo(fullHeight-(panelPadding+allCellPaddingY+panelPadding+c.insetTop), cells)
+
+	/*if strings.Contains(c.name, "Top") {
+		fmt.Println("RowsInfo:")
+		for yy := minY; yy <= maxY; yy++ {
+			if rowInfo, ok := rowsInfo[yy]; ok {
+				fmt.Printf("Row %d: minHeight=%d, maxHeight=%d, expandable=%t, height=%d, collapsed=%t\n",
+					yy, rowInfo.minHeight, rowInfo.maxHeight, rowInfo.expandable, rowInfo.height, rowInfo.collapsed)
+			}
+		}
+	}*/
+
+	xOffset := panelPadding //+ c.LeftBorderWidth()
+	for x := minX; x <= maxX; x++ {
+		if colInfo, ok := columnsInfo[x]; ok {
+			yOffset := panelPadding + c.insetTop
+			for y := minY; y <= maxY; y++ {
+				if rowInfo, ok := rowsInfo[y]; ok {
+					w := cells[gridCell{x, y}]
+					if w != nil {
+
+						cX := xOffset
+						cY := yOffset
+
+						wWidth := colInfo.width
+						if wWidth > w.MaxWidth() {
+							wWidth = w.MaxWidth()
+						}
+						wHeight := rowInfo.height
+						if wHeight > w.MaxHeight() {
+							wHeight = w.MaxHeight()
+						}
+
+						// Place widget in the center of the cell
+						//cX += (colInfo.width - wWidth) / 2
+						//cY += (rowInfo.height - wHeight) / 2
+
+						w.SetPosition(cX, cY)
+
+						if w.IsVisible() {
+							w.SetSize(wWidth, wHeight)
+						} else {
+							w.SetSize(0, 0)
+						}
+					}
+
+					yOffset += rowInfo.height
+					if rowInfo.height > 0 && y < maxY {
+						yOffset += cellPadding
+					}
+				}
+			}
+
+			xOffset += colInfo.width
+			if colInfo.width > 0 && x < maxX {
+				xOffset += cellPadding
+			}
+		}
+	}
+
+	for _, w := range c.widgets {
+		if !w.IsVisible() {
+			w.SetSize(0, 0)
+		}
+	}
+}
+
+// updateInnerSizeFromChildren sets the content size to what the children
+// take, at least the view of vw x vh
+func (c *Widget) updateInnerSizeFromChildren(vw, vh int) {
+	innerWidth := 0
+	innerHeight := 0
+
+	for _, w := range c.widgets {
+		if w.IsVisible() {
+			if w.X()+w.Width() > innerWidth {
+				innerWidth = w.X() + w.Width()
+			}
+			if w.Y()+w.Height() > innerHeight {
+				innerHeight = w.Y() + w.Height()
+			}
+		}
+	}
+
+	c.innerWidth = max(innerWidth, vw)
+	c.innerHeight = max(innerHeight, vh)
 }
 
 func (c *Widget) makeColumnsInfo(fullWidth int, cells map[gridCell]Widgeter) (map[int]*ContainerGridColumnInfo, int, int, int) {

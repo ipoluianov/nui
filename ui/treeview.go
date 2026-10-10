@@ -110,6 +110,7 @@ func NewTreeView() *TreeView {
 	c.SetXExpandable(true)
 	c.SetYExpandable(true)
 	c.SetAllowScroll(true, true)
+	c.scrollBarInset = 1 // inside the border
 	c.SetAutoFillBackground(true)
 	c.SetRole("base")
 	c.SetCanBeFocused(true)
@@ -378,10 +379,7 @@ func (c *TreeView) ScrollToNode(node *TreeNode) {
 		return
 	}
 	top := c.headerHeight() + row*c.rowHeight
-	viewHeight := c.Height()
-	if c.allowScrollX && c.innerWidth > c.Width() {
-		viewHeight -= c.scrollBarXSize
-	}
+	viewHeight := c.ViewportHeight()
 	if top < c.scrollY+c.headerHeight() {
 		c.setScrollY(top - c.headerHeight())
 	} else if top+c.rowHeight > c.scrollY+viewHeight {
@@ -712,11 +710,12 @@ func (c *TreeView) headerHeight() int {
 	return c.rowHeight
 }
 
-// columnWidth is the shown width: the last column may stretch.
+// columnWidth is the shown width: the last column may stretch to the
+// view's edge.
 func (c *TreeView) columnWidth(col int) int {
 	w := c.ColumnWidth(col)
 	if c.stretchLastColumn && col == c.columnCount-1 {
-		w = max(w, c.Width()-c.columnOffset(col))
+		w = max(w, c.ViewportWidth()-c.columnOffset(col))
 	}
 	return w
 }
@@ -791,7 +790,7 @@ func (c *TreeView) textX(node *TreeNode, level int, col int) int {
 func (c *TreeView) visibleRows() (first, last int) {
 	c.ensureRows()
 	first = max(0, c.scrollY/c.rowHeight-1)
-	last = min(len(c.rows), first+c.Height()/c.rowHeight+3)
+	last = min(len(c.rows), first+c.ViewportHeight()/c.rowHeight+3)
 	return
 }
 
@@ -805,8 +804,10 @@ func (c *TreeView) updateInnerSize() {
 }
 
 // applyContentSize sets the scrollable size from the columns and the rows.
+// The width is of the columns as they are set: the stretch of the last one
+// only fills the view, it doesn't make the content wider.
 func (c *TreeView) applyContentSize() {
-	c.SetInnerSize(c.columnsWidth(), c.headerHeight()+len(c.rows)*c.rowHeight)
+	c.SetInnerSize(c.columnOffset(c.columnCount), c.headerHeight()+len(c.rows)*c.rowHeight)
 	c.checkScrolls()
 	c.layoutChildren()
 }
@@ -851,7 +852,7 @@ func (c *TreeView) SetSize(w, h int) {
 // over its cell.
 func (c *TreeView) layoutChildren() {
 	c.headerWidget.SetPosition(c.scrollX, c.scrollY)
-	c.headerWidget.SetSize(c.Width(), c.headerHeight())
+	c.headerWidget.SetSize(c.ViewportWidth(), c.headerHeight())
 
 	if c.editorTextBox != nil {
 		row := c.rowOf(c.editNode)
@@ -869,8 +870,8 @@ func (c *TreeView) ensureColumnVisible(col int) {
 	x := c.columnOffset(col)
 	if x < c.scrollX {
 		c.setScrollX(x)
-	} else if x+c.columnWidth(col) > c.scrollX+c.Width() {
-		c.setScrollX(min(x, x+c.columnWidth(col)-c.Width()))
+	} else if x+c.columnWidth(col) > c.scrollX+c.ViewportWidth() {
+		c.setScrollX(min(x, x+c.columnWidth(col)-c.ViewportWidth()))
 	}
 	c.checkScrolls()
 }
@@ -1237,7 +1238,7 @@ func (c *TreeView) ProcessKeyDown(key Key, mods KeyModifiers) bool {
 
 	c.ensureRows()
 	row := c.rowOf(c.current)
-	pageRows := max(1, (c.Height()-c.headerHeight())/c.rowHeight-1)
+	pageRows := max(1, (c.ViewportHeight()-c.headerHeight())/c.rowHeight-1)
 	extend, keepSelection := mods.Shift, mods.Ctrl && !mods.Shift
 
 	goRow := func(target int) {
@@ -1396,7 +1397,7 @@ func (c *TreeView) draw(cnv *Canvas) {
 	p := CurrentPalette()
 	first, last := c.visibleRows()
 	focused := c.IsFocused() || (c.editorTextBox != nil && c.editorTextBox.IsFocused())
-	width := max(c.columnsWidth(), c.Width())
+	width := max(c.columnsWidth(), c.ViewportWidth())
 
 	backColor := colorToRGBA(c.BackgroundColor())
 	selectedBack, selectedText := p.Highlight, p.HighlightedText
@@ -1500,9 +1501,12 @@ func (c *TreeView) drawTreePart(cnv *Canvas, r treeRow, arrowColor color.RGBA, t
 func (c *TreeView) drawPost(cnv *Canvas) {
 	p := CurrentPalette()
 	if c.headerVisible {
+		// The header is in the view: not over the scroll bars
+		cnv.Save()
+		c.clipToViewport(cnv)
 		y := c.scrollY
 		h := c.headerHeight()
-		cnv.FillRect(c.scrollX, y, c.Width(), h, p.Button)
+		cnv.FillRect(c.scrollX, y, c.ViewportWidth(), h, p.Button)
 		for col := 0; col < c.columnCount; col++ {
 			x := c.columnOffset(col)
 			w := c.columnWidth(col)
@@ -1520,7 +1524,8 @@ func (c *TreeView) drawPost(cnv *Canvas) {
 				cnv.FillRect(x+w-1, y+3, 1, h-6, p.Divider)
 			}
 		}
-		cnv.FillRect(c.scrollX, y+h-1, c.Width(), 1, p.Border)
+		cnv.FillRect(c.scrollX, y+h-1, c.ViewportWidth(), 1, p.Border)
+		cnv.Restore()
 	}
 
 	cnv.SetColor(p.Border)
