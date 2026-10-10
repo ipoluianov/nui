@@ -264,6 +264,7 @@ func createWindow(title string, posX int, posY int, width int, height int, cente
 	c.platform.display = openDisplay()
 	c.platform.screen = xScreen
 	c.platform.done = make(chan struct{})
+	width, height = clampWindowSize(width, height)
 
 	// While resizing, the X server keeps the old content in the top-left
 	// corner and fills only the new area with the background color until
@@ -879,18 +880,29 @@ func waitForFds(fds []int, timeout time.Duration) {
 	if timeout <= 0 {
 		return
 	}
-	var readFds syscall.FdSet
-	// The words of the set are 32 or 64 bits, depending on the architecture
-	bitsPerWord := int(unsafe.Sizeof(readFds.Bits[0])) * 8
-	maxFd := 0
-	for _, fd := range fds {
-		readFds.Bits[fd/bitsPerWord] |= 1 << (fd % bitsPerWord)
-		maxFd = max(maxFd, fd)
+	if len(fds) == 0 {
+		return
 	}
-	tv := syscall.NsecToTimeval(timeout.Nanoseconds())
+	// ppoll, not select: select's fd_set holds only descriptors below 1024,
+	// and a process with many open files gets an X connection above that
+	pfds := make([]pollFd, len(fds))
+	for i, fd := range fds {
+		pfds[i] = pollFd{fd: int32(fd), events: pollIn}
+	}
+	ts := syscall.NsecToTimespec(timeout.Nanoseconds())
 	// EINTR (e.g. the Go runtime's preemption signals) only ends the wait early
-	_, _ = syscall.Select(maxFd+1, &readFds, nil, nil, &tv)
+	_, _, _ = syscall.Syscall6(syscall.SYS_PPOLL, uintptr(unsafe.Pointer(&pfds[0])), uintptr(len(pfds)),
+		uintptr(unsafe.Pointer(&ts)), 0, 0, 0)
 }
+
+// pollFd is struct pollfd of poll.h
+type pollFd struct {
+	fd      int32
+	events  int16
+	revents int16
+}
+
+const pollIn = 0x1
 
 // Close requests the window to close and is safe to call from any goroutine
 // (e.g. a parent window closing a dialog it owns). The event loop closes the
@@ -911,6 +923,11 @@ func (c *nativeWindow) Close() bool {
 
 // doClose destroys the X window. UI thread only, from the event loop.
 func (c *nativeWindow) doClose() {
+	// A nested event loop (a Form.Exec from a handler) may have closed the
+	// window already
+	if c.platform.closed {
+		return
+	}
 	c.destroyInputContext()
 	closePopupsOf(c)
 	xDestroyWindow(c.platform.display, c.platform.window)
@@ -936,6 +953,9 @@ func (c *nativeWindow) doClose() {
 }
 
 func (c *nativeWindow) SetTitle(title string) {
+	if c.platform.closed {
+		return
+	}
 	xStoreName(c.platform.display, c.platform.window, title)
 
 	// XStoreName sets WM_NAME as a Latin-1 STRING property, which garbles any
@@ -963,6 +983,9 @@ func (c *nativeWindow) SetTitle(title string) {
 }
 
 func (c *nativeWindow) Move(x, y int) {
+	if c.platform.closed {
+		return
+	}
 	c.platform.prevSetPosX = x
 	c.platform.prevSetPosY = y
 	left, _, top, _, ok := c.getFrameExtents()
@@ -986,7 +1009,17 @@ func (c *nativeWindow) MoveToCenterOfScreen() {
 	c.Move(x, y)
 }
 
+// clampWindowSize keeps the size within what X accepts: a zero size is a
+// BadValue error, a negative one wraps around to a huge window.
+func clampWindowSize(width, height int) (int, int) {
+	return min(max(width, 1), 65535), min(max(height, 1), 65535)
+}
+
 func (c *nativeWindow) Resize(width, height int) {
+	if c.platform.closed {
+		return
+	}
+	width, height = clampWindowSize(width, height)
 	xResizeWindow(c.platform.display, c.platform.window, uint32(width), uint32(height))
 }
 
@@ -1095,6 +1128,9 @@ func (c *nativeWindow) DrawTimeUs() int64 {
 }
 
 func (c *nativeWindow) SetBackgroundColor(color color.RGBA) {
+	if c.platform.closed {
+		return
+	}
 	c.platform.bgColor = color
 	xSetWindowBackground(c.platform.display, c.platform.window, backgroundPixel(color))
 	c.Update()
@@ -1114,6 +1150,9 @@ func (c *nativeWindow) SetMouseCursor(cursor MouseCursor) {
 }
 
 func (c *nativeWindow) changeMouseCursor(mouseCursor MouseCursor) bool {
+	if c.platform.closed {
+		return false
+	}
 	cursor := xCreateFontCursor(c.platform.display, xCursorShape(mouseCursor))
 	xDefineCursor(c.platform.display, c.platform.window, cursor)
 	xFlush(c.platform.display)
@@ -1153,20 +1192,32 @@ func xCursorShape(mouseCursor MouseCursor) uint32 {
 }
 
 func (c *nativeWindow) MinimizeWindow() {
+	if c.platform.closed {
+		return
+	}
 	minimizeWindowX(c.platform.display, c.platform.window)
 }
 
 func (c *nativeWindow) MaximizeWindow() {
+	if c.platform.closed {
+		return
+	}
 	maximizeWindowX(c.platform.display, c.platform.window)
 }
 
 func (c *nativeWindow) RestoreWindow() {
+	if c.platform.closed {
+		return
+	}
 	restoreWindowX(c.platform.display, c.platform.window)
 }
 
 // SetDarkMode sets _GTK_THEME_VARIANT, which GNOME and KDE use to draw the
 // window decorations dark or light
 func (c *nativeWindow) SetDarkMode(dark bool) {
+	if c.platform.closed {
+		return
+	}
 	variant := []byte("light")
 	if dark {
 		variant = []byte("dark")
@@ -1178,12 +1229,18 @@ func (c *nativeWindow) SetDarkMode(dark bool) {
 }
 
 func (c *nativeWindow) SetAlwaysOnTop(onTop bool) {
+	if c.platform.closed {
+		return
+	}
 	setNetWMState(c.platform.display, c.platform.window, onTop, "_NET_WM_STATE_ABOVE")
 }
 
 // RequestAttention sets _NET_WM_STATE_DEMANDS_ATTENTION; the window manager
 // clears it when the window gets focus
 func (c *nativeWindow) RequestAttention() {
+	if c.platform.closed {
+		return
+	}
 	setNetWMState(c.platform.display, c.platform.window, true, "_NET_WM_STATE_DEMANDS_ATTENTION")
 }
 
@@ -1233,6 +1290,9 @@ func (c *nativeWindow) SetAllowMaximize(allow bool) {
 }
 
 func (c *nativeWindow) applyWindowDecorations() {
+	if c.platform.closed {
+		return
+	}
 	setWindowDecorationsX(c.platform.display, c.platform.window, c.platform.allowMinimize, c.platform.allowMaximize)
 }
 
@@ -1265,6 +1325,9 @@ func (c *nativeWindow) inputBlocked() bool {
 }
 
 func (c *nativeWindow) SetAppIcon(icon *image.RGBA) {
+	if c.platform.closed {
+		return
+	}
 	width := icon.Bounds().Dx()
 	height := icon.Bounds().Dy()
 
@@ -1434,6 +1497,9 @@ func (c *nativeWindow) getFrameExtents() (left, right, top, bottom int, ok bool)
 }
 
 func (c *nativeWindow) updateWindowPos() {
+	if c.platform.closed {
+		return
+	}
 	display := c.platform.display
 	window := c.platform.window
 	root := xRootWindow(display, c.platform.screen)
@@ -1457,6 +1523,9 @@ func (c *nativeWindow) updateWindowPos() {
 }
 
 func (c *nativeWindow) ClientToScreen(x, y int) (int, int) {
+	if c.platform.closed {
+		return c.windowPosX + x, c.windowPosY + y
+	}
 	display := c.platform.display
 	root := xRootWindow(display, c.platform.screen)
 

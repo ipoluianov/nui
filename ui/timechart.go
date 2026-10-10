@@ -885,9 +885,17 @@ func (c *TimeChart) buildAreaLayout(al *timeChartAreaLayout, groupDuration time.
 	if step < 1 {
 		decimals = int(math.Ceil(-math.Log10(step) - 1e-9))
 	}
-	for v := math.Ceil(al.yMin/step) * step; v <= al.yMax; v += step {
+	if !(step > 0) || math.IsInf(step, 0) {
+		return // an empty, inverted or infinite range has no ticks
+	}
+	// At a large magnitude the step can be below the float resolution, v+step
+	// is v again: the count limit and the check stop the loop there
+	for v, n := math.Ceil(al.yMin/step)*step, 0; v <= al.yMax && n <= 4*maxTicks; v, n = v+step, n+1 {
 		al.ticks = append(al.ticks, v)
 		al.labels = append(al.labels, strconv.FormatFloat(v, 'f', decimals, 64))
+		if v+step == v {
+			break
+		}
 	}
 }
 

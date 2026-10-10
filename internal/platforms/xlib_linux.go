@@ -25,6 +25,7 @@ package platforms
 
 import (
 	"fmt"
+	"log"
 	"unsafe"
 
 	"github.com/ebitengine/purego"
@@ -364,6 +365,7 @@ var (
 	xConvertSelection     func(display, selection, target, property, requestor, time uintptr) int32
 	xMapRaised            func(display, window uintptr) int32
 	xUnmapWindow          func(display, window uintptr) int32
+	xSetErrorHandler      func(handler uintptr) uintptr
 
 	libcSetlocale func(category int32, locale string) uintptr
 	libcMalloc    func(size uintptr) unsafe.Pointer
@@ -382,6 +384,30 @@ var (
 	xShapeAvailable         bool
 	xShapeCombineRectangles func(display, window uintptr, destKind, xOff, yOff int32, rectangles unsafe.Pointer, nRects, op, ordering int32)
 )
+
+// XErrorEvent, field order per Xlib.h.
+type xErrorEvent struct {
+	Type        int32
+	Display     uintptr
+	ResourceID  uintptr
+	Serial      uintptr
+	ErrorCode   uint8
+	RequestCode uint8
+	MinorCode   uint8
+}
+
+// xErrorHandler replaces Xlib's default error handler, which prints the
+// error and exits the process. Protocol errors are not fatal for nui: they
+// come from requests to windows that are already gone (a closed window, the
+// source window of a drag that vanished, ...), so they are only logged.
+// Xlib calls it with the display locked: it must not call Xlib itself.
+func xErrorHandler(display uintptr, ev *xErrorEvent) int32 {
+	if ev != nil {
+		log.Printf("nui: X error %d (request %d.%d) on resource 0x%x",
+			ev.ErrorCode, ev.RequestCode, ev.MinorCode, ev.ResourceID)
+	}
+	return 0
+}
 
 // XineramaScreenInfo, field order per X11/extensions/Xinerama.h.
 type xineramaScreenInfo struct {
@@ -484,6 +510,8 @@ func init() {
 	// The event loop runs on the UI thread only; this keeps Xlib safe should
 	// a call still come from another goroutine.
 	xInitThreads()
+	purego.RegisterLibFunc(&xSetErrorHandler, libX11, "XSetErrorHandler")
+	xSetErrorHandler(purego.NewCallback(xErrorHandler))
 
 	if h, err := dlopenFirst("libXinerama.so.1", "libXinerama.so"); err == nil {
 		purego.RegisterLibFunc(&xineramaIsActive, h, "XineramaIsActive")

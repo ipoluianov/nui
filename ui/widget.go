@@ -519,6 +519,9 @@ func (c *Widget) RemoveWidget(w Widgeter) {
 	for i, widget := range c.widgets {
 		widgeter := widget
 		if widgeter.Id() == w.Id() {
+			if c.form != nil {
+				c.form.forgetWidgets(w)
+			}
 			w.SetParentWidgetId("")
 			c.widgets = append(c.widgets[:i], c.widgets[i+1:]...)
 			return
@@ -529,11 +532,16 @@ func (c *Widget) RemoveWidget(w Widgeter) {
 
 func (c *Widget) RemoveAllWidgets() {
 	for _, w := range c.widgets {
+		if c.form != nil {
+			c.form.forgetWidgets(w)
+		}
 		w.SetParentWidgetId("")
 	}
 	c.widgets = make([]Widgeter, 0)
 	c.updateLayout(0, 0, 0, 0)
-	c.form.Update()
+	if c.form != nil {
+		c.form.Update()
+	}
 }
 
 func (c *Widget) FindWidgetByName(name string) Widgeter {
@@ -911,10 +919,16 @@ func (c *Widget) ProcessFocusLost() {
 }
 
 func (c *Widget) IsFocused() bool {
+	if c.form == nil {
+		return false
+	}
 	return c.form.focusedWidget == c.form.WidgetById(c.Id())
 }
 
 func (c *Widget) IsHovered() bool {
+	if c.form == nil {
+		return false
+	}
 	return c.form.hoverWidget == c.form.WidgetById(c.Id())
 }
 
@@ -1680,7 +1694,7 @@ func (c *Widget) ProcessClosePopup() {
 }
 
 func (c *Widget) ClearFocus() {
-	if c.form.focusedWidget != nil {
+	if c.form != nil && c.form.focusedWidget != nil {
 		c.form.focusedWidget.ProcessFocusLost()
 		c.form.focusedWidget = nil
 		c.form.Update()
@@ -2581,7 +2595,7 @@ func (c *Widget) nextFocus(reverse bool) {
 	for _, w := range children {
 		if w.IsCanBeFocused() && w.IsVisible() {
 			focusableWidgets = append(focusableWidgets, w)
-			if c.form.FocusedWidget().Id() == w.Id() {
+			if focused := c.form.FocusedWidget(); focused != nil && focused.Id() == w.Id() {
 				focusedWidgetIndex = len(focusableWidgets) - 1
 			}
 		}

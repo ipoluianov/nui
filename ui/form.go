@@ -965,6 +965,30 @@ func (c *Form) processMouseEnter() {
 	c.topWidget.ProcessMouseEnter()
 }
 
+// forgetWidgets drops the form's references to w and its children before w
+// is removed from the form: a removed widget must not keep the focus (keys
+// would go to it) nor the hover or the pressed mouse button. onFocusLost is
+// not called: Table and TreeView remove their focused cell editor on Esc,
+// and their onFocusLost commits the edit.
+func (c *Form) forgetWidgets(w Widgeter) {
+	removed := map[string]bool{w.Id(): true}
+	for _, child := range w.AllChildren() {
+		removed[child.Id()] = true
+	}
+	isRemoved := func(x Widgeter) bool {
+		return x != nil && removed[x.Id()]
+	}
+	if isRemoved(c.focusedWidget) {
+		c.focusedWidget = nil
+	}
+	if isRemoved(c.hoverWidget) {
+		c.hoverWidget = nil
+	}
+	if isRemoved(c.mouseLeftButtonPressedWidget) {
+		c.mouseLeftButtonPressedWidget = nil
+	}
+}
+
 func (c *Form) FocusedWidget() Widgeter {
 	return c.focusedWidget
 }
