@@ -63,7 +63,7 @@ focus, etc.) are available too. The methods below are the ones that belong to
 - `CopySelectionToClipboard()` - copies the current cell's text to the clipboard.
 - `SetOnSelectionChanged(func(row, col int))` - called whenever the active cell/row moves (click, drag, keyboard nav, `Ctrl+A`).
 
-See `examples/ex00gallery` (Table page, "Selection" tab) for a full demo.
+See `examples/contacts` (sorting, filtering, multiselect, context menu) for a full demo.
 
 ## Mouse callbacks
 

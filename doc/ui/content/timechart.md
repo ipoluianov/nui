@@ -6,7 +6,7 @@ its points from a **data source** you provide, so the same chart works for live
 monitoring, historical data from a server and trading (OHLC) data.
 
 `TimeChart` embeds `Widget`, so all generic widget methods are available too.
-See `examples/ex06timechart` for a runnable demo (live ping to several servers,
+See `examples/monitor` for a runnable demo (live ping to several servers,
 downsampling, candles).
 
 ## Quick start

@@ -31,7 +31,7 @@ picker.SetOnColorChanged(func(col color.RGBA) {
 Colors are `color.RGBA` with a straight (not premultiplied) alpha, as `ui.ColorFromHex` returns them;
 other `color.Color` values passed to `SetColor` are converted.
 
-See `examples/ex14colorpicker`.
+See `examples/paint`.
 
 ## Popups of your own
 

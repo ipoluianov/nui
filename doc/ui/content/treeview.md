@@ -112,4 +112,4 @@ In the editor Enter commits, Escape cancels, a click elsewhere or Tab commits.
 `SetRowHeight(h)`, `SetIndent(px)` (0 follows the row height), `SetGridLines(bool)`.
 A tree without the focus keeps its selection in a softer color.
 
-See `examples/ex13treeview`.
+See `examples/files` (a folder tree loaded on expand).

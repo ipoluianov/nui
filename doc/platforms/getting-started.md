@@ -84,4 +84,5 @@ func main() {
 go run ./main.go
 ```
 
-`main.go` runs the `ui` examples launcher (`examples/examples.go`).
+`main.go` runs the launcher of the example applications (`examples/examples.go`);
+`go run . notepad` runs one of them by name (run with an unknown name for the list).

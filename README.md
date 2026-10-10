@@ -35,7 +35,9 @@ func main() {
 }
 ```
 
-Runnable demos: `go run ./main.go` (widgets gallery, `examples/`).
+Runnable demos: `go run .` opens the launcher of the example applications in
+`examples/` (notepad, calculator, contacts, file explorer, paint, tasks, network
+monitor, unit converter, function plotter); `go run . notepad` runs one of them.
 
 # Operating Systems
 - Linux
