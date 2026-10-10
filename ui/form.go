@@ -816,7 +816,6 @@ func (c *Form) processMouseDown(button MouseButton, x int, y int) {
 }
 
 func (c *Form) processMouseDblClick(button MouseButton, x int, y int) {
-	fmt.Println("Mouse DBL at:", x, y, "Button:", button)
 	if button == MouseButtonLeft {
 		c.mouseLeftButtonPressed = true
 	}

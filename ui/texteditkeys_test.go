@@ -44,3 +44,54 @@ func TestTextEditKeysGoToTextBox(t *testing.T) {
 		t.Fatalf("Ctrl+Z in a disabled box: global %v", global)
 	}
 }
+
+// F2 that opens the editor of a cell reaches a focused tree or table before
+// a shortcut on F2; on a cell that cannot be edited the shortcut gets it
+func TestEditKeysGoToTreeAndTable(t *testing.T) {
+	tree := NewTreeView()
+	form := newTestForm(t, tree)
+	tree.SetColumnCount(2)
+	tree.SetColumnReadOnly(0, true)
+	tree.SetEditTriggerF2(true)
+	a := tree.AddNode(nil, "a")
+	b := tree.AddNode(nil, "b")
+	b.SetReadOnly(1, true)
+	shortcut := 0
+	form.AddShortcut("F2", func() { shortcut++ })
+	tree.Focus()
+	tree.SetCurrentNode(a)
+	tree.SetCurrentColumn(0) // the name: the value is edited
+	typeKey(form, KeyF2, 0, KeyModifiers{})
+	if !tree.IsEditing() || tree.editColumn != 1 || shortcut != 0 {
+		t.Fatalf("tree: editing %v, shortcut %d", tree.IsEditing(), shortcut)
+	}
+	tree.cancelEdit()
+	tree.Focus()
+	tree.SetCurrentNode(b)
+	typeKey(form, KeyF2, 0, KeyModifiers{})
+	if tree.IsEditing() || shortcut != 1 {
+		t.Fatalf("read-only cell: editing %v, shortcut %d", tree.IsEditing(), shortcut)
+	}
+
+	table := NewTable()
+	form = newTestForm(t, table)
+	table.SetColumnCount(2)
+	table.SetRowCount(2)
+	table.SetCellEditTriggerF2(0, 1, true)
+	shortcut = 0
+	form.AddShortcut("F2", func() { shortcut++ })
+	table.Focus()
+	table.SetCurrentCell2(0, 1)
+	typeKey(form, KeyF2, 0, KeyModifiers{})
+	if table.editorTextBox == nil || shortcut != 0 {
+		t.Fatalf("table: editing %v, shortcut %d", table.editorTextBox != nil, shortcut)
+	}
+	table.RemoveWidget(table.editorTextBox)
+	table.editorTextBox = nil
+	table.Focus()
+	table.SetCurrentCell2(1, 1)
+	typeKey(form, KeyF2, 0, KeyModifiers{})
+	if table.editorTextBox != nil || shortcut != 1 {
+		t.Fatalf("table, a cell without the trigger: shortcut %d", shortcut)
+	}
+}

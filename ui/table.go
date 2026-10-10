@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"fmt"
 	"image"
 	"image/color"
 	"sort"
@@ -1238,7 +1237,6 @@ func (c *Table) SetOnCellMouseDown(callback func(button MouseButton, row int, co
 
 func (c *Table) onMouseDblClick(button MouseButton, x int, y int, mods KeyModifiers) bool {
 	col, row := c.cellByPosition(x, y)
-	fmt.Println("Cell double clicked:", col, row, " at ", x, y)
 	if row >= 0 && col >= 0 {
 		// A quick Shift/Ctrl+click on another cell arrives as a double click;
 		// it must extend or toggle the selection, not reset it
@@ -1347,42 +1345,10 @@ func (c *Table) ProcessKeyDown(key Key, mods KeyModifiers) bool {
 		processed = true
 	}
 
-	if key == KeyEnter {
-		allowEdit := false
-		if c.editTriggerEnter {
-			allowEdit = true
-		} else {
-			cellObj := c.getCellObj(c.currentCellY, c.currentCellX)
-			if cellObj != nil {
-				if cellObj.editTriggerEnter {
-					allowEdit = true
-				}
-			}
-		}
-		if allowEdit {
-			c.EditCurrentCell("")
-			c.form.Update()
-			processed = true
-		}
-	}
-
-	if key == KeyF2 {
-		allowEdit := false
-		if c.editTriggerF2 {
-			allowEdit = true
-		} else {
-			cellObj := c.getCellObj(c.currentCellY, c.currentCellX)
-			if cellObj != nil {
-				if cellObj.editTriggerF2 {
-					allowEdit = true
-				}
-			}
-		}
-		if allowEdit {
-			c.EditCurrentCell("")
-			c.form.Update()
-			processed = true
-		}
+	if (key == KeyEnter || key == KeyF2) && c.editKey(key) {
+		c.EditCurrentCell("")
+		c.form.Update()
+		processed = true
 	}
 
 	if key == KeyPageUp {
@@ -2239,4 +2205,26 @@ func (c *Table) applyThemeMetrics() {
 		c.rowHeight1 = ThemeRowHeight()
 		c.updateInnerSize()
 	}
+}
+
+// editKey reports whether the key (Enter or F2) opens the editor of the
+// current cell: by the trigger of the table or of the cell
+func (c *Table) editKey(key Key) bool {
+	cellObj := c.getCellObj(c.currentCellY, c.currentCellX)
+	switch key {
+	case KeyEnter:
+		return c.editTriggerEnter || cellObj != nil && cellObj.editTriggerEnter
+	case KeyF2:
+		return c.editTriggerF2 || cellObj != nil && cellObj.editTriggerF2
+	}
+	return false
+}
+
+// handlesKey: Enter and F2 that open the editor of the current cell go to
+// the table before the shortcuts (see Form.AddShortcut)
+func (c *Table) handlesKey(key Key, mods KeyModifiers) bool {
+	if mods.Ctrl || mods.Alt || mods.Shift || mods.Cmd || c.editorTextBox != nil {
+		return false
+	}
+	return c.CurrentRow() >= 0 && c.CurrentColumn() >= 0 && c.editKey(key)
 }

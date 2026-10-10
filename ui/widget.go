@@ -2524,11 +2524,6 @@ func (c *Widget) buildNode(n *uiNode, parent Widgeter, row int, col int, eventPr
 			continue
 		}
 		if strings.HasPrefix(attr.Name.Local, "on") {
-			fmt.Println("Set ON:", attr.Value)
-			if attr.Value == "BtnUsualButton" {
-				fmt.Println("Found BtnUsualButton event handler")
-			}
-
 			// If event processor is map[string]func(), then get function from map
 			if eventProcessorMap, ok := eventProcessor.(map[string]func()); ok {
 				if eventHandler, ok := eventProcessorMap[attr.Value]; ok {
@@ -2576,7 +2571,6 @@ func (c *Widget) AllChildren() []Widgeter {
 }
 
 func (c *Widget) nextFocus(reverse bool) {
-	fmt.Println("Widget::netFocus")
 	children := c.AllChildren()
 	if len(children) == 0 {
 		return
@@ -2591,12 +2585,6 @@ func (c *Widget) nextFocus(reverse bool) {
 				focusedWidgetIndex = len(focusableWidgets) - 1
 			}
 		}
-	}
-
-	fmt.Println("Focused widget index:", focusedWidgetIndex)
-
-	for i, w := range focusableWidgets {
-		fmt.Println("Focusable widget:", i, w.Id(), "Type:", w.TypeName())
 	}
 
 	if len(focusableWidgets) == 0 {

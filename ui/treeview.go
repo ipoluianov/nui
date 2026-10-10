@@ -1323,10 +1323,11 @@ func (c *TreeView) ProcessKeyDown(key Key, mods KeyModifiers) bool {
 			c.activate(c.current)
 		}
 	case KeyF2:
-		if !c.editTriggerF2 || !c.IsCellEditable(c.current, c.currentColumn) {
+		col := c.f2Column()
+		if col < 0 {
 			return false
 		}
-		c.EditCurrentCell("")
+		c.EditCell(c.current, col, "")
 
 	case KeyA:
 		if !mods.Ctrl || !c.multiselect {
@@ -1833,4 +1834,37 @@ func (n *TreeNode) changed(structural bool) {
 	}
 	n.tree.layoutChildren()
 	n.tree.form.Update()
+}
+
+// handlesKey: Enter and F2 that open the editor of the current cell go to
+// the tree before the shortcuts (see Form.AddShortcut)
+func (c *TreeView) handlesKey(key Key, mods KeyModifiers) bool {
+	if mods.Ctrl || mods.Alt || mods.Shift || mods.Cmd || c.editorTextBox != nil {
+		return false
+	}
+	switch key {
+	case KeyEnter:
+		return c.editTriggerEnter && c.IsCellEditable(c.current, c.currentColumn)
+	case KeyF2:
+		return c.f2Column() >= 0
+	}
+	return false
+}
+
+// f2Column is the column F2 edits: the current one, or the first one of the
+// current node that can be edited (the name was clicked, the value is
+// edited); -1 - none
+func (c *TreeView) f2Column() int {
+	if !c.editTriggerF2 || c.current == nil {
+		return -1
+	}
+	if c.IsCellEditable(c.current, c.currentColumn) {
+		return c.currentColumn
+	}
+	for col := 0; col < c.columnCount; col++ {
+		if c.IsCellEditable(c.current, col) {
+			return col
+		}
+	}
+	return -1
 }
