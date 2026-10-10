@@ -1203,7 +1203,6 @@ func (c *Widget) ProcessMouseDown(button MouseButton, x int, y int, mods KeyModi
 			c.scrollingX = true
 			c.scrollingXInitial = c.scrollX
 			c.scrollingXInitialMousePos = x
-			fmt.Println("Started scrollingX", c.scrollingXInitial, c.scrollingXInitialMousePos)
 			return true
 		}
 	}
@@ -1241,7 +1240,6 @@ func (c *Widget) ProcessMouseDown(button MouseButton, x int, y int, mods KeyModi
 			c.scrollingY = true
 			c.scrollingYInitial = c.scrollY
 			c.scrollingYInitialMousePos = y
-			fmt.Println("Started scrollingY", c.scrollingYInitial, c.scrollingYInitialMousePos)
 			return true
 		}
 	}
@@ -1446,7 +1444,6 @@ func (c *Widget) ProcessKeyUp(key Key, mods KeyModifiers) bool {
 }
 
 func (c *Widget) ProcessMouseDblClick(button MouseButton, x int, y int, mods KeyModifiers) bool {
-	fmt.Println("Widget Mouse Double Click", x, y)
 
 	x += c.scrollX
 	y += c.scrollY
@@ -1519,7 +1516,6 @@ func (c *Widget) ProcessMouseWheel(deltaX, deltaY int) bool {
 		}
 		if c.allowScrollY {
 			c.scrollY -= deltaY * 30
-			fmt.Println("WidgetName:", c.name, "ScrollY:", c.scrollY)
 		}
 		c.checkScrolls()
 		return true

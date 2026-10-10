@@ -972,18 +972,22 @@ func (c *Form) FocusedWidget() Widgeter {
 
 func (c *Form) processKeyDown(keyCode Key, mods KeyModifiers) bool {
 	c.tooltipSuppress()
-	// Diagnostics of keys that seem lost: where the key goes
-	focused := "none"
-	if c.focusedWidget != nil {
-		focused = c.focusedWidget.TypeName() + " " + c.focusedWidget.Name()
-		if c.WidgetById(c.focusedWidget.Id()) == nil {
-			focused += " (not in the form)"
-		}
-	}
-	fmt.Printf("Key dispatch: form=%q focused=%s popups=%d\n", c.title, focused, len(c.topWidget.PopupWidgets))
 
 	if c.lastKeyboardModifiers != mods {
 		c.lastKeyboardModifiers = mods
+	}
+
+	// The keys that edit text go to a focused text field (see handlesKey)
+	// before the application's global handler too, not only before the
+	// shortcuts: Ctrl+Z in a search box undoes its typing, not the document
+	// of the application; the keys it does not take go on as usual
+	if c.focusedWidget != nil && len(c.topWidget.PopupWidgets) == 0 && c.focusedWidget.Enabled() {
+		if h, ok := c.focusedWidget.(keyHandler); ok && h.handlesKey(keyCode, mods) {
+			if c.focusedWidget.ProcessKeyDown(keyCode, mods) {
+				c.Update()
+				return true
+			}
+		}
 	}
 
 	if c.onGlobalKeyDown != nil {

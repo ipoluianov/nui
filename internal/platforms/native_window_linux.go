@@ -6,7 +6,6 @@ package platforms
 import (
 	"bytes"
 	_ "embed"
-	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -102,6 +101,11 @@ type nativeWindowPlatform struct {
 	// ShowModal), kept so doClose can decrement its modalChildCount and
 	// un-block it again once this dialog closes.
 	modalParent *nativeWindow
+
+	// modalChildren are the dialogs open modally over this window: showing
+	// it again (e.g. to bring it to the front) raises them over it, else a
+	// dialog would be hidden under the window it blocks. UI thread only.
+	modalChildren []*nativeWindow
 }
 
 type rect struct {
@@ -345,6 +349,11 @@ func (c *nativeWindow) Show() {
 	c.platform.mappedOnce = true
 
 	xMapRaised(c.platform.display, c.platform.window)
+	for _, d := range c.platform.modalChildren {
+		if d.platform.shown && !d.platform.closed {
+			xMapRaised(c.platform.display, d.platform.window)
+		}
+	}
 	xFlush(c.platform.display)
 }
 
@@ -562,12 +571,8 @@ func (c *nativeWindow) processEvent(event *xEvent) {
 			c.platform.awaitMaximize = false
 		}
 	case xMapNotify:
-		mapEvent := (*xMapEvent)(unsafe.Pointer(event))
-		fmt.Printf("Window became visible. Window ID: %d\n", mapEvent.Window)
 
 	case xUnmapNotify:
-		unmapEvent := (*xUnmapEvent)(unsafe.Pointer(event))
-		fmt.Printf("Window was hidden. Window ID: %d\n", unmapEvent.Window)
 
 		// The WM just iconified us (titlebar button, window menu,
 		// keyboard shortcut - ICCCM has the client unmap itself to go
@@ -583,15 +588,11 @@ func (c *nativeWindow) processEvent(event *xEvent) {
 		}
 
 	case xDestroyNotify:
-		destroyEvent := (*xDestroyWindowEvent)(unsafe.Pointer(event))
-		fmt.Printf("Window was destroyed. Window ID: %d\n", destroyEvent.Window)
 
 	case xReparentNotify:
-		reparentEvent := (*xReparentEvent)(unsafe.Pointer(event))
-		fmt.Printf("Window changed parent. Window ID: %d, New Parent ID: %d\n", reparentEvent.Window, reparentEvent.Parent)
+
 	case xResizeRequest:
 		resizeEvent := (*xResizeRequestEvent)(unsafe.Pointer(event))
-		fmt.Printf("Resize request received: Width=%d, Height=%d\n", resizeEvent.Width, resizeEvent.Height)
 
 		c.windowWidth = int(resizeEvent.Width)
 		c.windowHeight = int(resizeEvent.Height)
@@ -620,14 +621,15 @@ func (c *nativeWindow) processEvent(event *xEvent) {
 
 	case xKeyPress:
 		keyEvent := (*xKeyEvent)(unsafe.Pointer(event))
-		keySym := xLookupKeysym(unsafe.Pointer(event), 0)
-		fmt.Printf("Key pressed: KeySym = %d, KeyCode = 0x%x\n", keySym, keyEvent.Keycode)
 		key := ConvertLinuxKeyToNuiKey(int(keyEvent.Keycode))
 		processed := false
 		// An input method sends the text it composed as a key press with
 		// no key (keycode 0): only the text is there
 		if c.onKeyDown != nil && keyEvent.Keycode != 0 {
-			processed = c.onKeyDown(key, c.getModifierState())
+			// The modifiers held when the key was pressed: by the time the
+			// event is handled they may be released already (a quick
+			// Ctrl+F, a busy application)
+			processed = c.onKeyDown(key, modifiersOf(keyEvent.State))
 		}
 
 		if processed {
@@ -647,11 +649,9 @@ func (c *nativeWindow) processEvent(event *xEvent) {
 
 	case xKeyRelease:
 		keyEvent := (*xKeyEvent)(unsafe.Pointer(event))
-		keySym := xLookupKeysym(unsafe.Pointer(event), 0)
-		fmt.Printf("Key released: KeySym = %d, KeyCode = 0x%x\n", keySym, keyEvent.Keycode)
 		key := ConvertLinuxKeyToNuiKey(int(keyEvent.Keycode))
 		if c.onKeyUp != nil {
-			c.onKeyUp(key, c.getModifierState())
+			c.onKeyUp(key, modifiersOf(keyEvent.State))
 		}
 
 	case xFocusIn:
@@ -917,8 +917,14 @@ func (c *nativeWindow) doClose() {
 	xFlush(c.platform.display)
 	c.platform.closed = true
 
-	if c.platform.modalParent != nil {
-		atomic.AddInt32(&c.platform.modalParent.platform.modalChildCount, -1)
+	if p := c.platform.modalParent; p != nil {
+		atomic.AddInt32(&p.platform.modalChildCount, -1)
+		for i, d := range p.platform.modalChildren {
+			if d == c {
+				p.platform.modalChildren = append(p.platform.modalChildren[:i], p.platform.modalChildren[i+1:]...)
+				break
+			}
+		}
 		c.platform.modalParent = nil
 	}
 
@@ -1247,6 +1253,7 @@ func (c *nativeWindow) ShowModal(parent Window) {
 	if p, ok := parent.(*nativeWindow); ok && p != nil {
 		c.platform.modalParent = p
 		atomic.AddInt32(&p.platform.modalChildCount, 1)
+		p.platform.modalChildren = append(p.platform.modalChildren, c)
 		setWindowModalX(c.platform.display, c.platform.window, p.platform.window)
 	}
 }
@@ -1364,6 +1371,11 @@ func (c *nativeWindow) getModifierState() KeyModifiers {
 		unsafe.Pointer(&mask),
 	)
 
+	return modifiersOf(mask)
+}
+
+// modifiersOf reads the modifier keys of the state of an X event
+func modifiersOf(mask uint32) KeyModifiers {
 	return KeyModifiers{
 		Shift: (mask & xShiftMask) != 0,
 		Ctrl:  (mask & xControlMask) != 0,
