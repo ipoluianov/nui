@@ -630,7 +630,7 @@ func (c *nativeWindow) processEvent(event *xEvent) {
 			// The modifiers held when the key was pressed: by the time the
 			// event is handled they may be released already (a quick
 			// Ctrl+F, a busy application)
-			processed = c.onKeyDown(key, modifiersOf(keyEvent.State))
+			processed = c.onKeyDown(key, keyModifiersOf(key, keyEvent.State, true))
 		}
 
 		if processed {
@@ -652,7 +652,7 @@ func (c *nativeWindow) processEvent(event *xEvent) {
 		keyEvent := (*xKeyEvent)(unsafe.Pointer(event))
 		key := ConvertLinuxKeyToNuiKey(int(keyEvent.Keycode))
 		if c.onKeyUp != nil {
-			c.onKeyUp(key, modifiersOf(keyEvent.State))
+			c.onKeyUp(key, keyModifiersOf(key, keyEvent.State, false))
 		}
 
 	case xFocusIn:
@@ -1471,6 +1471,23 @@ func (c *nativeWindow) getModifierState() KeyModifiers {
 	)
 
 	return modifiersOf(mask)
+}
+
+// keyModifiersOf is the modifiers after a key event. The state of an X key event is the one
+// before it: the press of Shift has no Shift in it, its release still has it. The form keeps
+// the modifiers of the last key event for the mouse, so without this a click after Shift was
+// released would extend the selection as if it were still held.
+func keyModifiersOf(key Key, state uint32, pressed bool) KeyModifiers {
+	mods := modifiersOf(state)
+	switch key {
+	case KeyShift:
+		mods.Shift = pressed
+	case KeyCtrl:
+		mods.Ctrl = pressed
+	case KeyAlt:
+		mods.Alt = pressed
+	}
+	return mods
 }
 
 // modifiersOf reads the modifier keys of the state of an X event
