@@ -5,43 +5,107 @@ package platforms
 
 import (
 	"bytes"
+	"fmt"
+	"os"
 	"os/exec"
+	"strconv"
 	"strings"
+	"sync/atomic"
 )
 
 // openFileDialog shells out to the desktop's own file-picker helper: zenity
-// (GTK/GNOME) if present, else kdialog (Qt/KDE). Neither X11 nor GTK is
-// otherwise linked into this package, so this avoids pulling in a GTK build
-// dependency just to draw a dialog — it reuses whichever one the running
-// desktop already ships.
+// (GTK/GNOME) or kdialog (Qt/KDE), the one of the running desktop first.
+// Neither X11 nor GTK is otherwise linked into this package, so this avoids
+// pulling in a GTK build dependency just to draw a dialog — it reuses
+// whichever one the running desktop already ships.
+//
+// The dialog is modal over parent: the parent gets no keyboard or mouse
+// input while it is open (as for a dialog of ShowModal), and kdialog is
+// made transient for it (zenity 4 ignores --attach).
 func openFileDialog(parent Window, opts OpenFileDialogOptions) ([]string, error) {
-	if bin, err := exec.LookPath("zenity"); err == nil {
-		return openFileDialogZenity(bin, opts)
-	}
-	if bin, err := exec.LookPath("kdialog"); err == nil {
-		return openFileDialogKdialog(bin, opts)
-	}
-	return nil, ErrNoFileDialog
+	var res []string
+	err := withHelper(parent, func(kind, bin string, attach []string) (err error) {
+		if kind == "kdialog" {
+			res, err = openFileDialogKdialog(bin, opts, attach)
+		} else {
+			res, err = openFileDialogZenity(bin, opts)
+		}
+		return
+	})
+	return res, err
 }
 
 func saveFileDialog(parent Window, opts SaveFileDialogOptions) (string, error) {
-	if bin, err := exec.LookPath("zenity"); err == nil {
-		return saveFileDialogZenity(bin, opts)
-	}
-	if bin, err := exec.LookPath("kdialog"); err == nil {
-		return saveFileDialogKdialog(bin, opts)
-	}
-	return "", ErrNoFileDialog
+	var res string
+	err := withHelper(parent, func(kind, bin string, attach []string) (err error) {
+		if kind == "kdialog" {
+			res, err = saveFileDialogKdialog(bin, opts, attach)
+		} else {
+			res, err = saveFileDialogZenity(bin, opts)
+		}
+		return
+	})
+	return res, err
 }
 
 func selectDirectoryDialog(parent Window, opts SelectDirectoryDialogOptions) (string, error) {
-	if bin, err := exec.LookPath("zenity"); err == nil {
-		return selectDirectoryDialogZenity(bin, opts)
+	var res string
+	err := withHelper(parent, func(kind, bin string, attach []string) (err error) {
+		if kind == "kdialog" {
+			res, err = selectDirectoryDialogKdialog(bin, opts, attach)
+		} else {
+			res, err = selectDirectoryDialogZenity(bin, opts)
+		}
+		return
+	})
+	return res, err
+}
+
+// withHelper runs a dialog by the helper of the desktop (kdialog first on
+// KDE, else zenity first), modal over parent: its input is dropped for as
+// long as the helper runs (the modalChildCount of ShowModal)
+func withHelper(parent Window, run func(kind, bin string, attach []string) error) error {
+	kinds := []string{"zenity", "kdialog"}
+	if strings.Contains(strings.ToUpper(os.Getenv("XDG_CURRENT_DESKTOP")), "KDE") {
+		kinds = []string{"kdialog", "zenity"}
 	}
-	if bin, err := exec.LookPath("kdialog"); err == nil {
-		return selectDirectoryDialogKdialog(bin, opts)
+	var attach []string
+	if p, ok := parent.(*nativeWindow); ok && p != nil {
+		attach = kdialogAttach(p)
+		atomic.AddInt32(&p.platform.modalChildCount, 1)
+		defer atomic.AddInt32(&p.platform.modalChildCount, -1)
 	}
-	return "", ErrNoFileDialog
+	for _, kind := range kinds {
+		if bin, err := exec.LookPath(kind); err == nil {
+			return run(kind, bin, attach)
+		}
+	}
+	return ErrNoFileDialog
+}
+
+// kdialogAttach are the arguments that make a kdialog transient for a
+// window and place it in its middle: the window manager places a dialog of
+// a foreign window where it likes, on another screen too
+func kdialogAttach(p *nativeWindow) []string {
+	args := []string{"--attach", strconv.FormatUint(uint64(p.platform.window), 10)}
+	if geo := centeredOver(p); geo != "" {
+		args = append(args, "--geometry", geo)
+	}
+	return args
+}
+
+// centeredOver is the geometry WxH+X+Y of a dialog in the middle of a window
+func centeredOver(p *nativeWindow) string {
+	px, py := p.Pos()
+	pw, ph := p.Size()
+	if pw <= 0 || ph <= 0 {
+		return ""
+	}
+	w, h := min(900, pw-40), min(620, ph-40)
+	if w < 400 || h < 300 {
+		return ""
+	}
+	return fmt.Sprintf("%dx%d+%d+%d", w, h, px+(pw-w)/2, py+(ph-h)/2)
 }
 
 func openFileDialogZenity(bin string, opts OpenFileDialogOptions) ([]string, error) {
@@ -65,8 +129,8 @@ func openFileDialogZenity(bin string, opts OpenFileDialogOptions) ([]string, err
 	return splitDialogOutput(out), nil
 }
 
-func openFileDialogKdialog(bin string, opts OpenFileDialogOptions) ([]string, error) {
-	args := make([]string, 0, 4)
+func openFileDialogKdialog(bin string, opts OpenFileDialogOptions, attach []string) ([]string, error) {
+	args := append([]string(nil), attach...)
 	if opts.AllowMultiple {
 		args = append(args, "--multiple", "--separate-output")
 	}
@@ -103,14 +167,14 @@ func saveFileDialogZenity(bin string, opts SaveFileDialogOptions) (string, error
 	return runDialog(bin, args...)
 }
 
-func saveFileDialogKdialog(bin string, opts SaveFileDialogOptions) (string, error) {
+func saveFileDialogKdialog(bin string, opts SaveFileDialogOptions, attach []string) (string, error) {
 	dir := opts.DefaultDirectory
 	if dir == "" {
 		dir = "."
 	}
 	path := joinDirAndName(dir, opts.DefaultFileName)
 
-	args := []string{"--getsavefilename", path}
+	args := append(append([]string(nil), attach...), "--getsavefilename", path)
 	args = append(args, kdialogFilterArgs(opts.Filters)...)
 	if opts.Title != "" {
 		args = append(args, "--title", opts.Title)
@@ -132,13 +196,13 @@ func selectDirectoryDialogZenity(bin string, opts SelectDirectoryDialogOptions) 
 	return runDialog(bin, args...)
 }
 
-func selectDirectoryDialogKdialog(bin string, opts SelectDirectoryDialogOptions) (string, error) {
+func selectDirectoryDialogKdialog(bin string, opts SelectDirectoryDialogOptions, attach []string) (string, error) {
 	dir := opts.DefaultDirectory
 	if dir == "" {
 		dir = "."
 	}
 
-	args := []string{"--getexistingdirectory", dir}
+	args := append(append([]string(nil), attach...), "--getexistingdirectory", dir)
 	if opts.Title != "" {
 		args = append(args, "--title", opts.Title)
 	}
