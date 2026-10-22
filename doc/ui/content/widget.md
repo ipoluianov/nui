@@ -38,5 +38,5 @@ Some widgets push an event payload into `ui.CurrentEvent()` before calling the c
 - **Paint**: `SetOnPaint(func(*ui.Canvas))`
 - **Mouse**: `SetOnMouseDown/Up/Move`, `SetOnMouseWheel`, `SetOnMouseEnter/Leave`
 - **Keyboard**: `SetOnKeyDown/Up`, `SetOnChar`
-- **Focus**: `SetOnFocused`, `SetOnFocusLost`
+- **Focus**: `SetOnFocused`, `SetOnFocusLost`. Tab and Shift+Tab go over the visible and enabled widgets that can be focused
 

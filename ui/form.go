@@ -1195,6 +1195,12 @@ func (c *Form) processKeyDown(keyCode Key, mods KeyModifiers) bool {
 		return true
 	}
 
+	// The Menu key and Shift+F10 open the context menu a right click would,
+	// unless the widgets or the shortcuts of the application took the key
+	if len(c.topWidget.PopupWidgets) == 0 && isContextMenuKey(keyCode, mods) && c.showFocusedContextMenu() {
+		return true
+	}
+
 	if !c.topWidget.ProcessKeyDown(keyCode, mods) {
 		if keyCode == KeyTab {
 			reverse := mods.Shift

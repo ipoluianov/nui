@@ -400,6 +400,13 @@ func (c *Form) processMenuBarMnemonic(key Key, mods KeyModifiers) bool {
 // menu), a letter clicks the item with the mnemonic. Returns true if the key
 // was for the menu.
 func (c *Form) processMenuKeys(key Key, mods KeyModifiers) bool {
+	if list, ok := c.TopPopupWidget().(*comboBoxPopup); ok {
+		if mods.Ctrl || mods.Alt || mods.Cmd || !list.processKeys(key) {
+			return false
+		}
+		c.Update()
+		return true
+	}
 	menu, ok := c.TopPopupWidget().(*ContextMenu)
 	if !ok {
 		return false
@@ -409,6 +416,10 @@ func (c *Form) processMenuKeys(key Key, mods KeyModifiers) bool {
 		menu.moveActive(1)
 	case KeyArrowUp:
 		menu.moveActive(-1)
+	case KeyHome:
+		menu.activateFirst()
+	case KeyEnd:
+		menu.activateLast()
 	case KeyEnter, KeySpace:
 		if item := menu.activeItem(); item != nil {
 			item.activateByKeyboard()
@@ -426,9 +437,19 @@ func (c *Form) processMenuKeys(key Key, mods KeyModifiers) bool {
 			c.switchMenuBarMenu(-1)
 		}
 	default:
-		m := mnemonicOfKey(key)
-		if m == 0 || mods.Ctrl || mods.Cmd {
+		if mods.Ctrl || mods.Cmd {
 			return false
+		}
+		m := mnemonicOfKey(key)
+		if m == 0 {
+			switch key {
+			case KeyShift, KeyCtrl, KeyAlt, KeyCommand, KeyCapsLock:
+				return false
+			}
+			// Any other key stays in the open menu: it must not change the
+			// widget behind it, e.g. move the current row of a table the
+			// menu was opened for
+			return true
 		}
 		for _, item := range menu.items {
 			if item.mnemonic == m && item.selectable() {

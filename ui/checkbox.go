@@ -155,6 +155,26 @@ func (c *Checkbox) buttonProcessMouseUp(button MouseButton, x int, y int, mods K
 	// *Checkbox, so a direct comparison against c never matches even though
 	// the mouse is genuinely over this checkbox. The bounds check above
 	// already confirms that, so toggle unconditionally here.
+	c.toggle()
+	return true
+}
+
+// ProcessKeyDown flips the checkbox on Space, like a click. Enter is left to
+// the form, where it presses the accept button of a dialog.
+func (c *Checkbox) ProcessKeyDown(key Key, mods KeyModifiers) bool {
+	if c.onKeyDown != nil && c.onKeyDown(key, mods) {
+		return true
+	}
+	if key == KeySpace && !mods.Ctrl && !mods.Alt && !mods.Cmd && c.Enabled() {
+		c.toggle()
+		return true
+	}
+	return false
+}
+
+// toggle goes to the next state, as a click does:
+// unchecked -> checked (-> indeterminate, when tristate) -> unchecked
+func (c *Checkbox) toggle() {
 	switch {
 	case c.Tristate() && c.Checked():
 		c.SetIndeterminate(true)
@@ -163,6 +183,4 @@ func (c *Checkbox) buttonProcessMouseUp(button MouseButton, x int, y int, mods K
 	default:
 		c.SetChecked(!c.Checked())
 	}
-
-	return true
 }

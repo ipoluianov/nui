@@ -42,6 +42,7 @@ func NewComboBox() *ComboBox {
 	})
 
 	c.SetTypeName("ComboBox")
+	c.SetCanBeFocused(true)
 	c.SetMouseCursor(MouseCursorPointer)
 	c.SetOnPaint(c.draw)
 	return &c
@@ -95,6 +96,37 @@ func (c *ComboBox) selectByUser(index int) {
 	if changed && c.onSelectedIndexChanged != nil {
 		c.onSelectedIndexChanged()
 	}
+}
+
+// ProcessKeyDown lets the keyboard pick an item: Up/Down choose the previous
+// or the next one in place, Home/End the first or the last, and Space, F4 or
+// Alt+Down open the list. Enter is left to the form (the accept button).
+func (c *ComboBox) ProcessKeyDown(key Key, mods KeyModifiers) bool {
+	if c.onKeyDown != nil && c.onKeyDown(key, mods) {
+		return true
+	}
+	if !c.Enabled() || len(c.items) == 0 || mods.Ctrl || mods.Cmd || mods.Shift {
+		return false
+	}
+	last := len(c.items) - 1
+	switch {
+	case key == KeySpace && !mods.Alt, key == KeyF4 && !mods.Alt, key == KeyArrowDown && mods.Alt:
+		c.OpenPopup()
+	case mods.Alt:
+		return false
+	case key == KeyArrowUp:
+		c.selectByUser(max(c.selectedIndex-1, 0))
+	case key == KeyArrowDown:
+		c.selectByUser(min(c.selectedIndex+1, last))
+	case key == KeyHome:
+		c.selectByUser(0)
+	case key == KeyEnd:
+		c.selectByUser(last)
+	default:
+		return false
+	}
+	c.form.Update()
+	return true
 }
 
 func (c *ComboBox) SelectedItemText() string {
@@ -204,12 +236,16 @@ type comboBoxPopup struct {
 	// triggerTop is the owning ComboBox's top in client coordinates, where
 	// the dropdown ends when it opens upwards (see PopupFlipped).
 	triggerTop int
+	// active is the item chosen with the keyboard (-1 - none yet);
+	// Enter or Space picks it
+	active int
 }
 
 func NewComboBoxPopup() *comboBoxPopup {
 	var c comboBoxPopup
 	c.InitWidget()
 	c.SetTypeName("ComboBoxPopup")
+	c.active = -1
 	c.SetAbsolutePositioning(true)
 	c.scrollBarInset = 1 // inside the border
 	c.SetRole("popup")
@@ -283,6 +319,64 @@ func (c *comboBoxPopup) scrollToSelected() {
 	c.scrollToItem(c.selectedIndex - visibleItems/2)
 }
 
+// processKeys moves the keyboard choice with Up/Down/Home/End and picks it
+// with Enter or Space; Esc is handled by the form, which closes the popup.
+// The first Up/Down starts from the selected item.
+func (c *comboBoxPopup) processKeys(key Key) bool {
+	if len(c.items) == 0 {
+		return false
+	}
+	last := len(c.items) - 1
+	from := c.active
+	if from < 0 {
+		from = c.selectedIndex
+	}
+	switch key {
+	case KeyArrowUp:
+		if from < 0 {
+			from = last + 1
+		}
+		c.setActive(max(from-1, 0))
+	case KeyArrowDown:
+		c.setActive(min(from+1, last))
+	case KeyHome:
+		c.setActive(0)
+	case KeyEnd:
+		c.setActive(last)
+	case KeyEnter, KeySpace:
+		if from >= 0 && from <= last {
+			item := c.items[from]
+			c.form.Panel().CloseTopPopup()
+			if item.OnClick != nil {
+				item.OnClick(item.index)
+			}
+		} else {
+			c.form.Panel().CloseTopPopup()
+		}
+	default:
+		return false
+	}
+	return true
+}
+
+// setActive marks the item chosen with the keyboard and scrolls to it
+func (c *comboBoxPopup) setActive(index int) {
+	c.active = index
+	for i, item := range c.items {
+		item.active = i == index
+	}
+	itemHeight := ThemeRowHeight()
+	visibleItems := max(c.Height()/itemHeight, 1)
+	first := c.ScrollY() / itemHeight
+	switch {
+	case index < first:
+		c.scrollToItem(index)
+	case index >= first+visibleItems:
+		c.scrollToItem(index - visibleItems + 1)
+	}
+	c.form.Update()
+}
+
 // processWheel scrolls by whole items, so no item is cut at the top.
 func (c *comboBoxPopup) processWheel(deltaX, deltaY int) bool {
 	c.scrollToItem(c.ScrollY()/ThemeRowHeight() - deltaY*comboBoxPopupWheelItems)
@@ -331,7 +425,9 @@ type comboBoxPopupItem struct {
 	index    int
 	text     string
 	selected bool
-	OnClick  func(index int)
+	// active: chosen with the keyboard, drawn like the hovered item
+	active  bool
+	OnClick func(index int)
 
 	// pressed is set by a press on the item; the release over it picks it
 	pressed bool
@@ -357,7 +453,7 @@ func (c *comboBoxPopupItem) Draw(ctx *Canvas) {
 	p := CurrentPalette()
 	backColor, textColor := p.PopupBase, p.Text
 	switch {
-	case c.IsHovered():
+	case c.IsHovered() || c.active:
 		backColor, textColor = p.Highlight, p.HighlightedText
 	case c.selected:
 		backColor = p.Selection

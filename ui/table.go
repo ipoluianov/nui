@@ -394,6 +394,17 @@ func (c *Table) AddWidgetOnTable(widget Widgeter, posCellRow int, posCellCol int
 	c.updateInnerWidgetsLayout()
 }
 
+// contextMenuAnchor opens the context menu from the keyboard under the
+// current cell, kept inside the visible part of the table
+func (c *Table) contextMenuAnchor() (x, y int) {
+	if c.currentCellY < 0 || c.currentCellY >= c.rowCount {
+		return 0, c.headerHeight()
+	}
+	x = c.columnOffset(max(c.currentCellX, 0)) - c.scrollX
+	y = c.rowOffset(c.currentCellY) + c.rowHeight1 - c.scrollY
+	return min(max(x, 0), c.Width()), min(max(y, c.headerHeight()), c.Height())
+}
+
 func (c *Table) rowOffset(row int) int {
 	if row < 0 || row >= c.rowCount {
 		return 0

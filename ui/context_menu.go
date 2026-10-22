@@ -66,6 +66,48 @@ func (c *Form) ShowContextMenu(menu *ContextMenu, x int, y int) {
 	}
 }
 
+// isContextMenuKey tells the keys that open a context menu: the Menu key
+// and Shift+F10
+func isContextMenuKey(key Key, mods KeyModifiers) bool {
+	if mods.Ctrl || mods.Alt || mods.Cmd {
+		return false
+	}
+	return key == KeyContextMenu && !mods.Shift || key == KeyF10 && mods.Shift
+}
+
+// contextMenuAnchor is a widget that tells where its context menu opens from
+// the keyboard, in its own coordinates (e.g. a table: under its current row)
+type contextMenuAnchor interface {
+	contextMenuAnchor() (x, y int)
+}
+
+// showFocusedContextMenu opens the context menu of the focused widget, or of
+// its nearest parent that has one - the menu a right click on it opens - with
+// the first item chosen. Returns false when there is no menu.
+func (c *Form) showFocusedContextMenu() bool {
+	focused := c.focusedWidget
+	if focused == nil {
+		return false
+	}
+	for w := focused; w != nil; w = c.WidgetById(w.ParentWidgetId()) {
+		owner, ok := w.(interface{ ContextMenu() *ContextMenu })
+		if !ok || owner.ContextMenu() == nil {
+			continue
+		}
+		// Next to the focused widget, which may be inside the menu's owner
+		x, y := focused.RectClientAreaOnWindow()
+		if a, ok := focused.(contextMenuAnchor); ok {
+			ax, ay := a.contextMenuAnchor()
+			x, y = x+ax, y+ay
+		} else {
+			y += min(focused.Height(), ThemeControlHeight())
+		}
+		c.ShowContextMenu(owner.ContextMenu(), x, y)
+		return true
+	}
+	return false
+}
+
 func (c *ContextMenu) ShowMenu(x int, y int) {
 	c.dropDown = false
 	c.show(x, y)
@@ -214,6 +256,12 @@ func (c *ContextMenu) activeItem() *ContextMenuItem {
 func (c *ContextMenu) activateFirst() {
 	c.active = nil
 	c.moveActive(1)
+}
+
+// activateLast chooses the last item that can be chosen
+func (c *ContextMenu) activateLast() {
+	c.active = nil
+	c.moveActive(-1)
 }
 
 // moveActive chooses the next (step 1) or the previous (-1) item that can be

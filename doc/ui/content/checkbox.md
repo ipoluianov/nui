@@ -1,6 +1,7 @@
 # Checkbox
 
-Boolean input widget.
+Boolean input widget. A click or Space flips it (with `SetTristate(true)` it goes on to the
+indeterminate state); Enter is left to the form, where it presses the accept button of a dialog.
 
 ## Create
 

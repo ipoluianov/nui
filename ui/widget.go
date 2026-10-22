@@ -3004,10 +3004,14 @@ func (c *Widget) nextFocus(reverse bool) {
 
 	focusedWidgetIndex := -1
 	var focusableWidgets []Widgeter
+	focused := c.form.FocusedWidget()
 	for _, w := range children {
-		if w.IsCanBeFocused() && w.IsVisible() {
+		isFocused := focused != nil && focused.Id() == w.Id()
+		// A disabled widget is skipped; the focused one (that may have been
+		// disabled since) stays in the list, so Tab goes on from its place
+		if w.IsCanBeFocused() && w.IsVisible() && (w.Enabled() || isFocused) {
 			focusableWidgets = append(focusableWidgets, w)
-			if focused := c.form.FocusedWidget(); focused != nil && focused.Id() == w.Id() {
+			if isFocused {
 				focusedWidgetIndex = len(focusableWidgets) - 1
 			}
 		}
@@ -3052,7 +3056,7 @@ func (c *Widget) nextFocusByDirection(dir string) {
 
 	var focusableWidgets []Widgeter
 	for _, w := range children {
-		if w.IsCanBeFocused() && w.IsVisible() {
+		if w.IsCanBeFocused() && w.IsVisible() && w.Enabled() {
 			focusableWidgets = append(focusableWidgets, w)
 		}
 	}

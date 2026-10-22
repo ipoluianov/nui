@@ -91,6 +91,20 @@ func (c *RadioButton) draw(cnv *Canvas) {
 	}
 }
 
+// ProcessKeyDown checks the radio button on Space, like a click
+func (c *RadioButton) ProcessKeyDown(key Key, mods KeyModifiers) bool {
+	if c.onKeyDown != nil && c.onKeyDown(key, mods) {
+		return true
+	}
+	if key == KeySpace && !mods.Ctrl && !mods.Alt && !mods.Cmd && c.Enabled() {
+		if !c.checked {
+			c.SetChecked(true)
+		}
+		return true
+	}
+	return false
+}
+
 func (c *RadioButton) buttonProcessMouseDown(button MouseButton, x int, y int, mods KeyModifiers) bool {
 	return true
 }

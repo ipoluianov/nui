@@ -1,6 +1,6 @@
 # RadioButton
 
-Single-choice widget (exclusive within the same parent container).
+Single-choice widget (exclusive within the same parent container). A click or Space checks it.
 
 ## Create
 

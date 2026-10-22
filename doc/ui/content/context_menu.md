@@ -40,3 +40,16 @@ form.ShowContextMenu(menu, x, y) // x, y in the form's client area
 ```
 
 The first item is active, so the keyboard (Up/Down, Enter, Esc) works at once.
+
+## Keyboard
+
+The Menu key and Shift+F10 open, from the keyboard, the menu a right click would: the one set
+with `SetContextMenu` on the focused widget or on its nearest parent that has one. It opens
+under the focused widget (a table: under its current cell) with the first item chosen. The key
+goes to the application first: a widget's `SetOnKeyDown`, `SetOnGlobalKeyDown` and a shortcut
+added with `form.AddShortcut` take it before the menu opens.
+
+In an open menu Up/Down choose an item, Home/End the first or the last one, Enter or Space
+click it, Right/Left open and close a submenu, a mnemonic letter clicks its item, Esc closes
+the menu. Other keys stay in the menu and don't reach the widget behind it; shortcuts with
+Ctrl (Cmd) still work.
