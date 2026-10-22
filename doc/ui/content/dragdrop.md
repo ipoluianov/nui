@@ -32,3 +32,29 @@ form.SetOnFilesDropped(func(files []string, x, y int) {
 ```
 
 Platforms: XDND on Linux (X11), `WM_DROPFILES` on Windows, `NSDraggingDestination` on macOS.
+
+## Files to other applications
+
+A drag with `Files` that leaves the form goes on as a drag of the system: the files can be
+dropped on Explorer, a mail, an editor... `DroppedOutside` is called when another application
+took them, with what it did (`DragEffectCopy`, `DragEffectMove` - they are gone from where they
+were, `DragEffectLink`):
+
+```go
+table.SetDragSource(func(x, y int) *ui.DragData {
+	row, _ := table.CellAt(x, y)
+	if row < 0 {
+		return nil
+	}
+	return &ui.DragData{
+		Text:           names[row],
+		Files:          []string{paths[row]},
+		DroppedOutside: func(effect ui.DragEffect) { reload() },
+	}
+})
+```
+
+The targets copy unless the user holds Shift (move), even on the same drive.
+
+Platforms: Windows (the shell's data object and drag image). On Linux and macOS the drag stays
+in the form for now.

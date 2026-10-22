@@ -1225,6 +1225,20 @@ func (c *Table) onMouseDown(button MouseButton, x int, y int, mods KeyModifiers)
 	return true
 }
 
+// CellAt returns the data cell at the point in the table's coordinates (as
+// the mouse events and the drag source get it), or -1, -1 for none: the
+// header, the area below the rows
+func (c *Table) CellAt(x, y int) (row int, col int) {
+	if y < c.headerHeight() {
+		return -1, -1
+	}
+	col, row = c.cellByPosition(x+c.scrollX, y+c.scrollY)
+	if row < 0 || col < 0 {
+		return -1, -1
+	}
+	return row, col
+}
+
 // ProcessMouseDown selects the row (cell) under a right click before the
 // context menu is shown, so the menu acts on what was clicked. An already
 // selected row keeps the selection, so a menu over a multi-selection acts on all of it.

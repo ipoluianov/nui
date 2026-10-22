@@ -3,6 +3,8 @@ package ui
 import (
 	"fmt"
 	"path/filepath"
+
+	"github.com/ipoluianov/nui/internal/platforms"
 )
 
 // DragData is what is dragged: set the fields that apply. Files are set for
@@ -17,7 +19,22 @@ type DragData struct {
 	Value any
 	// Source is the widget the drag started from, nil for system files
 	Source Widgeter
+	// DroppedOutside is called when the Files, dragged out of the form, are
+	// dropped on another application (where the platform can drag out:
+	// Windows): effect is what it did with them, DragEffectMove - they are
+	// gone from where they were
+	DroppedOutside func(effect DragEffect)
 }
+
+// DragEffect is what the application that took dragged files did with them
+type DragEffect = platforms.DragEffect
+
+const (
+	DragEffectNone = platforms.DragEffectNone
+	DragEffectCopy = platforms.DragEffectCopy
+	DragEffectMove = platforms.DragEffectMove
+	DragEffectLink = platforms.DragEffectLink
+)
 
 // SetDragSource makes the widget a place to drag data from. When the user
 // presses the left button on it and moves the mouse, f is called with the
@@ -152,8 +169,32 @@ func (c *Form) dragMouseMove(x, y int) bool {
 	}
 	d.x, d.y = x, y
 	c.lastMouseX, c.lastMouseY = x, y
+	if len(d.data.Files) > 0 && (x < 0 || y < 0 || x >= c.width || y >= c.height) && c.dragFilesOut() {
+		return true
+	}
 	d.target = c.dropTargetAt(d.data, x, y)
 	c.Update()
+	return true
+}
+
+// dragFilesOut hands the drag of files that left the form over to the system,
+// so other applications can take them. Returns false where the platform can't
+// drag out: the drag goes on in the form then.
+func (c *Form) dragFilesOut() bool {
+	saved := c.drag
+	c.drag = dragState{}
+	c.Update()
+	effect, dropped, started := c.wnd.StartFileDrag(saved.data.Files)
+	if !started {
+		c.drag = saved
+		return false
+	}
+	// The system took the release of the button: it goes outside the widgets,
+	// it must not click the one the drag started on
+	c.processMouseUp(MouseButtonLeft, dragCancelledPos, dragCancelledPos)
+	if dropped && saved.data.DroppedOutside != nil {
+		saved.data.DroppedOutside(effect)
+	}
 	return true
 }
 

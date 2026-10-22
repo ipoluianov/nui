@@ -5,6 +5,16 @@ import (
 	"image/color"
 )
 
+// DragEffect is what the application that took dragged files did with them
+type DragEffect int
+
+const (
+	DragEffectNone DragEffect = iota
+	DragEffectCopy
+	DragEffectMove
+	DragEffectLink
+)
+
 // Window is a native window. All the windows live on the UI thread (the main
 // OS thread): its event loop serves them all and calls every callback there,
 // so callbacks of different windows never run concurrently. Call the methods
@@ -52,6 +62,12 @@ type Window interface {
 	// the file manager) are dropped on the window, at (x, y) in client
 	// coordinates
 	OnFilesDropped(func(files []string, x, y int))
+	// StartFileDrag drags the files out to other applications (e.g. to the
+	// file manager) while the left button is held, and returns when they are
+	// dropped (dropped is true, effect is what the target did with them) or
+	// the drag is cancelled. started is false where the platform can't drag
+	// out: nothing happened then.
+	StartFileDrag(files []string) (effect DragEffect, dropped bool, started bool)
 
 	// Window appearance
 	SetTitle(title string)
