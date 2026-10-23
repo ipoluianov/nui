@@ -66,5 +66,6 @@ Short reference for `ui` controls. Code snippets are intentionally minimal—see
 ## Misc
 
 - [Timer](content/timer.md)
+- [Clipboard](content/clipboard.md)
 - [Drag and drop](content/dragdrop.md)
 - [TrayIcon](content/trayicon.md)

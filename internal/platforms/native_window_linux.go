@@ -385,6 +385,10 @@ func (c *nativeWindow) Exec() {
 		return
 	}
 	runLoopUntil(func() bool { return c.platform.closed })
+	// The last window is gone: the application quits, the copied text stays
+	if len(openWindows()) == 0 {
+		clipboardHandOver()
+	}
 }
 
 // The timer tick of all the windows (OnTimer)
@@ -443,6 +447,10 @@ func processXEvents() {
 		// key mapping to turn the keys into the new characters
 		if event.eventType() == xMappingNotify {
 			xRefreshKeyboardMapping(unsafe.Pointer(&event))
+			continue
+		}
+
+		if processClipboardEvent(&event) {
 			continue
 		}
 

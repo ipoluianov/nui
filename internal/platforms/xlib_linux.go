@@ -319,54 +319,57 @@ func (e *xClientMessageEvent) dataLong(i int) int64 {
 }
 
 var (
-	xOpenDisplay          func(displayName uintptr) uintptr
-	xCloseDisplay         func(display uintptr) int32
-	xDefaultScreen        func(display uintptr) int32
-	xDefaultRootWindow    func(display uintptr) uintptr
-	xRootWindow           func(display uintptr, screen int32) uintptr
-	xCreateWindow         func(display, parent uintptr, x, y int32, width, height uint32, borderWidth uint32, depth int32, class uint32, visual uintptr, valuemask uintptr, attrs unsafe.Pointer) uintptr
-	xSelectInput          func(display, window uintptr, eventMask int64) int32
-	xGetWindowAttributes  func(display, window uintptr, attrs unsafe.Pointer) int32
-	xMapWindow            func(display, window uintptr) int32
-	xFlush                func(display uintptr) int32
-	xConnectionNumber     func(display uintptr) int32
-	xSetWindowBackground  func(display, window uintptr, pixel uintptr) int32
-	xClearArea            func(display, window uintptr, x, y int32, width, height uint32, exposures int32) int32
-	xPending              func(display uintptr) int32
-	xNextEvent            func(display uintptr, event unsafe.Pointer) int32
-	xDestroyWindow        func(display, window uintptr) int32
-	xStoreName            func(display, window uintptr, name string) int32
-	xInternAtom           func(display uintptr, name string, onlyIfExists int32) uintptr
-	xChangeProperty       func(display, window, property, typ uintptr, format, mode int32, data unsafe.Pointer, nelements int32) int32
-	xSetWMProtocols       func(display, window uintptr, protocols unsafe.Pointer, count int32) int32
-	xMoveWindow           func(display, window uintptr, x, y int32) int32
-	xResizeWindow         func(display, window uintptr, width, height uint32) int32
-	xSetWMNormalHints     func(display, window uintptr, hints unsafe.Pointer)
-	xDisplayWidth         func(display uintptr, screen int32) int32
-	xDisplayHeight        func(display uintptr, screen int32) int32
-	xGetWindowProperty    func(display, window, property uintptr, longOffset, longLength int64, delete int32, reqType uintptr, actualTypeReturn, actualFormatReturn, nitemsReturn, bytesAfterReturn, propReturn unsafe.Pointer) int32
-	xFree                 func(data unsafe.Pointer) int32
-	xCreateFontCursor     func(display uintptr, shape uint32) uintptr
-	xDefineCursor         func(display, window, cursor uintptr) int32
-	xQueryPointer         func(display, window uintptr, rootReturn, childReturn, rootXReturn, rootYReturn, winXReturn, winYReturn, maskReturn unsafe.Pointer) int32
-	xLookupKeysym         func(event unsafe.Pointer, index int32) uintptr
-	xLookupString         func(event unsafe.Pointer, bufferReturn unsafe.Pointer, bytesBuffer int32, keysymReturn unsafe.Pointer, status uintptr) int32
-	xTranslateCoordinates func(display, srcW, destW uintptr, srcX, srcY int32, destXReturn, destYReturn, childReturn unsafe.Pointer) int32
-	xCreateGC             func(display, drawable uintptr, valuemask uintptr, values uintptr) uintptr
-	xFreeGC               func(display, gc uintptr) int32
-	xCreateImage          func(display, visual uintptr, depth uint32, format, offset int32, data unsafe.Pointer, width, height uint32, bitmapPad, bytesPerLine int32) uintptr
-	xPutImage             func(display, drawable, gc, image uintptr, srcX, srcY, destX, destY int32, width, height uint32) int32
-	xDestroyImage         func(image uintptr) int32
-	xDefaultVisual        func(display uintptr, screen int32) uintptr
-	xSendEvent            func(display, window uintptr, propagate int32, eventMask int64, event unsafe.Pointer) int32
-	xSetTransientForHint  func(display, window, propWindow uintptr) int32
-	xIconifyWindow        func(display, window uintptr, screenNumber int32) int32
-	xBell                 func(display uintptr, percent int32) int32
-	xInitThreads          func() int32
-	xConvertSelection     func(display, selection, target, property, requestor, time uintptr) int32
-	xMapRaised            func(display, window uintptr) int32
-	xUnmapWindow          func(display, window uintptr) int32
-	xSetErrorHandler      func(handler uintptr) uintptr
+	xOpenDisplay           func(displayName uintptr) uintptr
+	xCloseDisplay          func(display uintptr) int32
+	xDefaultScreen         func(display uintptr) int32
+	xDefaultRootWindow     func(display uintptr) uintptr
+	xRootWindow            func(display uintptr, screen int32) uintptr
+	xCreateWindow          func(display, parent uintptr, x, y int32, width, height uint32, borderWidth uint32, depth int32, class uint32, visual uintptr, valuemask uintptr, attrs unsafe.Pointer) uintptr
+	xSelectInput           func(display, window uintptr, eventMask int64) int32
+	xGetWindowAttributes   func(display, window uintptr, attrs unsafe.Pointer) int32
+	xMapWindow             func(display, window uintptr) int32
+	xFlush                 func(display uintptr) int32
+	xConnectionNumber      func(display uintptr) int32
+	xSetWindowBackground   func(display, window uintptr, pixel uintptr) int32
+	xClearArea             func(display, window uintptr, x, y int32, width, height uint32, exposures int32) int32
+	xPending               func(display uintptr) int32
+	xNextEvent             func(display uintptr, event unsafe.Pointer) int32
+	xDestroyWindow         func(display, window uintptr) int32
+	xStoreName             func(display, window uintptr, name string) int32
+	xInternAtom            func(display uintptr, name string, onlyIfExists int32) uintptr
+	xChangeProperty        func(display, window, property, typ uintptr, format, mode int32, data unsafe.Pointer, nelements int32) int32
+	xSetWMProtocols        func(display, window uintptr, protocols unsafe.Pointer, count int32) int32
+	xMoveWindow            func(display, window uintptr, x, y int32) int32
+	xResizeWindow          func(display, window uintptr, width, height uint32) int32
+	xSetWMNormalHints      func(display, window uintptr, hints unsafe.Pointer)
+	xDisplayWidth          func(display uintptr, screen int32) int32
+	xDisplayHeight         func(display uintptr, screen int32) int32
+	xGetWindowProperty     func(display, window, property uintptr, longOffset, longLength int64, delete int32, reqType uintptr, actualTypeReturn, actualFormatReturn, nitemsReturn, bytesAfterReturn, propReturn unsafe.Pointer) int32
+	xFree                  func(data unsafe.Pointer) int32
+	xCreateFontCursor      func(display uintptr, shape uint32) uintptr
+	xDefineCursor          func(display, window, cursor uintptr) int32
+	xQueryPointer          func(display, window uintptr, rootReturn, childReturn, rootXReturn, rootYReturn, winXReturn, winYReturn, maskReturn unsafe.Pointer) int32
+	xLookupKeysym          func(event unsafe.Pointer, index int32) uintptr
+	xLookupString          func(event unsafe.Pointer, bufferReturn unsafe.Pointer, bytesBuffer int32, keysymReturn unsafe.Pointer, status uintptr) int32
+	xTranslateCoordinates  func(display, srcW, destW uintptr, srcX, srcY int32, destXReturn, destYReturn, childReturn unsafe.Pointer) int32
+	xCreateGC              func(display, drawable uintptr, valuemask uintptr, values uintptr) uintptr
+	xFreeGC                func(display, gc uintptr) int32
+	xCreateImage           func(display, visual uintptr, depth uint32, format, offset int32, data unsafe.Pointer, width, height uint32, bitmapPad, bytesPerLine int32) uintptr
+	xPutImage              func(display, drawable, gc, image uintptr, srcX, srcY, destX, destY int32, width, height uint32) int32
+	xDestroyImage          func(image uintptr) int32
+	xDefaultVisual         func(display uintptr, screen int32) uintptr
+	xSendEvent             func(display, window uintptr, propagate int32, eventMask int64, event unsafe.Pointer) int32
+	xSetTransientForHint   func(display, window, propWindow uintptr) int32
+	xIconifyWindow         func(display, window uintptr, screenNumber int32) int32
+	xBell                  func(display uintptr, percent int32) int32
+	xInitThreads           func() int32
+	xConvertSelection      func(display, selection, target, property, requestor, time uintptr) int32
+	xSetSelectionOwner     func(display, selection, owner, time uintptr) int32
+	xGetSelectionOwner     func(display, selection uintptr) uintptr
+	xCheckTypedWindowEvent func(display, window uintptr, eventType int32, event unsafe.Pointer) int32
+	xMapRaised             func(display, window uintptr) int32
+	xUnmapWindow           func(display, window uintptr) int32
+	xSetErrorHandler       func(handler uintptr) uintptr
 
 	libcSetlocale func(category int32, locale string) uintptr
 	libcMalloc    func(size uintptr) unsafe.Pointer
@@ -492,6 +495,9 @@ func init() {
 	purego.RegisterLibFunc(&xBell, libX11, "XBell")
 	purego.RegisterLibFunc(&xInitThreads, libX11, "XInitThreads")
 	purego.RegisterLibFunc(&xConvertSelection, libX11, "XConvertSelection")
+	purego.RegisterLibFunc(&xSetSelectionOwner, libX11, "XSetSelectionOwner")
+	purego.RegisterLibFunc(&xGetSelectionOwner, libX11, "XGetSelectionOwner")
+	purego.RegisterLibFunc(&xCheckTypedWindowEvent, libX11, "XCheckTypedWindowEvent")
 	purego.RegisterLibFunc(&xSetLocaleModifiers, libX11, "XSetLocaleModifiers")
 	purego.RegisterLibFunc(&xOpenIM, libX11, "XOpenIM")
 	purego.RegisterLibFunc(&xCreateIC, libX11, "XCreateIC")

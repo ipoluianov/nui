@@ -1,16 +1,14 @@
 package ui
 
-import "golang.design/x/clipboard"
+import "github.com/ipoluianov/nui/internal/platforms"
 
-func init() {
-	clipboard.Init()
-}
-
+// ClipboardSetText puts the text on the system clipboard. Safe from any goroutine.
 func ClipboardSetText(text string) {
-	clipboard.Write(clipboard.FmtText, []byte(text))
+	_ = platforms.ClipboardSetText(text)
 }
 
+// ClipboardGetText returns the text on the system clipboard, "" if there is
+// none. Safe from any goroutine.
 func ClipboardGetText() (string, error) {
-	data := clipboard.Read(clipboard.FmtText)
-	return string(data), nil
+	return platforms.ClipboardGetText()
 }
