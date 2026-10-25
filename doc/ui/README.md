@@ -9,6 +9,9 @@ Short reference for `ui` controls. Code snippets are intentionally minimal—see
 - [Theme](content/theme.md)
 - [Fonts (built-in and system)](content/fonts.md)
 - [Keyboard & mouse types](content/input.md)
+- [Actions, ToolBar, StatusBar](content/actions.md)
+- [Application services: settings, window state, one copy, Activate](content/application.md)
+- [Work in the background: RunAsync](content/async.md)
 
 ## Containers & layout
 
@@ -60,6 +63,7 @@ Short reference for `ui` controls. Code snippets are intentionally minimal—see
 - [Dialog](content/dialog.md)
 - [MessageBox](content/messagebox.md)
 - [QuestionMessageBox](content/question_messagebox.md)
+- [Standard dialogs: input, progress, about](content/standard_dialogs.md)
 - [Toasts](content/toast.md)
 - [Printing and PDF](content/printing.md)
 

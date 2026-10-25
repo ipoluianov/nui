@@ -25,6 +25,15 @@ type Form struct {
 	posX int
 	posY int
 
+	// normal is the place and the size of the window when not maximized
+	// (see State); maximizeOnShow and clampOnShow apply SetState's state
+	normal         FormState
+	maximizeOnShow bool
+	clampOnShow    bool
+	// closing runs before the window closes (see onClosing)
+	closing     map[int]func()
+	closingNext int
+
 	width  int
 	height int
 
@@ -357,6 +366,12 @@ func (c *Form) Close() {
 		platforms.Post(c.Close)
 		return
 	}
+	if c.wnd != nil && !c.closed {
+		for _, f := range c.closing {
+			f()
+		}
+	}
+	c.closing = nil
 	c.tooltipClose()
 	c.closeToasts()
 	c.destroyPopupWindows()
@@ -466,7 +481,10 @@ func (c *Form) Position() (int, int) {
 	return 0, 0
 }
 
+// Size returns the size of the client area, after the changes asked for
+// (a window grows to the widgets it got, see MinSize)
 func (c *Form) Size() (int, int) {
+	c.layoutNow()
 	return c.width, c.height
 }
 
@@ -677,8 +695,12 @@ func (c *Form) createWindow(maximized bool) {
 		c.wnd.SetAppIcon(appIcon)
 	}
 	if c.posX >= 0 && c.posY >= 0 {
+		if c.clampOnShow {
+			c.clampToScreen()
+		}
 		c.wnd.Move(c.posX, c.posY)
 	}
+	c.clampOnShow = false
 	c.wnd.SetDarkMode(IsDarkTheme)
 	c.wnd.SetBackgroundColor(currentPalette.Window)
 	c.applyMinSize()
@@ -698,8 +720,13 @@ func (c *Form) Show() {
 			c.forceUpdate()
 			return
 		}
-		c.createWindow(false)
+		maximize := c.maximizeOnShow
+		c.maximizeOnShow = false
+		c.createWindow(maximize)
 		c.wnd.Show()
+		if maximize {
+			c.wnd.MaximizeWindow()
+		}
 		c.processResize(c.width, c.height)
 	})
 }
@@ -927,6 +954,7 @@ func (c *Form) processResize(width, height int) {
 	c.layoutNow()
 	c.width = width
 	c.height = height
+	c.rememberNormal()
 	c.layoutMenuBar()
 	c.layoutToasts()
 	c.forceUpdate()
@@ -1448,6 +1476,7 @@ func (c *Form) ParentForm() *Form {
 
 func (c *Form) processTimer() {
 	freeOSMemory()
+	updateDynamicActions()
 
 	if c.menuBar != nil {
 		c.menuBar.ProcessTimer()
@@ -1468,6 +1497,7 @@ func (c *Form) processTimer() {
 }
 
 func (c *Form) processWindowMove(x, y int) {
+	c.rememberNormal()
 	c.tooltipHide()
 	c.layoutToasts()
 	// Popup windows don't move with the form
@@ -1589,4 +1619,16 @@ func (c *Form) emitMouse(w Widgeter, signal func(*Widget) *Signal[*MouseEvent], 
 func localPoint(w Widgeter, x, y int) (int, int) {
 	wx, wy := w.RectClientAreaOnWindow()
 	return x - wx + w.ScrollX(), y - wy + w.ScrollY()
+}
+
+// onClosing runs f before the window closes; the function returned removes
+// it
+func (c *Form) onClosing(f func()) (remove func()) {
+	if c.closing == nil {
+		c.closing = map[int]func(){}
+	}
+	id := c.closingNext
+	c.closingNext++
+	c.closing[id] = f
+	return func() { delete(c.closing, id) }
 }

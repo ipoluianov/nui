@@ -343,9 +343,7 @@ func (c *Form) processShortcut(key Key, mods KeyModifiers) bool {
 				continue
 			}
 			if item := title.menu.itemWithShortcut(key, mods); item != nil {
-				if item.OnClick != nil {
-					item.OnClick()
-				}
+				item.trigger()
 				c.Update()
 				return true
 			}

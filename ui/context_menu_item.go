@@ -25,6 +25,11 @@ type ContextMenuItem struct {
 	// separator: a line between groups of items, not an item to click
 	separator bool
 
+	// A checkable item shows a check mark when checked; a click toggles it
+	checkable, checked bool
+	// action, if the item is of one (see ContextMenu.AddAction)
+	action *Action
+
 	// pressed is set by a press on the item; the release over it clicks it
 	pressed bool
 
@@ -188,6 +193,8 @@ func (c *ContextMenuItem) Draw(ctx *Canvas) {
 	if c.image != nil {
 		b := c.image.Bounds()
 		ctx.DrawImage(contextMenuItemPadding+(ContextMenuItemIconSize-b.Dx())/2, (c.Height()-b.Dy())/2, c.image)
+	} else if c.checkable && c.checked {
+		c.drawCheckMark(ctx, textColor)
 	}
 
 	textX := c.textX()
@@ -291,10 +298,51 @@ func (c *ContextMenuItem) click() {
 	if c.needToClosePopupMenu != nil {
 		c.needToClosePopupMenu()
 	}
+	c.trigger()
+}
 
+// trigger does what the item does, by a click, the keys or its shortcut: a
+// checkable item toggles, then OnClick runs
+func (c *ContextMenuItem) trigger() {
+	if c.checkable && c.action == nil { // an action toggles itself
+		c.SetChecked(!c.checked)
+	}
 	if c.OnClick != nil {
 		c.OnClick()
 	}
+}
+
+// SetCheckable makes the item a check box: a click toggles it, a check
+// mark shows it is checked (in the place of the icon)
+func (c *ContextMenuItem) SetCheckable(checkable bool) *ContextMenuItem {
+	c.checkable = checkable
+	c.form.Update()
+	return c
+}
+
+func (c *ContextMenuItem) IsCheckable() bool {
+	return c.checkable
+}
+
+// SetChecked checks or unchecks a checkable item
+func (c *ContextMenuItem) SetChecked(checked bool) *ContextMenuItem {
+	c.checked = checked
+	c.form.Update()
+	return c
+}
+
+func (c *ContextMenuItem) Checked() bool {
+	return c.checked
+}
+
+// drawCheckMark draws the check mark of a checked item in the icon's place
+func (c *ContextMenuItem) drawCheckMark(ctx *Canvas, col color.Color) {
+	size := ContextMenuItemIconSize * 2 / 3
+	x := contextMenuItemPadding + (ContextMenuItemIconSize-size)/2
+	y := (c.Height() - size) / 2
+	// A tick: down from the left, then up to the right
+	ctx.DrawLine(x, y+size/2, x+size/3, y+size-2, 2, col)
+	ctx.DrawLine(x+size/3, y+size-2, x+size, y+1, 2, col)
 }
 
 func (c *ContextMenuItem) MouseEnter() {

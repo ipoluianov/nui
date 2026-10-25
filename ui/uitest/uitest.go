@@ -74,6 +74,7 @@ func Show(t testing.TB, form *ui.Form) *Window {
 func (w *Window) frame() {
 	w.Settle()
 	if !w.NoFrames {
+		w.Form.Size()
 		w.wnd.Render()
 	}
 }
@@ -167,6 +168,7 @@ func (w *Window) RequestClose() bool {
 // Screenshot paints the window, with its open popups on top
 func (w *Window) Screenshot() *image.RGBA {
 	w.Settle()
+	w.Form.Size() // the window grows to its widgets before it is painted
 	return w.wnd.Render()
 }
 

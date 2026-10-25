@@ -253,6 +253,7 @@ nui хорошо решает задачу «нативное окно без cg
 | 14 | ✅ исправлено. Высота Label не зависит от размера шрифта: всегда `ThemeControlHeight()`, поэтому крупный текст обрезается снизу | `label.go:130` | вживую: Label 40 px обрезан по нижним выносным элементам |
 | 15 | ✅ исправлено. Вопрос «Сохранить изменения?» в примере notepad: Esc закрывает окно без сохранения. В nui есть только `ShowQuestionMessageBoxYesNo`, и Esc в нём — кнопка «Нет», то есть «не сохранять». Нужен вопрос «Да/Нет/Отмена», где Esc — «Отмена» | `ui/messagebox.go:50`, `examples/notepad/document.go:45` | тест `examples/notepad/notepad_ui_test.go` |
 | 16 | ✅ исправлено. NumBox вытягивается по высоте, если в сетке нет растягиваемой строки (без `AddVSpacer`); ширина его кнопок со стрелками равна высоте поля, поэтому щелчок в середину поля меняет значение | `numbox.go:377` (`buttonRect`) | тест `ui/regression` |
+| 17 | Цена раскладки сетки зависит от разброса номеров столбцов и строк, а не от их числа: виджет в столбце 1 000 000 заставляет перебирать миллион пустых столбцов на каждой раскладке | `makeColumnsInfo`, `makeRowsInfo`, `layoutGrid` (`for x := minX; x <= maxX`) | профиль теста `ToolBar` (было 3 с на тест) |
 
 ---
 
@@ -580,10 +581,18 @@ API: `AddPage`, `SetPageNameFunc`, `SetItems`. Нет:
 
    **Сделано (2026-10-25)**, см. [listview.md](ui/content/listview.md): `ItemModel` (+ `ItemStyler`, `ItemEditor`, `ColumnNamer`, уведомления через `ModelSignal`), `ListModel`, `FuncModel`; `ListView` (виртуальная отрисовка, выбор с Ctrl/Shift, активация, свой painter, текст пустого списка, `ItemRect` для тестов); `Table.SetModel` — таблица без своих ячеек. Таблица на 1 000 000 строк из модели: подключение 1,2 мс, кадр 3,4 мс (100 000 ячеек по одной — 228 мс). Не сделано: сортировка и фильтр поверх модели, делегат ячейки таблицы с контекстом.
 10. **Action + ToolBar + StatusBar**; пункты меню и кнопки строятся из Action; enabled-состояние пересчитывается при открытии меню и на idle.
+
+   **Сделано (2026-10-25)**, см. [actions.md](ui/content/actions.md): `Action` (текст, иконка, shortcut, tooltip, `SetEnabledFunc` — пересчёт перед открытием меню и по таймеру, checkable); `ContextMenu.AddAction`, `ToolBar.AddAction`, `Form.AddAction`; пункты меню с флажком; `ToolBar`, `StatusBar` (секции, временные сообщения).
 11. **Сервисы окна и приложения**: `SaveState`/`RestoreState` (Form, Splitter, Table header), `Activate()`, `IsMinimized()`, `NormalBounds()`, API экранов, `Settings(app)`, `SingleInstance`.
+
+   **Сделано (2026-10-25)**, см. [application.md](ui/content/application.md): `Settings` (JSON в каталоге конфигурации пользователя, атомарная запись), `FormState`/`State`/`SetState`/`RememberState` (обычный размер при развёрнутом окне, возврат на экран), `Activate()` (логика из 8 одинаковых `raise_*.go` клиентов), `AcquireSingleInstance` (из клиентов). Не сделано: `IsMinimized`, API экранов, состояние Splitter и заголовков Table (сохраняются через `Settings.Set` вручную).
 12. **Тема**: `OnThemeChanged`, семантические роли цветов у виджетов (`SetForegroundRole`), `ThemedColor`, автотонирование монохромных иконок, отслеживание тёмной темы ОС.
 13. **Стандартные диалоги**: InputBox (строка, число, пароль, выбор), MessageBox с кастомными кнопками и иконками, ProgressDialog, About.
+
+   **Сделано (2026-10-25)**, см. [standard_dialogs.md](ui/content/standard_dialogs.md): `ShowInputDialog` (с проверкой и паролем), `ShowProgressDialog`, `ShowAboutDialog`, `ShowQuestionMessageBoxYesNoCancel` (фаза 4). Не сделано: MessageBox с произвольными кнопками и иконками.
 14. **Async-хелперы**: `RunAsync` с отменой, `InvokeCoalesced`; `ui.Invoke` перерисовывает.
+
+   **Сделано (2026-10-25)**, см. [async.md](ui/content/async.md): `RunAsync` (отмена контекстом, `Task.Cancel`, отмена при закрытии формы, отчёты о ходе работы склеиваются), `RunWithProgress`; `ui.Invoke` перерисовывает (фаза 1), `RequestRepaint` (фаза 1). `InvokeCoalesced` не понадобился: склейку дают `RequestRepaint` и `Progress`.
 15. **Canvas**: эллипс, дуга, path, полигон, толщина и пунктир, быстрый `FillRoundedRect`, `DrawImage` в режиме `Src` и с масштабом, публичные `ElideText`/`WrapText`, `DeviceRect()`.
 16. **Шрифты**: bold и italic (встроить Noto Sans Bold и Italic, JetBrains Mono Bold), fallback для символов и эмодзи, `.ttc`.
 

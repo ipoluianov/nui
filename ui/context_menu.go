@@ -124,6 +124,7 @@ func (c *ContextMenu) dropDownFrom(x, y, width, height int) {
 func (c *ContextMenu) show(x int, y int) {
 	c.parentMenu = nil
 	c.active = nil
+	c.updateActions()
 	if c.onShow != nil {
 		c.onShow()
 	}
@@ -142,6 +143,7 @@ func (c *ContextMenu) showMenu(x int, y int, parentMenu *ContextMenu) {
 	c.parentMenu = parentMenu
 	c.active = nil
 	c.dropDown = false
+	c.updateActions()
 	if c.onShow != nil {
 		c.onShow()
 	}
@@ -293,7 +295,7 @@ func (c *ContextMenu) moveActive(step int) {
 // hasImages reports whether any item has an icon, so the menu reserves the icon column
 func (c *ContextMenu) hasImages() bool {
 	for _, item := range c.items {
-		if item.image != nil && item.IsVisible() {
+		if (item.image != nil || item.checkable) && item.IsVisible() {
 			return true
 		}
 	}
@@ -328,4 +330,14 @@ func (c *ContextMenu) contentWidth() int {
 		width = contextMenuMaxWidth
 	}
 	return width
+}
+
+// updateActions asks the enabled functions of the actions of the items
+// before the menu shows them (see Action.SetEnabledFunc)
+func (c *ContextMenu) updateActions() {
+	for _, item := range c.items {
+		if item.action != nil {
+			item.action.Update()
+		}
+	}
 }
