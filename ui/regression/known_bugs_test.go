@@ -48,19 +48,6 @@ func TestBug04DisabledParent(t *testing.T) {
 	knownBug(t, 4, clicks > 0, "the button in a disabled panel is clicked")
 }
 
-// #5: a multiline text box turns expandable on any property change
-func TestBug05TextBoxExpandable(t *testing.T) {
-	form := newForm(300, 200)
-	tb := ui.NewTextBox()
-	tb.SetMultiline(true)
-	form.Panel().AddWidget(0, 0, tb)
-	uitest.Show(t, form)
-	tb.SetXExpandable(false)
-	tb.SetYExpandable(false)
-	tb.SetProp("placeholder", "x")
-	knownBug(t, 5, tb.XExpandable() || tb.YExpandable(), "SetProp turned it expandable")
-}
-
 // paintBox is a widget the test paints itself
 func paintBox(paint func(cnv *ui.Canvas)) *ui.Widget {
 	w := &ui.Widget{}

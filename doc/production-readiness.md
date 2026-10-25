@@ -241,7 +241,7 @@ nui хорошо решает задачу «нативное окно без cg
 | 2 | ✅ исправлено. Два виджета в одной ячейке грида: второй не раскладывается, остаётся 300×180 в (0,0), предупреждения нет | `gridCells()` → `map[gridCell]Widgeter` | проба |
 | 3 | ✅ исправлено. Отпускание правой и средней кнопки мыши не доходит до `onMouseUp` виджета, захвата мыши для этих кнопок нет | `form.go:911` (`mouseLeftButtonPressedWidget` ставится только при нажатой левой), `widget.go:1680` | по коду; клиент altpaint `canvasinput.go:28`: «nui tells the release of the left button only» |
 | 4 | `SetEnabled(false)` у контейнера не отключает детей: кнопка внутри отключённой Panel нажимается | `Widget.Enabled()` смотрит только на себя | проба: `clicked=1` |
-| 5 | Многострочный TextBox на **любое** изменение свойства включает `SetXExpandable(true)`/`SetYExpandable(true)` | `textbox.go:235-256` | по коду; клиент altjarvis `chats_page.go:90` |
+| 5 | ✅ исправлено. Многострочный TextBox на **любое** изменение свойства включает `SetXExpandable(true)`/`SetYExpandable(true)` | `textbox.go:235-256` | по коду; клиент altjarvis `chats_page.go:90` |
 | 6 | `Canvas.DrawImage` игнорирует `img.Bounds().Min` (исходная точка `{xOffset,yOffset}`, ширина берётся из `Max.X`), поэтому sub-image рисуется неверно | `canvas.go:1091-1131` | по коду |
 | 7 | `Canvas.DrawText` переносит строки только по `"\r\n"` | `canvas.go:1182` | по коду |
 | 8 | ✅ исправлено. `Label.SetText` раскладывает всю форму даже при неизменном тексте | `label.go:63` | по коду и замеру |
@@ -305,11 +305,11 @@ nui хорошо решает задачу «нативное окно без cg
 
 | Не хватает | Комментарий |
 |---|---|
-| **API курсора и выделения** для многострочного текста: `SetCursor(line, col)`, `Cursor()`, `SetSelection(from, to)` в рунах или байтах, `ReplaceSelection(s)`, `InsertText(s)` | **Пример notepad из самой nui** эмулирует нажатия стрелок, чтобы поставить курсор, и `KeyChar` по символу, чтобы вставить текст (`examples/notepad/editing.go:12`: «The text box has no API to put the cursor or the selection…») |
-| `Cut()`, `Copy()`, `Paste()` | примеры вызывают `text.KeyDown(KeyX, Ctrl)` (`notepad.go:229`) |
-| Программная правка, которую можно отменить | `SetText` очищает историю отмены, а другого способа заменить текст нет. В notepad «Upper Case» без выделения нельзя отменить по Ctrl+Z (найдено тестом `examples/notepad/notepad_ui_test.go`) |
+| ✅ сделано: **API курсора и выделения** — `CursorPosition`/`SetCursorPosition`, `Selection`/`SetSelection`/`HasSelection`, `InsertText` (отменяемая правка), `LineCount`/`Line`, `PosAt`/`OffsetOf`, `ScrollToCursor` | пример notepad больше не имитирует нажатия клавиш (`examples/notepad/editing.go`) |
+| ✅ сделано: `Cut()`, `Copy()`, `Paste()` | заодно Ctrl+A/X/C/V работают и с Cmd на macOS |
+| ✅ сделано: программная правка, которую можно отменить (`InsertText`) | «Upper Case» в notepad теперь отменяется по Ctrl+Z |
 | Word wrap | altjarvis написал ChatView на 1100 строк (`chatview.go:14`: «The TextBox of the library does not wrap») |
-| Производительность | §4 |
+| ✅ сделано: производительность | текст хранится построчно, ширины строк кешируются, рисуются только видимые строки; ввод на 20 000 строках — 0,3 мс вместо 7,4 с ([benchmarks.md](benchmarks.md)) |
 | `MaxLength`, маска ввода, валидатор | `MaskedTextBox`, `QValidator`, `inputMask` |
 | `OnEnter`/`OnSubmit`, `OnEditingFinished`, `OnCursorChanged` | сейчас только через `CurrentEvent()` |
 | Разделение на `LineEdit` и `PlainTextEdit` | один класс с флагом `multiline`, который меняет политику размеров (§5 #5) |
@@ -549,6 +549,16 @@ API: `AddPage`, `SetPageNameFunc`, `SetItems`. Нет:
    - TextBox: курсор, выделение, `InsertText`, `Cut`, `Copy`, `Paste`, `OnEnter`.
    - Checkable-пункты меню.
 4. **Производительность TextBox** (§4) и хранение ячеек Table.
+
+   **TextBox сделан (2026-10-25):**
+   - текст хранится списком строк, целиком собирается только по запросу;
+   - ширины строк кешируются и перемеряются только у изменённых, история отмены хранит копию списка строк, а не весь текст;
+   - рисуются только видимые строки;
+   - кеш ширин глифов и кернинга в шрифте ускорил всё измерение текста в nui;
+   - API курсора, выделения и отменяемой правки (§7.2), Ctrl+Home/End;
+   - исправлен §5 #5.
+
+   Ввод символа на 20 000 строках — 0,3 мс (было 7,4 с), кадр — 4 мс (было 5,5 с), `SetText` — 42 мс (было 15,7 с). Хранение ячеек Table — в фазе 5.
 5. **Баги §5**: `Enabled` у детей, `DrawImage` bounds, `"\n"` в `DrawText`, TextBox expandable, `SetAnchors`, копирование выделения в Table.
 6. **Таймер как объект** (`Stop`, `SingleShot`) и единая семантика `ShowModal`.
 7. **Документация**: убрать несуществующие API; написать короткий `doc/rules.md` (или `llms.txt`) с контрактами: поток, инвалидация, модальность, жизненный цикл, свой виджет, какие сеттеры вызывают события.

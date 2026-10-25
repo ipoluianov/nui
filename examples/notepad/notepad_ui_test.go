@@ -32,14 +32,33 @@ func TestEditing(t *testing.T) {
 		t.Errorf("after Upper Case: %q", got)
 	}
 
-	// Upper Case without a selection replaces the text with SetText, which
-	// clears the undo history: the text box can't edit undoably from code
+	// The command's edit is undone as a typing would be
 	w.Shortcut("Mod+Z")
-	if n.text.Text() == "HELLO WORLD" {
-		t.Skip("known gap (production-readiness.md 7.2): Upper Case can't be undone")
-	}
 	if got := n.text.Text(); got != "hello world" {
 		t.Errorf("after Undo: %q", got)
+	}
+}
+
+// Find selects the match, Go To Line puts the cursor on the line
+func TestFindAndGoToLine(t *testing.T) {
+	n := newNotepad()
+	w := uitest.Show(t, n.form)
+	n.text.SetText("alpha\nbeta gamma\ndelta")
+	n.findText = "gamma"
+	if !n.find() {
+		t.Fatal("not found")
+	}
+	if got := n.text.SelectedText(); got != "gamma" {
+		t.Errorf("selected %q", got)
+	}
+	from, _ := n.text.Selection()
+	if from != (ui.TextPos{Line: 1, Col: 5}) {
+		t.Errorf("selection from %+v", from)
+	}
+	n.text.SetCursorPosition(ui.TextPos{Line: 2})
+	w.Type("X")
+	if got := n.text.Line(2); got != "Xdelta" {
+		t.Errorf("line 3 %q", got)
 	}
 }
 

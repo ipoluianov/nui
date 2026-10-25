@@ -54,24 +54,28 @@ func BenchmarkTextBoxSetText(b *testing.B) {
 	for _, n := range textSizes {
 		b.Run(fmt.Sprint(n), func(b *testing.B) {
 			w, tb := textBoxForm(b, n)
-			text := lines(n)
+			texts := []string{lines(n), lines(n) + "!"} // another text each time
+			i := 0
 			for b.Loop() {
-				tb.SetText(text)
+				tb.SetText(texts[i%2])
 				w.Settle()
+				i++
 			}
 		})
 	}
 }
 
-// BenchmarkTextBoxKey: typing a character into a multiline text box, as the
-// user does it (the key press, the character, the release), without the
-// repaint
+// BenchmarkTextBoxKey: typing a character into a multiline text box and
+// deleting it with Backspace, as the user does it (the key press, the
+// character, the release), without the repaint: two key presses an
+// iteration
 func BenchmarkTextBoxKey(b *testing.B) {
 	for _, n := range textSizes {
 		b.Run(fmt.Sprint(n), func(b *testing.B) {
 			w, _ := textBoxForm(b, n)
 			for b.Loop() {
 				w.Type("x")
+				w.Key(ui.KeyBackspace, ui.KeyModifiers{})
 			}
 		})
 	}

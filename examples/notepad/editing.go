@@ -9,49 +9,20 @@ import (
 	"github.com/ipoluianov/nui/ui"
 )
 
-// The text box has no API to put the cursor or the selection at a place of
-// a multiline text, so these helpers move it with the keys, as the user
-// would. Typing the text in (KeyChar) keeps the undo history, which SetText
-// would clear.
-
-// selectAt selects count runes from line, col (from 0)
-func (n *notepad) selectAt(line, col, count int) {
-	none, shift := ui.KeyModifiers{}, ui.KeyModifiers{Shift: true}
-	n.text.SelectRange(0, 0) // the cursor to the start
-	for range line {
-		n.text.KeyDown(ui.KeyArrowDown, none)
-	}
-	for range col {
-		n.text.KeyDown(ui.KeyArrowRight, none)
-	}
-	for range count {
-		n.text.KeyDown(ui.KeyArrowRight, shift)
-	}
-}
-
-// typeText replaces the selection with s, or inserts it at the cursor
-func (n *notepad) typeText(s string) {
-	for _, ch := range s {
-		if ch == '\n' {
-			n.text.KeyDown(ui.KeyEnter, ui.KeyModifiers{})
-		} else {
-			n.text.KeyChar(ch, ui.KeyModifiers{})
-		}
-	}
-}
+// The edits of the commands go through InsertText, so Undo takes them back
+// as a typing would be
 
 // changeCase converts the selected text, or the whole text if nothing is
 // selected
 func (n *notepad) changeCase(convert func(string) string) {
-	if sel := n.text.SelectedText(); sel != "" {
-		n.typeText(convert(sel))
-		return
+	if !n.text.HasSelection() {
+		n.text.SelectAllText()
 	}
-	n.text.SetText(convert(n.text.Text()))
+	n.text.InsertText(convert(n.text.SelectedText()))
 }
 
 func (n *notepad) insertDateTime() {
-	n.typeText(time.Now().Format("2006-01-02 15:04"))
+	n.text.InsertText(time.Now().Format("2006-01-02 15:04"))
 }
 
 // find selects the next match of the last search after findPos, going
@@ -71,15 +42,7 @@ func (n *notepad) find() bool {
 	} else if pos = indexRunes(text, query); pos < 0 {
 		return false
 	}
-	line := 0
-	lineStart := 0
-	for i, ch := range text[:pos] {
-		if ch == '\n' {
-			line++
-			lineStart = i + 1
-		}
-	}
-	n.selectAt(line, pos-lineStart, len(query))
+	n.text.SetSelection(n.text.PosAt(pos), n.text.PosAt(pos+len(query)))
 	n.findPos = pos + len(query)
 	return true
 }
@@ -110,7 +73,7 @@ func (n *notepad) showGoToLine() {
 	lines := strings.Count(n.text.Text(), "\n") + 1
 	dialog := newGoToLineDialog(lines)
 	dialog.OnOK = func(line int) {
-		n.selectAt(line-1, 0, 0)
+		n.text.SetCursorPosition(ui.TextPos{Line: line - 1})
 		n.text.Focus()
 	}
 	n.form.Panel().ShowDialog(dialog)

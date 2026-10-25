@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"fmt"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -22,6 +24,17 @@ type TextBox struct {
 	OnEditingFinished Signal[string]
 
 	textAtFocus string // the text when the box got the focus
+
+	// The text, a line a string, without the line breaks: edits change the
+	// lines they touch only. The whole text is joined when asked for.
+	lines []string
+	// lineWidths are the measured widths of the lines, -1 if not measured
+	lineWidths []int
+	text       string // the joined text, if textValid
+	textValid  bool
+	// editByCode is set while the code edits the text (InsertText): the
+	// edit is not the user's (see OnTextEdited)
+	editByCode bool
 
 	hintFunc func() string // see SetHintFunc
 
@@ -55,10 +68,12 @@ type TextBox struct {
 	lastEditActive bool
 }
 
-// textBoxState is a step of the undo history: the text and the cursor
+// textBoxState is a step of the undo history: the lines (a copy of the
+// slice: the strings are shared) with their widths, and the cursor
 type textBoxState struct {
-	text string
-	x, y int
+	lines  []string
+	widths []int
+	x, y   int
 }
 
 // textBoxUndoLimit is how many steps Undo goes back
@@ -96,6 +111,8 @@ func NewTextBox() *TextBox {
 	c.SetTypeName("TextBox")
 	c.scrollBarInset = 1 // the scroll bars of a multiline box are inside its frame
 
+	c.lines = []string{""}
+	c.lineWidths = []int{-1}
 	c.SetOnKeyDown(func(key Key, mods KeyModifiers) bool {
 		return c.KeyDown(key, mods)
 	})
@@ -156,10 +173,27 @@ func NewTextBox() *TextBox {
 	return &c
 }
 
+// Lines returns the lines of the text, without the line breaks
 func (c *TextBox) Lines() []string {
-	text := c.Text()
-	lines := strings.Split(strings.Replace(text, "\r", "", -1), "\n")
-	return lines
+	return slices.Clone(c.lines)
+}
+
+// LineCount returns the number of the lines, at least 1
+func (c *TextBox) LineCount() int {
+	return len(c.lines)
+}
+
+// Line returns the line i (from 0), "" out of the text
+func (c *TextBox) Line(i int) string {
+	if i < 0 || i >= len(c.lines) {
+		return ""
+	}
+	return c.lines[i]
+}
+
+// splitLines splits the text into lines; "\r" is dropped
+func splitLines(text string) []string {
+	return strings.Split(strings.ReplaceAll(text, "\r", ""), "\n")
 }
 
 func (c *TextBox) SetReadOnly(readonly bool) {
@@ -208,37 +242,63 @@ func (c *TextBox) timerCursorBlinking() {
 func (c *TextBox) redraw() {
 }
 
+// SetProp: the text is kept in the lines, not in the properties
 func (c *TextBox) SetProp(key string, value any) {
 	if key == "text" {
-		// The selection is of the old text: applied to the new one it pointed
-		// past its lines (a panic). The new text clears it anyway.
-		c.clearSelection()
+		text, _ := value.(string)
+		if value != nil && text == "" {
+			text = fmt.Sprint(value)
+		}
+		c.SetText(text)
+		return
 	}
 	c.Widget.SetProp(key, value)
-	if key == "text" {
-		c.setText(c.GetPropString("text", ""), false)
+	switch key {
+	case "fontfamily", "fontsize", "fontbold", "fontitalic", "ispassword":
+		c.remeasure()
 	}
 }
 
-func (c *TextBox) setText(text string, updateProp bool) {
-	c.redraw()
-	var modifiers KeyModifiers
-	c.modifyText(textboxModifyCommandSetText, modifiers, text)
-	c.updateInnerSize()
+// GetProp: the text is in the lines
+func (c *TextBox) GetProp(key string) any {
+	if key == "text" {
+		return c.Text()
+	}
+	return c.Widget.GetProp(key)
+}
+
+func (c *TextBox) GetPropString(key string, defaultValue string) string {
+	if key == "text" {
+		return c.Text()
+	}
+	return c.Widget.GetPropString(key, defaultValue)
+}
+
+// SetText replaces the text; the cursor goes to the start, the undo
+// history starts anew
+func (c *TextBox) SetText(text string) {
+	// The selection is of the old text
+	c.clearSelection()
+	c.modifyText(textboxModifyCommandSetText, KeyModifiers{}, text)
 	c.ScrollToBegin()
 	c.form.Update()
-
-	if updateProp {
-		c.SetProp("text", text)
-	}
-}
-
-func (c *TextBox) SetText(text string) {
-	c.setText(text, true)
 }
 
 func (c *TextBox) Text() string {
-	return c.GetPropString("text", "")
+	if !c.textValid {
+		c.text = strings.Join(c.lines, "\n")
+		c.textValid = true
+	}
+	return c.text
+}
+
+// remeasure measures the lines again, e.g. in another font
+func (c *TextBox) remeasure() {
+	for i := range c.lineWidths {
+		c.lineWidths[i] = -1
+	}
+	c.updateInnerSize()
+	c.form.Update()
 }
 
 func (c *TextBox) SetHint(text string) {
@@ -250,7 +310,26 @@ func (c *TextBox) Hint() string {
 }
 
 func (c *TextBox) SetMultiline(multiline bool) {
-	c.SetProp("multiline", multiline)
+	c.Widget.SetProp("multiline", multiline)
+	c.applyMultiline()
+}
+
+// applyMultiline sets what the mode decides: a multiline box scrolls and
+// grows in both directions, a single-line one only in width
+func (c *TextBox) applyMultiline() {
+	if c.Multiline() {
+		c.allowScrollX = true
+		c.allowScrollY = true
+		c.SetXExpandable(true)
+		c.SetYExpandable(true)
+	} else {
+		c.allowScrollX = false
+		c.allowScrollY = false
+		c.SetXExpandable(true)
+		c.SetYExpandable(false)
+	}
+	c.updateInnerSize()
+	c.form.Update()
 }
 
 func (c *TextBox) Multiline() bool {
@@ -259,59 +338,45 @@ func (c *TextBox) Multiline() bool {
 
 // ///////////////////////////////////////////////////////////////////////////////
 // Props
+// ProcessPropChange: only the mode changes the size policy. (Any property
+// used to turn a multiline box expandable again, undoing SetXExpandable and
+// SetYExpandable: bug #5.)
 func (c *TextBox) ProcessPropChange(key string, value interface{}) {
 	if c.propIsProcessing {
 		return
 	}
 	c.propIsProcessing = true
-
-	multiline := c.GetPropBool("multiline", false)
-	if multiline {
-		c.allowScrollX = true
-		c.allowScrollY = true
-		c.SetXExpandable(true)
-		c.SetYExpandable(true)
-		//c.verticalScrollVisible.SetOwnValue(true)
-		//c.horizontalScrollVisible.SetOwnValue(true)
-	} else {
-		c.SetXExpandable(true)
-		c.SetYExpandable(false)
+	defer func() { c.propIsProcessing = false }()
+	if key == "multiline" {
+		c.applyMultiline()
 	}
-	c.updateInnerSize()
 	c.form.Update()
-
-	c.propIsProcessing = false
 }
 
+// AssemblyText joins the lines with line breaks
 func (c *TextBox) AssemblyText(lines []string) string {
-	result := ""
-	for pos, line := range lines {
-		result += line
-		if pos < len(lines)-1 {
-			result += "\n"
-		}
-	}
-	return result
+	return strings.Join(lines, "\n")
 }
 
+// updateInnerSize sets the size of the content: the lines measured once,
+// again only when they change
 func (c *TextBox) updateInnerSize() {
-	lines := c.Lines()
-
 	_, textHeight, err := MeasureText(c.FontFamily(), c.FontSize(), "0")
 	if err != nil {
 		return
 	}
-	c.innerHeight = textHeight * len(lines)
+	c.innerHeight = textHeight * len(c.lines)
 
 	var maxTextWidth int
-	for _, line := range lines {
-		textWidth, _, err := MeasureText(c.FontFamily(), c.FontSize(), line)
-		if err != nil {
-			return
+	for i, line := range c.lines {
+		if c.lineWidths[i] < 0 {
+			w, _, err := MeasureText(c.FontFamily(), c.FontSize(), c.lineToPasswordChars(line))
+			if err != nil {
+				return
+			}
+			c.lineWidths[i] = w
 		}
-		if textWidth > maxTextWidth {
-			maxTextWidth = textWidth
-		}
+		maxTextWidth = max(maxTextWidth, c.lineWidths[i])
 	}
 	c.innerWidth = maxTextWidth + c.leftAndRightPadding*3
 	if c.Multiline() {
@@ -325,11 +390,7 @@ func (c *TextBox) updateInnerSize() {
 
 func (c *TextBox) lineToPasswordChars(line string) string {
 	if c.GetPropBool("ispassword", false) {
-		lenOfLine := utf8.RuneCountInString(line)
-		line = ""
-		for i := 0; i < lenOfLine; i++ {
-			line += "*"
-		}
+		return strings.Repeat("*", utf8.RuneCountInString(line))
 	}
 	return line
 }
@@ -351,7 +412,7 @@ func (c *TextBox) Draw(ctx *Canvas, width, height int) {
 		textColor = p.DisabledText
 	}
 
-	lines := c.Lines()
+	lines := c.lines
 
 	oneLineHeight := c.OneLineHeight()
 
@@ -363,13 +424,19 @@ func (c *TextBox) Draw(ctx *Canvas, width, height int) {
 		//yStaticOffset = 0
 	}
 
-	_ = yStaticOffset
+	// Only the lines in the view are drawn
+	first, last := 0, len(lines)-1
+	if c.Multiline() && oneLineHeight > 0 {
+		_, vh := c.viewportSize()
+		first = max(0, (c.scrollY-yStaticOffset)/oneLineHeight)
+		last = min(last, (c.scrollY+vh)/oneLineHeight+1)
+	}
 
 	// Selection
 	if len(c.selectedLines()) > 0 {
 		selection := c.selectionRange()
-		for selY := selection.Y1; selY <= selection.Y2; selY++ {
-			lineCharPos, err := GetCharPositions(c.FontFamily(), c.FontSize(), lines[selY])
+		for selY := max(selection.Y1, first); selY <= min(selection.Y2, last); selY++ {
+			lineCharPos, err := GetCharPositions(c.FontFamily(), c.FontSize(), c.lineToPasswordChars(lines[selY]))
 
 			if err != nil {
 				return
@@ -401,22 +468,13 @@ func (c *TextBox) Draw(ctx *Canvas, width, height int) {
 	}
 
 	// Text
-	yOffset := 0
-
-	for _, line := range lines {
-		line = c.lineToPasswordChars(line)
-		ctx.SetColor(textColor)
-		_, textHeightInLine, err := MeasureText(c.FontFamily(), c.FontSize(), line)
-		ctx.SetHAlign(HAlignLeft)
-		ctx.SetVAlign(VAlignCenter)
-		ctx.SetFontFamily(c.FontFamily())
-		ctx.SetFontSize(c.FontSize())
-		ctx.DrawText(c.leftAndRightPadding, yStaticOffset+yOffset, width-c.leftAndRightPadding*2, textHeightInLine, line)
-
-		if err != nil {
-			return
-		}
-		yOffset += oneLineHeight
+	ctx.SetColor(textColor)
+	ctx.SetHAlign(HAlignLeft)
+	ctx.SetVAlign(VAlignCenter)
+	ctx.SetFontFamily(c.FontFamily())
+	ctx.SetFontSize(c.FontSize())
+	for i := first; i <= last; i++ {
+		ctx.DrawText(c.leftAndRightPadding, yStaticOffset+i*oneLineHeight, width-c.leftAndRightPadding*2, oneLineHeight, c.lineToPasswordChars(lines[i]))
 	}
 
 	// Compare by id via IsFocused() rather than "c.form.focusedWidget == c":
@@ -443,7 +501,7 @@ func (c *TextBox) Draw(ctx *Canvas, width, height int) {
 		}
 	}
 
-	if c.Text() == "" && c.Hint() != "" && !focus {
+	if len(lines) == 1 && lines[0] == "" && c.Hint() != "" && !focus {
 		ctx.SetHAlign(HAlignLeft)
 		if c.Multiline() {
 			ctx.SetVAlign(VAlignTop)
@@ -533,7 +591,8 @@ func (c *TextBox) KeyDown(key Key, mods KeyModifiers) bool {
 
 	c.redraw()
 
-	if mods.Ctrl && key == KeyA {
+	command := (mods.Ctrl || mods.Cmd) && !mods.Alt // Cmd on macOS
+	if command && key == KeyA {
 		c.SelectAllText()
 		return true
 	}
@@ -549,17 +608,17 @@ func (c *TextBox) KeyDown(key Key, mods KeyModifiers) bool {
 		}
 	}
 
-	if mods.Ctrl && key == KeyX {
+	if command && key == KeyX {
 		c.cutSelected()
 		return true
 	}
 
-	if mods.Ctrl && key == KeyV {
+	if command && key == KeyV {
 		c.paste()
 		return true
 	}
 
-	if mods.Ctrl && key == KeyC {
+	if command && key == KeyC {
 		c.copySelected()
 		return true
 	}
@@ -585,6 +644,10 @@ func (c *TextBox) KeyDown(key Key, mods KeyModifiers) bool {
 	}
 
 	if key == KeyHome {
+		if (mods.Ctrl || mods.Cmd) && c.Multiline() {
+			c.moveCursor(0, 0, mods)
+			return true
+		}
 		c.moveCursor(0, c.cursorPosY, mods)
 		return true
 	}
@@ -605,12 +668,15 @@ func (c *TextBox) KeyDown(key Key, mods KeyModifiers) bool {
 	}
 
 	if key == KeyEnd {
-		lines := c.Lines()
-		if c.cursorPosY >= len(lines) {
+		if (mods.Ctrl || mods.Cmd) && c.Multiline() {
+			last := len(c.lines) - 1
+			c.moveCursor(utf8.RuneCountInString(c.lines[last]), last, mods)
 			return true
 		}
-		runes := []rune(lines[c.cursorPosY])
-		c.moveCursor(len(runes), c.cursorPosY, mods)
+		if c.cursorPosY >= len(c.lines) {
+			return true
+		}
+		c.moveCursor(utf8.RuneCountInString(c.lines[c.cursorPosY]), c.cursorPosY, mods)
 		return true
 	}
 
@@ -661,7 +727,7 @@ func (c *TextBox) MouseMove(x int, y int, mods KeyModifiers) {
 }
 
 func (c *TextBox) moveCursorNearPoint(x, y int, modifiers KeyModifiers) {
-	lines := c.Lines()
+	lines := c.lines
 
 	_, textHeight, err := MeasureText(c.FontFamily(), c.FontSize(), "0")
 	if err != nil {
@@ -677,7 +743,7 @@ func (c *TextBox) moveCursorNearPoint(x, y int, modifiers KeyModifiers) {
 		lineNumber = 0
 	}
 
-	charPos, _ := GetCharPositions(c.FontFamily(), c.FontSize(), lines[lineNumber])
+	charPos, _ := GetCharPositions(c.FontFamily(), c.FontSize(), c.lineToPasswordChars(lines[lineNumber]))
 	for i := 0; i < len(charPos); i++ {
 		charPos[i] = charPos[i] + c.leftAndRightPadding
 	}
@@ -776,7 +842,7 @@ func (c *TextBox) selectedLines() []int {
 }
 
 func (c *TextBox) moveCursor(posX int, posY int, modifiers KeyModifiers) {
-	lines := c.Lines()
+	lines := c.lines
 
 	if posY < 0 {
 		return
@@ -786,14 +852,12 @@ func (c *TextBox) moveCursor(posX int, posY int, modifiers KeyModifiers) {
 		return
 	}
 
-	runes := []rune(lines[posY])
-
 	if posX < 0 {
 		return
 	}
 
-	if posX > len(runes) {
-		posX = len(runes)
+	if n := utf8.RuneCountInString(lines[posY]); posX > n {
+		posX = n
 	}
 
 	c.cursorPosX = posX
@@ -813,61 +877,68 @@ func (c *TextBox) moveCursor(posX int, posY int, modifiers KeyModifiers) {
 }
 
 func (c *TextBox) SelectedText() string {
-	lines := c.Lines()
-	result := ""
-
-	//lines := make([]string, 0)
+	lines := c.lines
 	selection := c.selectionRange()
 
 	if selection.Y1 == selection.Y2 {
 		runes1 := []rune(lines[selection.Y1])
-		result += string(runes1[selection.X1:selection.X2])
-	} else {
-		runes1 := []rune(lines[selection.Y1])
-		result += string(runes1[selection.X1:])
-		result += "\n"
-
-		if selection.Y2-selection.Y1 > 1 {
-			for row := selection.Y1 + 1; row < selection.Y2; row++ {
-				result += lines[row]
-				result += "\n"
-			}
-		}
-
-		runes2 := []rune(lines[selection.Y2])
-		result += string(runes2[0:selection.X2])
+		return string(runes1[selection.X1:selection.X2])
 	}
-
-	return result
+	var b strings.Builder
+	runes1 := []rune(lines[selection.Y1])
+	b.WriteString(string(runes1[selection.X1:]))
+	b.WriteByte('\n')
+	for row := selection.Y1 + 1; row < selection.Y2; row++ {
+		b.WriteString(lines[row])
+		b.WriteByte('\n')
+	}
+	runes2 := []rune(lines[selection.Y2])
+	b.WriteString(string(runes2[:selection.X2]))
+	return b.String()
 }
 
-func (c *TextBox) removeSelectedText(modifiers KeyModifiers) (bool, []string, int, int) {
-	oldLines := c.Lines()
-	lines := make([]string, 0)
-	modified := false
-	selection := c.selectionRange()
-	curPosX := c.cursorPosX
-	curPosY := c.cursorPosY
-	if len(c.selectedLines()) > 0 {
-		lines = append(lines, oldLines[0:selection.Y1]...)
-		runes1 := []rune(oldLines[selection.Y1])
-		runes2 := []rune(oldLines[selection.Y2])
-		lines = append(lines, string(runes1[0:selection.X1])+string(runes2[selection.X2:]))
-		lines = append(lines, oldLines[selection.Y2+1:]...)
-		modified = true
-		curPosX = selection.X1
-		curPosY = selection.Y1
-	} else {
-		lines = append(lines, oldLines...)
-	}
+// setLine replaces the line i
+func (c *TextBox) setLine(i int, s string) {
+	c.lines[i] = s
+	c.lineWidths[i] = -1
+}
 
-	return modified, lines, curPosX, curPosY
+// insertLines puts the lines before the line i
+func (c *TextBox) insertLines(i int, lines ...string) {
+	c.lines = slices.Insert(c.lines, i, lines...)
+	widths := make([]int, len(lines))
+	for k := range widths {
+		widths[k] = -1
+	}
+	c.lineWidths = slices.Insert(c.lineWidths, i, widths...)
+}
+
+// deleteLines removes the lines [i, j)
+func (c *TextBox) deleteLines(i, j int) {
+	c.lines = slices.Delete(c.lines, i, j)
+	c.lineWidths = slices.Delete(c.lineWidths, i, j)
+}
+
+// deleteSelection removes the selected text and puts the cursor where it
+// was; false if nothing is selected
+func (c *TextBox) deleteSelection() bool {
+	if len(c.selectedLines()) == 0 {
+		return false
+	}
+	selection := c.selectionRange()
+	runes1 := []rune(c.lines[selection.Y1])
+	runes2 := []rune(c.lines[selection.Y2])
+	c.setLine(selection.Y1, string(runes1[:selection.X1])+string(runes2[selection.X2:]))
+	c.deleteLines(selection.Y1+1, selection.Y2+1)
+	c.cursorPosX, c.cursorPosY = selection.X1, selection.Y1
+	c.clearSelection()
+	return true
 }
 
 func (c *TextBox) ensureVisibleCursor() {
-	lines := c.Lines()
+	lines := c.lines
 	_, oneLineHeight, _ := MeasureText(c.FontFamily(), c.FontSize(), "Q")
-	charPos, err := GetCharPositions(c.FontFamily(), c.FontSize(), lines[c.cursorPosY])
+	charPos, err := GetCharPositions(c.FontFamily(), c.FontSize(), c.lineToPasswordChars(lines[c.cursorPosY]))
 	for i := 0; i < len(charPos); i++ {
 		charPos[i] = charPos[i] + c.leftAndRightPadding
 	}
@@ -892,148 +963,119 @@ func (c *TextBox) clearSelection() {
 }
 
 func (c *TextBox) modifyText(cmd textboxModifyCommand, modifiers KeyModifiers, data interface{}) {
-	oldText := c.Text()
-	c.redraw()
 	c.recordUndo(cmd)
 
-	valid := true
-	selectedTextRemoved, lines, curPosX, curPosY := c.removeSelectedText(modifiers)
+	changed := false
+	if cmd != textboxModifyCommandSetText {
+		changed = c.deleteSelection()
+	}
+	curPosX, curPosY := c.cursorPosX, c.cursorPosY
 
 	switch cmd {
 	case textboxModifyCommandInsertChar:
-		{
-			out := []rune(lines[curPosY])
-			left := string(out[0:curPosX])
-			right := string(out[curPosX:])
-			lines[curPosY] = left + string(data.(rune)) + right
-			curPosX += 1
-		}
+		runes := []rune(c.lines[curPosY])
+		c.setLine(curPosY, string(runes[:curPosX])+string(data.(rune))+string(runes[curPosX:]))
+		curPosX++
+		changed = true
 	case textboxModifyCommandInsertReturn:
-		{
-			runes := []rune(lines[curPosY])
-			left := string(runes[0:curPosX])
-			right := string(runes[curPosX:])
-			linesBefore := lines[0:curPosY]
-			linesAfter := lines[curPosY:]
-			lines = append(linesBefore, right)
-			lines = append(lines, linesAfter...)
-			lines[curPosY] = left
-			curPosX = 0
-			curPosY++
-		}
+		runes := []rune(c.lines[curPosY])
+		c.setLine(curPosY, string(runes[:curPosX]))
+		c.insertLines(curPosY+1, string(runes[curPosX:]))
+		curPosX = 0
+		curPosY++
+		changed = true
 	case textboxModifyCommandBackspace:
-		{
-			runes := []rune(lines[curPosY])
-			if !selectedTextRemoved {
-				if curPosX > 0 {
-					left := string(runes[0 : curPosX-1])
-					right := string(runes[curPosX:])
-					lines[curPosY] = left + right
-					curPosX = curPosX - 1
-				} else {
-					if curPosY > 0 {
-						runes := []rune(lines[curPosY-1])
-						newCursorPosX := len(runes)
-						linesTemp := make([]string, 0)
-						linesTemp = append(linesTemp, lines[0:curPosY]...)
-						linesTemp[curPosY-1] += lines[curPosY]
-						linesTemp = append(linesTemp, lines[curPosY+1:]...)
-						lines = linesTemp
-						curPosX = newCursorPosX
-						curPosY = curPosY - 1
-					}
-				}
-			}
+		if changed { // the selection is what Backspace removes
+			break
+		}
+		if curPosX > 0 {
+			runes := []rune(c.lines[curPosY])
+			c.setLine(curPosY, string(runes[:curPosX-1])+string(runes[curPosX:]))
+			curPosX--
+			changed = true
+		} else if curPosY > 0 {
+			curPosX = utf8.RuneCountInString(c.lines[curPosY-1])
+			c.setLine(curPosY-1, c.lines[curPosY-1]+c.lines[curPosY])
+			c.deleteLines(curPosY, curPosY+1)
+			curPosY--
+			changed = true
 		}
 	case textboxModifyCommandDelete:
-		{
-			runes := []rune(lines[curPosY])
-			if !selectedTextRemoved {
-				if curPosX < len(runes) {
-					left := string(runes[0:curPosX])
-					right := string(runes[curPosX+1:])
-					lines[curPosY] = left + right
-				} else {
-					if curPosY < len(lines)-1 {
-						linesTemp := make([]string, 0)
-						linesTemp = append(linesTemp, lines[0:curPosY+1]...)
-						linesTemp[curPosY] += lines[curPosY+1]
-						linesTemp = append(linesTemp, lines[curPosY+2:]...)
-						lines = linesTemp
-					}
-				}
-			}
+		if changed {
+			break
+		}
+		runes := []rune(c.lines[curPosY])
+		if curPosX < len(runes) {
+			c.setLine(curPosY, string(runes[:curPosX])+string(runes[curPosX+1:]))
+			changed = true
+		} else if curPosY < len(c.lines)-1 {
+			c.setLine(curPosY, c.lines[curPosY]+c.lines[curPosY+1])
+			c.deleteLines(curPosY+1, curPosY+2)
+			changed = true
 		}
 	case textboxModifyCommandSetText:
-		{
-			lines = strings.Split(strings.Replace(data.(string), "\r", "", -1), "\n")
-
-			// Ensure cursor is in a valid position
-			if curPosY >= len(lines) {
-				curPosY = len(lines) - 1
-			}
-			runes := []rune(lines[curPosY])
-			if curPosX > len(runes) {
-				curPosX = len(runes)
+		lines := splitLines(data.(string))
+		changed = !slices.Equal(lines, c.lines)
+		if changed {
+			c.lines = lines
+			c.lineWidths = make([]int, len(lines))
+			for i := range c.lineWidths {
+				c.lineWidths[i] = -1
 			}
 		}
+		// The cursor stays where it was, within the new text
+		curPosY = min(curPosY, len(c.lines)-1)
+		curPosX = min(curPosX, utf8.RuneCountInString(c.lines[curPosY]))
 	case textboxModifyCommandInsertString:
-		{
-			// The whole text at once. (It used to be typed a character at a
-			// time, each one rebuilding and measuring all the text: pasting
-			// a few kilobytes froze the window for seconds.) Kept as typing
-			// does: a line break only in a multiline box, no other control
-			// characters.
-			var b strings.Builder
-			for _, ch := range data.(string) {
-				if ch == '\n' {
-					if c.Multiline() {
-						b.WriteRune(ch)
-					}
-					continue
+		// The whole text at once. (It used to be typed a character at a
+		// time, each one rebuilding and measuring all the text: pasting
+		// a few kilobytes froze the window for seconds.) Kept as typing
+		// does: a line break only in a multiline box, no other control
+		// characters.
+		var b strings.Builder
+		for _, ch := range data.(string) {
+			if ch == '\n' {
+				if c.Multiline() {
+					b.WriteRune(ch)
 				}
-				if ch < 32 {
-					continue
-				}
-				b.WriteRune(ch)
+				continue
 			}
-			parts := strings.Split(b.String(), "\n")
-			runes := []rune(lines[curPosY])
-			left, right := string(runes[:curPosX]), string(runes[curPosX:])
-			if len(parts) == 1 {
-				lines[curPosY] = left + parts[0] + right
-				curPosX += utf8.RuneCountInString(parts[0])
-			} else {
-				last := parts[len(parts)-1]
-				newLines := make([]string, 0, len(lines)+len(parts)-1)
-				newLines = append(newLines, lines[:curPosY]...)
-				newLines = append(newLines, left+parts[0])
-				newLines = append(newLines, parts[1:len(parts)-1]...)
-				newLines = append(newLines, last+right)
-				newLines = append(newLines, lines[curPosY+1:]...)
-				lines = newLines
-				curPosY += len(parts) - 1
-				curPosX = utf8.RuneCountInString(last)
+			if ch < 32 {
+				continue
 			}
+			b.WriteRune(ch)
 		}
+		if b.Len() == 0 {
+			break
+		}
+		parts := strings.Split(b.String(), "\n")
+		runes := []rune(c.lines[curPosY])
+		left, right := string(runes[:curPosX]), string(runes[curPosX:])
+		if len(parts) == 1 {
+			c.setLine(curPosY, left+parts[0]+right)
+			curPosX += utf8.RuneCountInString(parts[0])
+		} else {
+			last := parts[len(parts)-1]
+			c.setLine(curPosY, left+parts[0])
+			c.insertLines(curPosY+1, append(parts[1:len(parts)-1:len(parts)-1], last+right)...)
+			curPosY += len(parts) - 1
+			curPosX = utf8.RuneCountInString(last)
+		}
+		changed = true
 	}
 
-	if valid {
-		newText := c.AssemblyText(lines)
-		c.Widget.SetProp("text", newText)
-		c.updateInnerSize()
-		c.moveCursor(curPosX, curPosY, modifiers)
-
-		c.clearSelection()
-		c.updateInnerSize()
-		// The next typing at this place joins this undo step
-		c.lastEditX, c.lastEditY = c.cursorPosX, c.cursorPosY
-
-		if newText != oldText {
-			c.textChanged(cmd != textboxModifyCommandSetText)
-		}
+	if changed {
+		c.textValid = false
 	}
+	c.updateInnerSize()
+	c.moveCursor(curPosX, curPosY, modifiers)
+	c.clearSelection()
+	// The next typing at this place joins this undo step
+	c.lastEditX, c.lastEditY = c.cursorPosX, c.cursorPosY
 
+	if changed {
+		c.textChanged(cmd != textboxModifyCommandSetText && !c.editByCode)
+	}
 	c.form.Update()
 }
 
@@ -1044,26 +1086,29 @@ func (c *TextBox) textChanged(byUser bool) {
 		f()
 		PopEvent()
 	}
-	c.OnTextChanged.Emit(c.Text())
-	if byUser {
+	// The text is joined for the handlers only
+	if c.OnTextChanged.Connected() {
+		c.OnTextChanged.Emit(c.Text())
+	}
+	if byUser && c.OnTextEdited.Connected() {
 		c.OnTextEdited.Emit(c.Text())
 	}
 }
 
 func (c *TextBox) SelectAllText() {
-	lines := c.Lines()
-	runesLast := []rune(lines[len(lines)-1])
+	last := len(c.lines) - 1
 	c.selectionLeftX = 0
 	c.selectionLeftY = 0
-	c.selectionRightX = len(runesLast)
-	c.selectionRightY = len(lines) - 1
+	c.selectionRightX = utf8.RuneCountInString(c.lines[last])
+	c.selectionRightY = last
+	c.form.Update()
 }
 
 // SelectRange selects the runes [from, to) of the first line and puts the
 // cursor at the end of the selection (as file managers select a name
 // without its extension)
 func (c *TextBox) SelectRange(from, to int) {
-	runes := []rune(c.Lines()[0])
+	runes := []rune(c.lines[0])
 	to = max(0, min(to, len(runes)))
 	from = max(0, min(from, to))
 	c.moveCursor(to, 0, KeyModifiers{})
@@ -1075,9 +1120,7 @@ func (c *TextBox) SelectRange(from, to int) {
 }
 
 func (c *TextBox) MoveCursorToEnd() {
-	lines := c.Lines()
-	runes := []rune(lines[c.cursorPosY])
-	c.moveCursor(len(runes), c.cursorPosY, KeyModifiers{})
+	c.moveCursor(utf8.RuneCountInString(c.lines[c.cursorPosY]), c.cursorPosY, KeyModifiers{})
 }
 
 func (c *TextBox) ScrollToBegin() {
@@ -1137,7 +1180,7 @@ func (c *TextBox) recordUndo(cmd textboxModifyCommand) {
 			time.Since(c.lastEditTime) < textBoxUndoPause
 	}
 	if !grouped {
-		c.undoStack = append(c.undoStack, textBoxState{c.Text(), c.cursorPosX, c.cursorPosY})
+		c.undoStack = append(c.undoStack, c.state())
 		if len(c.undoStack) > textBoxUndoLimit {
 			c.undoStack = c.undoStack[1:]
 		}
@@ -1157,7 +1200,7 @@ func (c *TextBox) Undo() {
 	}
 	state := c.undoStack[len(c.undoStack)-1]
 	c.undoStack = c.undoStack[:len(c.undoStack)-1]
-	c.redoStack = append(c.redoStack, textBoxState{c.Text(), c.cursorPosX, c.cursorPosY})
+	c.redoStack = append(c.redoStack, c.state())
 	c.restoreState(state)
 }
 
@@ -1168,7 +1211,7 @@ func (c *TextBox) Redo() {
 	}
 	state := c.redoStack[len(c.redoStack)-1]
 	c.redoStack = c.redoStack[:len(c.redoStack)-1]
-	c.undoStack = append(c.undoStack, textBoxState{c.Text(), c.cursorPosX, c.cursorPosY})
+	c.undoStack = append(c.undoStack, c.state())
 	c.restoreState(state)
 }
 
@@ -1186,17 +1229,141 @@ func (c *TextBox) ClearUndo() {
 	c.lastEditActive = false
 }
 
-// restoreState shows a state of the history, as an edit of the user
+// state is the current state for the undo history: copies of the slices,
+// the strings are shared
+func (c *TextBox) state() textBoxState {
+	return textBoxState{slices.Clone(c.lines), slices.Clone(c.lineWidths), c.cursorPosX, c.cursorPosY}
+}
+
+// restoreState shows a state of the history, as an edit of the user. The
+// state is the box's own from then on (taken off the history).
 func (c *TextBox) restoreState(state textBoxState) {
-	before := c.Text()
+	changed := !slices.Equal(state.lines, c.lines)
 	c.lastEditActive = false
-	c.Widget.SetProp("text", state.text)
+	c.lines, c.lineWidths = state.lines, state.widths
+	c.textValid = false
+	c.clearSelection()
 	c.updateInnerSize()
 	c.moveCursor(state.x, state.y, KeyModifiers{})
 	c.clearSelection()
 	c.ensureVisibleCursor()
-	if state.text != before {
+	if changed {
 		c.textChanged(true)
 	}
 	c.form.Update()
+}
+
+// The cursor, the selection and the editing from the code
+
+// TextPos is a place in the text of a text box: the line and the column, in
+// runes (characters), from 0
+type TextPos struct {
+	Line, Col int
+}
+
+// clampPos keeps the place within the text
+func (c *TextBox) clampPos(pos TextPos) TextPos {
+	pos.Line = max(0, min(pos.Line, len(c.lines)-1))
+	pos.Col = max(0, min(pos.Col, utf8.RuneCountInString(c.lines[pos.Line])))
+	return pos
+}
+
+// CursorPosition returns where the cursor is
+func (c *TextBox) CursorPosition() TextPos {
+	return TextPos{c.cursorPosY, c.cursorPosX}
+}
+
+// SetCursorPosition puts the cursor at the place (kept within the text),
+// drops the selection and scrolls the place into view
+func (c *TextBox) SetCursorPosition(pos TextPos) {
+	pos = c.clampPos(pos)
+	c.cursorPosX, c.cursorPosY = pos.Col, pos.Line
+	c.clearSelection()
+	c.ensureVisibleCursor()
+	c.form.Update()
+}
+
+// Selection returns the selected part of the text, from <= to; from == to
+// (the cursor) if nothing is selected
+func (c *TextBox) Selection() (from, to TextPos) {
+	sel := c.selectionRange()
+	return TextPos{sel.Y1, sel.X1}, TextPos{sel.Y2, sel.X2}
+}
+
+// HasSelection reports whether a part of the text is selected
+func (c *TextBox) HasSelection() bool {
+	return len(c.selectedLines()) > 0
+}
+
+// SetSelection selects the text between anchor and cursor (in any order)
+// and puts the cursor at cursor, scrolled into view: as Shift+arrows from
+// anchor would
+func (c *TextBox) SetSelection(anchor, cursor TextPos) {
+	anchor, cursor = c.clampPos(anchor), c.clampPos(cursor)
+	c.cursorPosX, c.cursorPosY = cursor.Col, cursor.Line
+	c.selectionLeftX, c.selectionLeftY = anchor.Col, anchor.Line
+	c.selectionRightX, c.selectionRightY = cursor.Col, cursor.Line
+	c.ensureVisibleCursor()
+	c.form.Update()
+}
+
+// InsertText puts the text at the cursor, replacing the selection, as a
+// paste would: the edit can be undone (unlike SetText, which starts the
+// history anew). OnTextChanged is emitted, OnTextEdited (of the user's
+// edits) is not. To replace the whole text undoably:
+//
+//	box.SelectAllText()
+//	box.InsertText(strings.ToUpper(box.Text()))
+func (c *TextBox) InsertText(text string) {
+	c.editByCode = true
+	defer func() { c.editByCode = false }()
+	c.modifyText(textboxModifyCommandInsertString, KeyModifiers{}, text)
+	c.lastEditActive = false // the next typing is an undo step of its own
+}
+
+// Cut moves the selected text to the clipboard (Ctrl+X)
+func (c *TextBox) Cut() {
+	c.cutSelected()
+}
+
+// Copy copies the selected text to the clipboard (Ctrl+C)
+func (c *TextBox) Copy() {
+	c.copySelected()
+}
+
+// Paste puts the text of the clipboard at the cursor, replacing the
+// selection (Ctrl+V)
+func (c *TextBox) Paste() {
+	c.paste()
+}
+
+// ScrollToCursor scrolls the cursor into view
+func (c *TextBox) ScrollToCursor() {
+	c.ensureVisibleCursor()
+	c.form.Update()
+}
+
+// PosAt returns the place of the rune offset in the whole text (as Text()
+// returns it, each line break one rune): for searching the text
+func (c *TextBox) PosAt(offset int) TextPos {
+	for i, line := range c.lines {
+		n := utf8.RuneCountInString(line)
+		if offset <= n {
+			return TextPos{i, max(0, offset)}
+		}
+		offset -= n + 1
+	}
+	last := len(c.lines) - 1
+	return TextPos{last, utf8.RuneCountInString(c.lines[last])}
+}
+
+// OffsetOf returns the rune offset of the place in the whole text, the
+// inverse of PosAt
+func (c *TextBox) OffsetOf(pos TextPos) int {
+	pos = c.clampPos(pos)
+	offset := 0
+	for i := 0; i < pos.Line; i++ {
+		offset += utf8.RuneCountInString(c.lines[i]) + 1
+	}
+	return offset + pos.Col
 }

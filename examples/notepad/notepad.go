@@ -140,9 +140,9 @@ func (n *notepad) buildMenu() *ui.MenuBar {
 	edit.AddItem("&Undo", n.editAction(n.text.Undo)).SetImage(icons.Undo(icons.Size)).SetShortcut("Mod+Z")
 	edit.AddItem("&Redo", n.editAction(n.text.Redo)).SetImage(icons.Redo(icons.Size)).SetShortcut("Mod+Y")
 	edit.AddSeparator()
-	edit.AddItem("Cu&t", n.editAction(func() { n.textKey(ui.KeyX) })).SetShortcut("Mod+X")
-	edit.AddItem("&Copy", n.editAction(func() { n.textKey(ui.KeyC) })).SetShortcut("Mod+C")
-	edit.AddItem("&Paste", n.editAction(func() { n.textKey(ui.KeyV) })).SetShortcut("Mod+V")
+	edit.AddItem("Cu&t", n.editAction(n.text.Cut)).SetShortcut("Mod+X")
+	edit.AddItem("&Copy", n.editAction(n.text.Copy)).SetShortcut("Mod+C")
+	edit.AddItem("&Paste", n.editAction(n.text.Paste)).SetShortcut("Mod+V")
 	edit.AddItem("Select &All", n.editAction(n.text.SelectAllText)).SetShortcut("Mod+A")
 	edit.AddSeparator()
 	edit.AddItem("&Find...", n.showFind).SetImage(icons.Search(icons.Size)).SetShortcut("Mod+F")
@@ -222,12 +222,6 @@ func (n *notepad) editAction(f func()) func() {
 		f()
 		n.text.Focus()
 	}
-}
-
-// textKey presses Ctrl+key in the text box: Cut, Copy and Paste of the text
-// box are its keys
-func (n *notepad) textKey(key ui.Key) {
-	n.text.KeyDown(key, ui.KeyModifiers{Ctrl: true})
 }
 
 func (n *notepad) setFontSize(size float64) {

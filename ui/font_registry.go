@@ -240,7 +240,23 @@ func findSystemFamily(name string) {
 type fallbackFace struct {
 	faces   []font.Face
 	metrics font.Metrics
+
+	// Caches of what measuring asks for again and again: the lookups in the
+	// font's tables are slow (the advances and the kerning of a long text
+	// took most of its measuring). A face is used under its lock, so the
+	// maps need none of their own.
+	faceIndex map[rune]int
+	advances  map[rune]cachedAdvance
+	kerns     map[[2]rune]fixed.Int26_6
 }
+
+type cachedAdvance struct {
+	advance fixed.Int26_6
+	ok      bool
+}
+
+// fallbackCacheLimit is the size the caches are cleared at
+const fallbackCacheLimit = 1 << 16
 
 // newFallbackFace takes the line metrics from the first face only: the
 // layout doesn't change when a fallback font appears. CJK fonts have larger
@@ -251,12 +267,21 @@ func newFallbackFace(faces []font.Face) *fallbackFace {
 }
 
 func (f *fallbackFace) faceFor(r rune) font.Face {
-	for _, face := range f.faces {
+	if i, ok := f.faceIndex[r]; ok {
+		return f.faces[i]
+	}
+	index := 0
+	for i, face := range f.faces {
 		if _, ok := face.GlyphAdvance(r); ok {
-			return face
+			index = i
+			break
 		}
 	}
-	return f.faces[0]
+	if f.faceIndex == nil || len(f.faceIndex) > fallbackCacheLimit {
+		f.faceIndex = make(map[rune]int)
+	}
+	f.faceIndex[r] = index
+	return f.faces[index]
 }
 
 func (f *fallbackFace) Close() error {
@@ -272,16 +297,32 @@ func (f *fallbackFace) GlyphBounds(r rune) (fixed.Rectangle26_6, fixed.Int26_6, 
 }
 
 func (f *fallbackFace) GlyphAdvance(r rune) (fixed.Int26_6, bool) {
-	return f.faceFor(r).GlyphAdvance(r)
+	if a, ok := f.advances[r]; ok {
+		return a.advance, a.ok
+	}
+	advance, ok := f.faceFor(r).GlyphAdvance(r)
+	if f.advances == nil || len(f.advances) > fallbackCacheLimit {
+		f.advances = make(map[rune]cachedAdvance)
+	}
+	f.advances[r] = cachedAdvance{advance, ok}
+	return advance, ok
 }
 
 // Kern only applies within one font
 func (f *fallbackFace) Kern(r0, r1 rune) fixed.Int26_6 {
-	face := f.faceFor(r0)
-	if face != f.faceFor(r1) {
-		return 0
+	key := [2]rune{r0, r1}
+	if k, ok := f.kerns[key]; ok {
+		return k
 	}
-	return face.Kern(r0, r1)
+	var k fixed.Int26_6
+	if face := f.faceFor(r0); face == f.faceFor(r1) {
+		k = face.Kern(r0, r1)
+	}
+	if f.kerns == nil || len(f.kerns) > fallbackCacheLimit {
+		f.kerns = make(map[[2]rune]fixed.Int26_6)
+	}
+	f.kerns[key] = k
+	return k
 }
 
 func (f *fallbackFace) Metrics() font.Metrics {
