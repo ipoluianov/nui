@@ -2,6 +2,7 @@ package ui
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -253,6 +254,30 @@ func openSystemFont(path string, families []string) (*sfnt.Font, error) {
 	}
 	file.Close()
 	return nil, errors.New("no Chinese characters in " + path)
+}
+
+// openFontFile opens the font file, reading it on demand as openSystemFont,
+// and picks the font of the PostScript name from a collection. exact is
+// false if no font of the file has the name: the first one is returned.
+func openFontFile(path, postScriptName string) (f *sfnt.Font, exact bool, err error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, false, err
+	}
+	collection, err := sfnt.ParseCollectionReaderAt(file)
+	if err != nil || collection.NumFonts() == 0 {
+		file.Close()
+		return nil, false, fmt.Errorf("font file %s: %v", path, err)
+	}
+	var buf sfnt.Buffer
+	for i := 0; i < collection.NumFonts(); i++ {
+		if f, err := collection.Font(i); err == nil && fontName(f, &buf, sfnt.NameIDPostScript) == postScriptName {
+			return f, true, nil
+		}
+	}
+	// The file stays open while the font is in use: the application's lifetime
+	f, err = collection.Font(0)
+	return f, false, err
 }
 
 func hasGlyph(f *sfnt.Font, buf *sfnt.Buffer, r rune) bool {

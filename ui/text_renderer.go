@@ -1,11 +1,13 @@
 package ui
 
 import (
-	_ "embed"
+	"compress/gzip"
+	"embed"
 	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
+	"io"
 	"sort"
 	"strings"
 	"sync"
@@ -24,11 +26,75 @@ const (
 	FontFamilyMono = "jetbrainsmono"
 )
 
+// The regular faces of the built-in families are registered at start; the
+// other faces are gzipped and unpacked when first needed (see
+// loadBuiltinFaces): unpacking takes milliseconds, and most applications
+// use only the regular faces.
+
 //go:embed "fonts/NotoSans-Regular.ttf"
 var fontNotoSans []byte
 
 //go:embed "fonts/JetBrainsMono-Regular.ttf"
 var fontJetBrainsMono []byte
+
+//go:embed fonts/*.ttf.gz
+var builtinFontFiles embed.FS
+
+var builtinFaces = map[string]string{
+	FontFamilySans + ":bold":        "NotoSans-Bold",
+	FontFamilySans + ":italic":      "NotoSans-Italic",
+	FontFamilySans + ":bold:italic": "NotoSans-BoldItalic",
+	FontFamilyMono + ":bold":        "JetBrainsMono-Bold",
+	FontFamilyMono + ":italic":      "JetBrainsMono-Italic",
+	FontFamilyMono + ":bold:italic": "JetBrainsMono-BoldItalic",
+}
+
+var (
+	builtinFacesMu     sync.Mutex
+	builtinFacesLoaded = map[string]bool{}
+)
+
+// loadBuiltinFaces registers the built-in faces of the family (lowercase,
+// without a style) the style may be drawn with, if not yet. A face the
+// application registered itself stays.
+func loadBuiltinFaces(family string, style FontStyle) {
+	// Held while a face is registered: text of the style waits for the face
+	// instead of being drawn with a synthesized one meanwhile
+	builtinFacesMu.Lock()
+	defer builtinFacesMu.Unlock()
+	for _, s := range styleCandidates(style) {
+		name := faceName(family, s)
+		file, ok := builtinFaces[name]
+		if !ok || builtinFacesLoaded[name] {
+			continue
+		}
+		builtinFacesLoaded[name] = true
+		fontsMu.RLock()
+		_, registered := fonts[name]
+		fontsMu.RUnlock()
+		if !registered {
+			mustRegisterFont(name, builtinFontData(file))
+		}
+	}
+}
+
+// builtinFontData unpacks the built-in font file
+func builtinFontData(file string) []byte {
+	f, err := builtinFontFiles.Open("fonts/" + file + ".ttf.gz")
+	if err != nil {
+		panic(err)
+	}
+	defer f.Close()
+	r, err := gzip.NewReader(f)
+	if err != nil {
+		panic(err)
+	}
+	data, err := io.ReadAll(r)
+	if err != nil {
+		panic(err)
+	}
+	return data
+}
 
 type renderedText struct {
 	key          string
@@ -164,7 +230,8 @@ func DrawText(rgba *image.RGBA, text string, textColor color.Color, fontFamily s
 		})
 	}
 
-	dstRect := image.Rect(x, y, x+textBounds.Dx(), y+textBounds.Dy())
+	// The image's x 0 is the start of the text (see renderText)
+	dstRect := textBounds.Add(image.Pt(x, y))
 	clipRect := image.Rect(clipX, clipY, clipX+clipWidth, clipY+clipHeight)
 	dstRect = dstRect.Intersect(clipRect)
 
@@ -172,7 +239,7 @@ func DrawText(rgba *image.RGBA, text string, textColor color.Color, fontFamily s
 		return
 	}
 
-	srcStart := textBounds.Min.Add(dstRect.Min.Sub(image.Pt(x, y)))
+	srcStart := dstRect.Min.Sub(image.Pt(x, y))
 	draw.Draw(rgba, dstRect, textImage, srcStart, draw.Over)
 }
 
@@ -248,11 +315,16 @@ func renderText(text string, textColor color.Color, fontFamily string, fontSize 
 	var rgba *image.RGBA
 	ensureFallbackFonts(text)
 	withFace(fontFamily, fontSize, func(face font.Face) {
-		textWidth := font.MeasureString(face, text).Ceil()
+		// The image is as wide as the ink: an italic letter may stand out
+		// of its advance, e.g. the top of the last one. x 0 is the pen's
+		// start, where DrawText puts it.
+		bounds, advance := font.BoundString(face, text)
+		minX := min(0, bounds.Min.X.Floor())
+		maxX := max(advance.Ceil(), bounds.Max.X.Ceil())
 		metrics := face.Metrics()
 		textHeight := (metrics.Ascent + metrics.Descent).Ceil()
 
-		rgba = image.NewRGBA(image.Rect(0, 0, textWidth, textHeight))
+		rgba = image.NewRGBA(image.Rect(minX, 0, maxX, textHeight))
 
 		d := &font.Drawer{
 			Dst:  rgba,

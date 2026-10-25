@@ -31,9 +31,11 @@ type SystemFont interface {
 }
 
 // OpenSystemFont opens the system font of the family name with the em size in
-// pixels. ErrSystemFontNotFound if the system has no such font.
-func OpenSystemFont(name string, pixelSize float64) (SystemFont, error) {
-	return openSystemFont(name, pixelSize)
+// pixels, in the style: its bold or italic face, or one the system
+// synthesizes if the font has none. ErrSystemFontNotFound if the system has
+// no such font.
+func OpenSystemFont(name string, pixelSize float64, bold, italic bool) (SystemFont, error) {
+	return openSystemFont(name, pixelSize, bold, italic)
 }
 
 // SystemUIFontName returns the name of the font the system uses for its

@@ -185,6 +185,16 @@ func (c *Canvas) SetFontFamily(fontFamily string) {
 	c.state.fontFamily = fontFamily
 }
 
+// SetFontBold draws the text in the bold face of the font, or not
+func (c *Canvas) SetFontBold(bold bool) {
+	c.state.fontFamily = fontWithStyle(c.state.fontFamily, FontBold, bold)
+}
+
+// SetFontItalic draws the text in the italic face of the font, or not
+func (c *Canvas) SetFontItalic(italic bool) {
+	c.state.fontFamily = fontWithStyle(c.state.fontFamily, FontItalic, italic)
+}
+
 func (c *Canvas) SetFontSize(fontSize float64) {
 	c.state.fontSize = fontSize
 }

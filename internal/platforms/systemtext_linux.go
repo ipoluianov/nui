@@ -41,6 +41,9 @@ var ft struct {
 	getKerning      func(face unsafe.Pointer, left, right, mode uint32, kerning *[2]int64) int32
 	libSetLcdFilter func(lib unsafe.Pointer, filter uint32) int32
 	doneFace        func(face unsafe.Pointer) int32
+	// The synthesized styles (ftsynth.h), nil if the library lacks them
+	emboldenSlot func(slot unsafe.Pointer)
+	obliqueSlot  func(slot unsafe.Pointer)
 }
 
 // FT_FaceRec, FT_SizeRec and FT_GlyphSlotRec field offsets
@@ -87,6 +90,12 @@ func loadFreeType() error {
 		purego.RegisterLibFunc(&ft.getKerning, h, "FT_Get_Kerning")
 		purego.RegisterLibFunc(&ft.libSetLcdFilter, h, "FT_Library_SetLcdFilter")
 		purego.RegisterLibFunc(&ft.doneFace, h, "FT_Done_Face")
+		if sym, err := purego.Dlsym(h, "FT_GlyphSlot_Embolden"); err == nil {
+			purego.RegisterFunc(&ft.emboldenSlot, sym)
+		}
+		if sym, err := purego.Dlsym(h, "FT_GlyphSlot_Oblique"); err == nil {
+			purego.RegisterFunc(&ft.obliqueSlot, sym)
+		}
 		if ft.initFreeType(&ft.lib) != 0 {
 			ft.err = fmt.Errorf("%w: FT_Init_FreeType failed", ErrSystemTextNotSupported)
 		}
@@ -105,17 +114,33 @@ type fcFont struct {
 	antialias bool
 	hinting   bool
 	lcdFilter int // 0 none, 1 default, 2 light, 3 legacy
+	// The style the font file lacks, to synthesize: fontconfig's rules
+	// (90-synthetic.conf) ask for it where a bold or italic face is missing
+	embolden bool
+	oblique  bool
+}
+
+// fcStyle is the fontconfig pattern of the style
+func fcStyle(bold, italic bool) string {
+	s := ""
+	if bold {
+		s += ":bold"
+	}
+	if italic {
+		s += ":italic"
+	}
+	return s
 }
 
 // fcMatch asks fontconfig for the font of the pattern
 func fcMatch(pattern string) (fcFont, bool) {
 	out, err := exec.Command("fc-match", "-f",
-		"%{file}\t%{index}\t%{family}\t%{rgba}\t%{hintstyle}\t%{antialias}\t%{hinting}\t%{lcdfilter}", pattern).Output()
+		"%{file}\t%{index}\t%{family}\t%{rgba}\t%{hintstyle}\t%{antialias}\t%{hinting}\t%{lcdfilter}\t%{embolden}\t%{matrix}", pattern).Output()
 	if err != nil {
 		return fcFont{}, false
 	}
 	f := strings.Split(string(out), "\t")
-	if len(f) < 8 || f[0] == "" {
+	if len(f) < 10 || f[0] == "" {
 		return fcFont{}, false
 	}
 	atoi := func(s string, def int) int {
@@ -133,7 +158,19 @@ func fcMatch(pattern string) (fcFont, bool) {
 		antialias: f[5] != "False",
 		hinting:   f[6] != "False",
 		lcdFilter: atoi(f[7], 1),
+		embolden:  f[8] == "True",
+		oblique:   isShear(f[9]),
 	}, true
+}
+
+// isShear tells whether the fontconfig matrix ("xx xy yx yy") slants the glyphs
+func isShear(matrix string) bool {
+	m := strings.Fields(matrix)
+	if len(m) != 4 {
+		return false
+	}
+	xy, err := strconv.ParseFloat(m[1], 64)
+	return err == nil && xy != 0
 }
 
 func systemUIFontName() string {
@@ -161,11 +198,15 @@ type ftFace struct {
 	loadFlags  int32
 	renderMode uint32
 	bgr        bool
+	// The style the font file lacks, synthesized
+	embolden bool
+	oblique  bool
 }
 
 type linuxFont struct {
 	mu      sync.Mutex
 	name    string
+	style   string // the fontconfig pattern of the style
 	size    float64
 	primary *ftFace
 	ascent  int
@@ -175,11 +216,12 @@ type linuxFont struct {
 	fallbacks map[string]*ftFace
 }
 
-func openSystemFont(name string, pixelSize float64) (SystemFont, error) {
+func openSystemFont(name string, pixelSize float64, bold, italic bool) (SystemFont, error) {
 	if err := loadFreeType(); err != nil {
 		return nil, err
 	}
-	fc, ok := fcMatch(name)
+	style := fcStyle(bold, italic)
+	fc, ok := fcMatch(name + style)
 	if !ok {
 		return nil, fmt.Errorf("%w: fc-match is not available", ErrSystemTextNotSupported)
 	}
@@ -192,7 +234,7 @@ func openSystemFont(name string, pixelSize float64) (SystemFont, error) {
 	if !found {
 		return nil, fmt.Errorf("%w: %q", ErrSystemFontNotFound, name)
 	}
-	primary, err := newFTFace(fc, pixelSize)
+	primary, err := newFTFace(fc, pixelSize, bold, italic)
 	if err != nil {
 		return nil, err
 	}
@@ -201,6 +243,7 @@ func openSystemFont(name string, pixelSize float64) (SystemFont, error) {
 	descender := *(*int64)(unsafe.Add(size, ftSizeDescender))
 	return &linuxFont{
 		name:      name,
+		style:     style,
 		size:      pixelSize,
 		primary:   primary,
 		ascent:    int((ascender + 63) >> 6),
@@ -217,7 +260,9 @@ func openSystemFont(name string, pixelSize float64) (SystemFont, error) {
 // by its own mutex.)
 var ftLibMu sync.Mutex
 
-func newFTFace(fc fcFont, pixelSize float64) (*ftFace, error) {
+// newFTFace opens the font of fc at the size, synthesizing the style bold
+// and italic ask for if the font file lacks it
+func newFTFace(fc fcFont, pixelSize float64, bold, italic bool) (*ftFace, error) {
 	ftLibMu.Lock()
 	defer ftLibMu.Unlock()
 	var face unsafe.Pointer
@@ -229,7 +274,11 @@ func newFTFace(fc fcFont, pixelSize float64) (*ftFace, error) {
 		return nil, fmt.Errorf("nui: FreeType can't size %s (error %d)", fc.file, e)
 	}
 
-	f := &ftFace{face: face}
+	f := &ftFace{
+		face:     face,
+		embolden: bold && fc.embolden && ft.emboldenSlot != nil,
+		oblique:  italic && fc.oblique && ft.obliqueSlot != nil,
+	}
 	subpixel := fc.antialias && (fc.rgba == 1 || fc.rgba == 2)
 	switch {
 	case !fc.antialias:
@@ -279,6 +328,12 @@ func (f *linuxFont) glyph(r rune) *ftGlyph {
 		return g
 	}
 	slot := *(*unsafe.Pointer)(unsafe.Add(face.face, ftFaceGlyph))
+	if face.oblique {
+		ft.obliqueSlot(slot)
+	}
+	if face.embolden {
+		ft.emboldenSlot(slot) // widens the advance too
+	}
 	g.advance = *(*int64)(unsafe.Add(slot, ftSlotAdvanceX))
 	if ft.renderGlyph(slot, face.renderMode) != 0 {
 		return g
@@ -339,7 +394,7 @@ func (f *linuxFont) glyph(r rune) *ftGlyph {
 
 // fallbackFace asks fontconfig for a font that has the character
 func (f *linuxFont) fallbackFace(r rune) *ftFace {
-	fc, ok := fcMatch(fmt.Sprintf("%s:charset=%x", f.name, r))
+	fc, ok := fcMatch(fmt.Sprintf("%s%s:charset=%x", f.name, f.style, r))
 	if !ok {
 		return nil
 	}
@@ -347,7 +402,7 @@ func (f *linuxFont) fallbackFace(r rune) *ftFace {
 	if face, ok := f.fallbacks[key]; ok {
 		return face
 	}
-	face, err := newFTFace(fc, f.size)
+	face, err := newFTFace(fc, f.size, strings.Contains(f.style, ":bold"), strings.Contains(f.style, ":italic"))
 	if err != nil {
 		face = nil
 	}

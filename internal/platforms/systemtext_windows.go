@@ -38,6 +38,7 @@ var (
 
 const (
 	c_FW_NORMAL               = 400
+	c_FW_BOLD                 = 700
 	c_DEFAULT_CHARSET         = 1
 	c_CLEARTYPE_QUALITY       = 5
 	c_TRANSPARENT             = 1
@@ -93,8 +94,13 @@ func systemUIFontName() string {
 	return "Segoe UI"
 }
 
-func openSystemFont(name string, pixelSize float64) (SystemFont, error) {
-	return openGDIFont(name, pixelSize, c_FW_NORMAL, false)
+func openSystemFont(name string, pixelSize float64, bold, italic bool) (SystemFont, error) {
+	weight := c_FW_NORMAL
+	if bold {
+		weight = c_FW_BOLD
+	}
+	// GDI takes the face of the font, or synthesizes it
+	return openGDIFont(name, pixelSize, weight, italic)
 }
 
 func openGDIFont(name string, pixelSize float64, weight int, italic bool) (SystemFont, error) {
@@ -203,8 +209,9 @@ func (f *windowsFont) Draw(dst *image.RGBA, text string, col color.RGBA, x, y in
 	if len(s) == 0 {
 		return
 	}
-	// ClearType and overhanging glyphs reach a little beyond the advances
-	const margin = 3
+	// ClearType and overhanging glyphs reach a little beyond the advances:
+	// the top of an italic letter by up to about a quarter of the ascent
+	margin := 3 + f.ascent/4
 	r := image.Rect(x-margin, y, x+width+margin, y+f.ascent+f.descent).Intersect(clip).Intersect(dst.Rect)
 	if r.Empty() || !f.ensureDIB(r.Dx(), r.Dy()) {
 		return

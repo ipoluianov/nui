@@ -17,20 +17,25 @@ var ct struct {
 	once sync.Once
 	err  error
 
-	cfStringCreateWithCString func(alloc uintptr, s string, encoding uint32) uintptr
-	cfStringGetCString        func(s uintptr, buf *byte, size int64, encoding uint32) bool
-	cfURLGetFileSystemRep     func(url uintptr, resolve bool, buf *byte, size int64) bool
-	cfRelease                 func(cf uintptr)
-	ctFontCreateWithName      func(name uintptr, size float64, matrix uintptr) uintptr
-	ctFontCreateUIFont        func(fontType uint32, size float64, language uintptr) uintptr
-	ctFontCopyFamilyName      func(font uintptr) uintptr
-	ctFontCopyAttribute       func(font, attribute uintptr) uintptr
-	urlAttribute              uintptr
+	cfStringCreateWithCString  func(alloc uintptr, s string, encoding uint32) uintptr
+	cfStringGetCString         func(s uintptr, buf *byte, size int64, encoding uint32) bool
+	cfURLGetFileSystemRep      func(url uintptr, resolve bool, buf *byte, size int64) bool
+	cfRelease                  func(cf uintptr)
+	ctFontCreateWithName       func(name uintptr, size float64, matrix uintptr) uintptr
+	ctFontCreateUIFont         func(fontType uint32, size float64, language uintptr) uintptr
+	ctFontCopyFamilyName       func(font uintptr) uintptr
+	ctFontCopyAttribute        func(font, attribute uintptr) uintptr
+	ctFontCopyPostScriptName   func(font uintptr) uintptr
+	ctFontCreateCopyWithTraits func(font uintptr, size float64, matrix uintptr, traits, mask uint32) uintptr
+	ctFontGetSymbolicTraits    func(font uintptr) uint32
+	urlAttribute               uintptr
 }
 
 const (
 	cfStringEncodingUTF8 = 0x08000100
 	ctFontUIFontSystem   = 2
+	ctFontItalicTrait    = 1 << 0
+	ctFontBoldTrait      = 1 << 1
 )
 
 func loadCoreText() error {
@@ -53,6 +58,9 @@ func loadCoreText() error {
 		purego.RegisterLibFunc(&ct.ctFontCreateUIFont, text, "CTFontCreateUIFontForLanguage")
 		purego.RegisterLibFunc(&ct.ctFontCopyFamilyName, text, "CTFontCopyFamilyName")
 		purego.RegisterLibFunc(&ct.ctFontCopyAttribute, text, "CTFontCopyAttribute")
+		purego.RegisterLibFunc(&ct.ctFontCopyPostScriptName, text, "CTFontCopyPostScriptName")
+		purego.RegisterLibFunc(&ct.ctFontCreateCopyWithTraits, text, "CTFontCreateCopyWithSymbolicTraits")
+		purego.RegisterLibFunc(&ct.ctFontGetSymbolicTraits, text, "CTFontGetSymbolicTraits")
 		sym, err := purego.Dlsym(text, "kCTFontURLAttribute")
 		if err != nil {
 			ct.err = err
@@ -101,9 +109,11 @@ func fontFile(font uintptr) (family, path string) {
 	return family, string(buf[:n])
 }
 
-// SystemFontFile returns the file of the system font of the family name and
-// the family's name in it (for a font collection), on macOS
-func SystemFontFile(name string) (path, family string, err error) {
+// SystemFontFile returns the file of the face of the system font of the
+// family name in the style, and the PostScript name of the face in it (for
+// a font collection), on macOS. ErrSystemFontNotFound if the system has no
+// such font, or the font has no face of the style.
+func SystemFontFile(name string, bold, italic bool) (path, postScriptName string, err error) {
 	if err := loadCoreText(); err != nil {
 		return "", "", fmt.Errorf("%w: %v", ErrSystemTextNotSupported, err)
 	}
@@ -114,15 +124,39 @@ func SystemFontFile(name string) (path, family string, err error) {
 		return "", "", fmt.Errorf("%w: %q", ErrSystemFontNotFound, name)
 	}
 	defer ct.cfRelease(font)
-	family, path = fontFile(font)
+	var traits uint32
+	if bold {
+		traits |= ctFontBoldTrait
+	}
+	if italic {
+		traits |= ctFontItalicTrait
+	}
+	if traits != 0 {
+		const mask = ctFontBoldTrait | ctFontItalicTrait
+		styled := ct.ctFontCreateCopyWithTraits(font, 0, 0, traits, mask)
+		if styled == 0 {
+			return "", "", fmt.Errorf("%w: %q has no such face", ErrSystemFontNotFound, name)
+		}
+		defer ct.cfRelease(styled)
+		if ct.ctFontGetSymbolicTraits(styled)&mask != traits {
+			return "", "", fmt.Errorf("%w: %q has no such face", ErrSystemFontNotFound, name)
+		}
+		font = styled
+	}
+	family, path := fontFile(font)
 	// CoreText gives another font for an unknown name
 	if !strings.EqualFold(family, name) || path == "" {
 		return "", "", fmt.Errorf("%w: %q", ErrSystemFontNotFound, name)
 	}
-	return path, family, nil
+	ps := ct.ctFontCopyPostScriptName(font)
+	postScriptName = cfString(ps)
+	if ps != 0 {
+		ct.cfRelease(ps)
+	}
+	return path, postScriptName, nil
 }
 
-func openSystemFont(name string, pixelSize float64) (SystemFont, error) {
+func openSystemFont(name string, pixelSize float64, bold, italic bool) (SystemFont, error) {
 	return nil, ErrSystemTextNotSupported
 }
 

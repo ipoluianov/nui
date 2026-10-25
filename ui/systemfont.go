@@ -46,15 +46,18 @@ type nativeFont struct {
 	covers map[rune]bool
 }
 
-// registerNativeFont hands the file of the family to the system's text
-// engine, where there is one that takes files (Windows)
+// registerNativeFont hands the file of the face (a faceName) to the system's
+// text engine, where there is one that takes files (Windows)
 func registerNativeFont(family string, data []byte, f *sfnt.Font) {
 	family = strings.ToLower(family)
 	fd, err := platforms.RegisterFontData(data)
 	systemFontsMu.Lock()
 	defer systemFontsMu.Unlock()
+	// The faces synthesized from another face of the family may now have
+	// their own file
+	base, _, _ := strings.Cut(family, ":")
 	for key := range nativeFaces {
-		if key.family == family {
+		if isFaceOf(key.family, base) {
 			delete(nativeFaces, key)
 		}
 	}
@@ -94,12 +97,14 @@ func SystemUIFontName() string {
 
 // RegisterSystemFont makes the font family drawn with the system font of
 // the name (e.g. "Segoe UI", "Consolas", "DejaVu Sans"), for
-// Widget.SetFontFamily or the theme. ErrSystemFontNotFound if the system has
-// no such font.
+// Widget.SetFontFamily or the theme, in every style: the bold and italic
+// faces of the system font, or the system's synthesized ones.
+// ErrSystemFontNotFound if the system has no such font.
 func RegisterSystemFont(family, name string) error {
+	family, _ = parseFontFamily(family)
 	family = strings.ToLower(family)
 	size := ThemeFontSize()
-	f, err := platforms.OpenSystemFont(name, size)
+	f, err := platforms.OpenSystemFont(name, size, false, false)
 	if errors.Is(err, platforms.ErrSystemTextNotSupported) {
 		return registerSystemFontFile(family, name)
 	}
@@ -109,7 +114,7 @@ func RegisterSystemFont(family, name string) error {
 	systemFontsMu.Lock()
 	systemFamilies[family] = name
 	for key := range systemFaces {
-		if key.family == family {
+		if isFaceOf(key.family, family) {
 			delete(systemFaces, key)
 		}
 	}
@@ -119,18 +124,64 @@ func RegisterSystemFont(family, name string) error {
 	return nil
 }
 
-// registerSystemFontFile registers the file of the system font, drawn by
-// nui's rasterizer (macOS)
+// isFaceOf tells whether the face name is of the family
+func isFaceOf(face, family string) bool {
+	return face == family || strings.HasPrefix(face, family+":")
+}
+
+// isSystemFamily tells whether the family (lowercase) is drawn with a
+// system font
+func isSystemFamily(family string) bool {
+	systemFontsMu.Lock()
+	defer systemFontsMu.Unlock()
+	_, ok := systemFamilies[family]
+	return ok
+}
+
+// forgetFoundSystemFamily drops the system font found for a family nui
+// didn't know (see findSystemFamily) once the application registers a font
+// file of the family: the file is what it asked for
+func forgetFoundSystemFamily(family string) {
+	systemLookupMu.Lock()
+	defer systemLookupMu.Unlock()
+	if !systemLookups[family] {
+		return
+	}
+	delete(systemLookups, family)
+	systemFontsMu.Lock()
+	delete(systemFamilies, family)
+	for key := range systemFaces {
+		if isFaceOf(key.family, family) {
+			delete(systemFaces, key)
+		}
+	}
+	systemFontsMu.Unlock()
+}
+
+// registerSystemFontFile registers the files of the system font's faces,
+// drawn by nui's rasterizer (macOS). A face the font has no font of its own
+// for is synthesized from the regular one.
 func registerSystemFontFile(family, name string) error {
-	path, fileFamily, err := platforms.SystemFontFile(name)
-	if err != nil {
-		return err
+	for _, style := range []FontStyle{FontRegular, FontBold, FontItalic, FontBold | FontItalic} {
+		path, postScriptName, err := platforms.SystemFontFile(name, style&FontBold != 0, style&FontItalic != 0)
+		if err != nil {
+			if style == FontRegular {
+				return err
+			}
+			continue
+		}
+		f, exact, err := openFontFile(path, postScriptName)
+		if style == FontRegular && err != nil {
+			return err
+		}
+		// A face that is an instance of a variable font (the system font
+		// SF) isn't a font of its own in the file: nui's rasterizer doesn't
+		// apply the variations, so it is synthesized from the regular face
+		if style != FontRegular && (err != nil || !exact) {
+			continue
+		}
+		setFont(faceName(family, style), f)
 	}
-	f, err := openSystemFont(path, []string{fileFamily, name})
-	if err != nil {
-		return err
-	}
-	setFont(family, f)
 	return nil
 }
 
@@ -146,20 +197,20 @@ func UseSystemFont(name string) error {
 	return nil
 }
 
-// systemFontFor returns the system font that draws text in the family at
-// the size: the system font registered as the family, or the file of the
-// family in the system's text engine if it has all the characters of text.
-// nil if nui's rasterizer draws the text.
+// systemFontFor returns the system font that draws text in the family (it
+// may name a style) at the size: the system font registered as the family,
+// or the file of the family in the system's text engine if it has all the
+// characters of text. nil if nui's rasterizer draws the text.
 func systemFontFor(family string, size float64, text string) platforms.SystemFont {
-	family = strings.ToLower(family)
+	r := resolveFont(family)
 	systemFontsMu.Lock()
 	defer systemFontsMu.Unlock()
-	if name, ok := systemFamilies[family]; ok {
-		key := faceKey{family, size}
+	if name, ok := systemFamilies[r.family]; ok {
+		key := faceKey{faceName(r.family, r.style), size}
 		if f, ok := systemFaces[key]; ok {
 			return f
 		}
-		f, err := platforms.OpenSystemFont(name, size)
+		f, err := platforms.OpenSystemFont(name, size, r.style&FontBold != 0, r.style&FontItalic != 0)
 		if err != nil {
 			return nil
 		}
@@ -170,30 +221,51 @@ func systemFontFor(family string, size float64, text string) platforms.SystemFon
 	if !NativeFontRendering {
 		return nil
 	}
-	n, ok := nativeFamilies[family]
-	if !ok {
+	family = r.family
+	n, synth := nativeFontFor(family, r.style)
+	if n == nil {
 		// An unknown family gets the default font, as in withFace
 		if isRegisteredFont(family) {
 			return nil
 		}
 		family = defaultFontKey
-		if n, ok = nativeFamilies[family]; !ok {
+		if n, synth = nativeFontFor(family, r.style); n == nil {
 			return nil
 		}
 	}
 	if !n.hasAll(text) {
 		return nil
 	}
-	key := faceKey{family, size}
+	key := faceKey{faceName(family, r.style), size}
 	if f, ok := nativeFaces[key]; ok {
 		return f
 	}
-	f, err := platforms.OpenFontData(n.data, size)
+	// The style the family has no file for is synthesized by the system
+	fd := n.data
+	if synth&FontBold != 0 {
+		fd.Weight = 700
+	}
+	if synth&FontItalic != 0 {
+		fd.Italic = true
+	}
+	f, err := platforms.OpenFontData(fd, size)
 	if err != nil {
 		return nil
 	}
 	nativeFaces[key] = f
 	return f
+}
+
+// nativeFontFor returns the file in the system's text engine of the face of
+// the family nearest to the style, and the style to synthesize; must be
+// called with systemFontsMu held
+func nativeFontFor(family string, style FontStyle) (*nativeFont, FontStyle) {
+	for _, s := range styleCandidates(style) {
+		if n, ok := nativeFamilies[faceName(family, s)]; ok {
+			return n, style &^ s
+		}
+	}
+	return nil, 0
 }
 
 // nativeMetrics returns the ascent and the descent of the line of the

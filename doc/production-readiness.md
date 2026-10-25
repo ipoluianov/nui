@@ -250,6 +250,7 @@ nui хорошо решает задачу «нативное окно без cg
 | 11 | Глобальный обработчик клавиш получает нажатия при открытом меню или попапе | `form.go:~1130` | клиенты altping, altcalc проверяют `TopPopupWidget() != nil` |
 | 12 | Документация описывает несуществующие API: `ui.ShowEnterStringDialog`, `ui.ShowAboutDialog` (по `git log -S` их никогда не было), `ui.UpdateMainForm()` (в `theme.md` и `timer.md`) | `doc/ui/content/*.md` | grep |
 | 13 | Нестабильная семантика `ShowModal`: блокирует только на macOS | `internal/platforms/window.go:27` | по коду и комментарию |
+| 14 | Высота Label не зависит от размера шрифта: всегда `ThemeControlHeight()`, поэтому крупный текст обрезается снизу | `label.go:130` | вживую: Label 40 px обрезан по нижним выносным элементам |
 
 ---
 

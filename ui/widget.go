@@ -2662,17 +2662,48 @@ func (c *Widget) YExpandable() bool {
 	return false
 }
 
-// SetFontFamily sets the font of the widget, e.g. FontFamilyMono; an empty
-// family returns the theme font.
+// SetFontFamily sets the font of the widget, e.g. FontFamilyMono, or a font
+// of the system by its name, e.g. "Consolas"; it may name a style, e.g.
+// "jetbrainsmono:bold" (see FontStyle). An empty family returns the theme
+// font.
 func (c *Widget) SetFontFamily(family string) {
 	c.SetProp("fontfamily", family)
 }
 
+// FontFamily returns the font of the widget with its style, e.g.
+// "notosans:bold": pass it to MeasureText and Canvas.SetFontFamily as is.
 func (c *Widget) FontFamily() string {
-	if family, ok := c.GetProp("fontfamily").(string); ok && family != "" {
-		return family
+	family := ThemeFontFamily()
+	if f, ok := c.GetProp("fontfamily").(string); ok && f != "" {
+		family = f
 	}
-	return ThemeFontFamily()
+	if bold, ok := c.GetProp("fontbold").(bool); ok {
+		family = fontWithStyle(family, FontBold, bold)
+	}
+	if italic, ok := c.GetProp("fontitalic").(bool); ok {
+		family = fontWithStyle(family, FontItalic, italic)
+	}
+	return family
+}
+
+// SetFontBold draws the text of the widget in bold, or not
+func (c *Widget) SetFontBold(bold bool) {
+	c.SetProp("fontbold", bold)
+}
+
+func (c *Widget) FontBold() bool {
+	_, style := parseFontFamily(c.FontFamily())
+	return style&FontBold != 0
+}
+
+// SetFontItalic draws the text of the widget in italic, or not
+func (c *Widget) SetFontItalic(italic bool) {
+	c.SetProp("fontitalic", italic)
+}
+
+func (c *Widget) FontItalic() bool {
+	_, style := parseFontFamily(c.FontFamily())
+	return style&FontItalic != 0
 }
 
 func (c *Widget) SetFontSize(fontSize float64) {

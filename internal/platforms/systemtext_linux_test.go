@@ -21,7 +21,7 @@ func TestSystemFontFreeType(t *testing.T) {
 	if !ok || fc.families[0] != "Noto Sans" {
 		t.Skip("no Noto Sans in fontconfig")
 	}
-	sf, err := OpenSystemFont("Noto Sans", 14)
+	sf, err := OpenSystemFont("Noto Sans", 14, false, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,5 +76,23 @@ func TestSystemFontFreeType(t *testing.T) {
 	}
 	if dark < 100 {
 		t.Errorf("drawn text has %d dark pixels", dark)
+	}
+}
+
+// A face the font has is drawn from its file; one it lacks is synthesized
+func TestSystemFontStyleSynthesis(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		synthesize bool
+	}{{"DejaVu Sans", false}, {"Droid Sans Fallback", true}} {
+		sf, err := OpenSystemFont(tc.name, 14, true, true)
+		if err != nil {
+			t.Log(tc.name, ": ", err)
+			continue
+		}
+		f := sf.(*linuxFont).primary
+		if f.embolden != tc.synthesize || f.oblique != tc.synthesize {
+			t.Errorf("%s: embolden %v, oblique %v; want %v", tc.name, f.embolden, f.oblique, tc.synthesize)
+		}
 	}
 }
