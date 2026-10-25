@@ -313,6 +313,11 @@ func unregisterOpenForm(form *Form) {
 	openFormsMtx.Unlock()
 }
 
+// OpenForms returns the forms with an open window, in no particular order
+func OpenForms() []*Form {
+	return openForms()
+}
+
 func openForms() []*Form {
 	openFormsMtx.Lock()
 	defer openFormsMtx.Unlock()

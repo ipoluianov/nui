@@ -8,6 +8,12 @@ package platforms
 // ClipboardSetText puts the text on the clipboard. Safe from any goroutine:
 // the work is done on the UI thread.
 func ClipboardSetText(text string) error {
+	if IsHeadless() {
+		headlessMu.Lock()
+		headlessClipboard = text
+		headlessMu.Unlock()
+		return nil
+	}
 	var err error
 	RunOnUIThread(func() { err = clipboardSetText(text) })
 	return err
@@ -16,6 +22,11 @@ func ClipboardSetText(text string) error {
 // ClipboardGetText returns the text on the clipboard, "" if there is none.
 // Safe from any goroutine: the work is done on the UI thread.
 func ClipboardGetText() (string, error) {
+	if IsHeadless() {
+		headlessMu.Lock()
+		defer headlessMu.Unlock()
+		return headlessClipboard, nil
+	}
 	var text string
 	var err error
 	RunOnUIThread(func() { text, err = clipboardGetText() })

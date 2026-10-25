@@ -25,6 +25,9 @@ type OpenFileDialogOptions struct {
 // owned by parent if given (parent may be nil), and blocks until the user
 // picks a file or cancels. On cancel it returns (nil, nil).
 func OpenFileDialog(parent Window, opts OpenFileDialogOptions) ([]string, error) {
+	if IsHeadless() {
+		return nil, nil // cancelled
+	}
 	return openFileDialog(parent, opts)
 }
 
@@ -40,6 +43,9 @@ type SaveFileDialogOptions struct {
 // owned by parent if given (parent may be nil), and blocks until the user
 // picks a destination path or cancels. On cancel it returns ("", nil).
 func SaveFileDialog(parent Window, opts SaveFileDialogOptions) (string, error) {
+	if IsHeadless() {
+		return "", nil
+	}
 	return saveFileDialog(parent, opts)
 }
 
@@ -53,5 +59,8 @@ type SelectDirectoryDialogOptions struct {
 // dialog, owned by parent if given (parent may be nil), and blocks until the
 // user picks a directory or cancels. On cancel it returns ("", nil).
 func SelectDirectoryDialog(parent Window, opts SelectDirectoryDialogOptions) (string, error) {
+	if IsHeadless() {
+		return "", nil
+	}
 	return selectDirectoryDialog(parent, opts)
 }

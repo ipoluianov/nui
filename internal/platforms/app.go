@@ -49,6 +49,9 @@ func makeDefaultIcon() *image.RGBA {
 // from another goroutine, it creates the window there and waits for it (see
 // RunOnUIThread).
 func CreateWindow(title string, posX int, posY int, width int, height int, center bool, maximized bool) Window {
+	if IsHeadless() {
+		return newHeadlessWindow(title, posX, posY, width, height, center, maximized)
+	}
 	var w *nativeWindow
 	RunOnUIThread(func() {
 		w = createWindow(title, posX, posY, width, height, center, maximized)

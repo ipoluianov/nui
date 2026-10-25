@@ -251,6 +251,7 @@ nui хорошо решает задачу «нативное окно без cg
 | 12 | Документация описывает несуществующие API: `ui.ShowEnterStringDialog`, `ui.ShowAboutDialog` (по `git log -S` их никогда не было), `ui.UpdateMainForm()` (в `theme.md` и `timer.md`) | `doc/ui/content/*.md` | grep |
 | 13 | Нестабильная семантика `ShowModal`: блокирует только на macOS | `internal/platforms/window.go:27` | по коду и комментарию |
 | 14 | Высота Label не зависит от размера шрифта: всегда `ThemeControlHeight()`, поэтому крупный текст обрезается снизу | `label.go:130` | вживую: Label 40 px обрезан по нижним выносным элементам |
+| 15 | Вопрос «Сохранить изменения?» в примере notepad: Esc закрывает окно без сохранения. В nui есть только `ShowQuestionMessageBoxYesNo`, и Esc в нём — кнопка «Нет», то есть «не сохранять». Нужен вопрос «Да/Нет/Отмена», где Esc — «Отмена» | `ui/messagebox.go:50`, `examples/notepad/document.go:45` | тест `examples/notepad/notepad_ui_test.go` |
 
 ---
 
@@ -305,6 +306,7 @@ nui хорошо решает задачу «нативное окно без cg
 |---|---|
 | **API курсора и выделения** для многострочного текста: `SetCursor(line, col)`, `Cursor()`, `SetSelection(from, to)` в рунах или байтах, `ReplaceSelection(s)`, `InsertText(s)` | **Пример notepad из самой nui** эмулирует нажатия стрелок, чтобы поставить курсор, и `KeyChar` по символу, чтобы вставить текст (`examples/notepad/editing.go:12`: «The text box has no API to put the cursor or the selection…») |
 | `Cut()`, `Copy()`, `Paste()` | примеры вызывают `text.KeyDown(KeyX, Ctrl)` (`notepad.go:229`) |
+| Программная правка, которую можно отменить | `SetText` очищает историю отмены, а другого способа заменить текст нет. В notepad «Upper Case» без выделения нельзя отменить по Ctrl+Z (найдено тестом `examples/notepad/notepad_ui_test.go`) |
 | Word wrap | altjarvis написал ChatView на 1100 строк (`chatview.go:14`: «The TextBox of the library does not wrap») |
 | Производительность | §4 |
 | `MaxLength`, маска ввода, валидатор | `MaskedTextBox`, `QValidator`, `inputMask` |

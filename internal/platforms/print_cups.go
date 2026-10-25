@@ -27,6 +27,9 @@ func PrintWithDialog(owner Window, req PrintRequest) error {
 
 // Printers returns the CUPS printers that accept jobs, and the default one
 func Printers() (names []string, defaultName string, err error) {
+	if IsHeadless() {
+		return nil, "", ErrNoPrinting
+	}
 	if _, err := exec.LookPath("lpstat"); err != nil {
 		return nil, "", fmt.Errorf("%w: lpstat not found (CUPS)", ErrNoPrinting)
 	}
@@ -48,6 +51,9 @@ func Printers() (names []string, defaultName string, err error) {
 // PrintFile sends the file to the CUPS printer with lp; options are lp's -o
 // options, e.g. "media": "A4"
 func PrintFile(printer, path string, copies int, title string, options map[string]string) error {
+	if IsHeadless() {
+		return ErrNoPrinting
+	}
 	args := []string{"-d", printer, "-n", strconv.Itoa(max(copies, 1))}
 	if title != "" {
 		args = append(args, "-t", title)

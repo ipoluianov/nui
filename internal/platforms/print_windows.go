@@ -72,12 +72,15 @@ type docInfoW struct {
 
 // HasPrintDialog reports whether the system has a print dialog of its own
 func HasPrintDialog() bool {
-	return true
+	return !IsHeadless()
 }
 
 // PrintWithDialog shows the system print dialog and prints the document on
 // the printer the user chose. UI thread only. ErrPrintCanceled if canceled.
 func PrintWithDialog(owner Window, req PrintRequest) error {
+	if IsHeadless() {
+		return ErrNoPrinting
+	}
 	pd := printDlgW{
 		flags:     c_PD_RETURNDC | c_PD_NOSELECTION | c_PD_USEDEVMODECOPIESANDCOLLATE,
 		nFromPage: 1, nToPage: 1, nMinPage: 1, nMaxPage: 9999, nCopies: 1,

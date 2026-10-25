@@ -39,6 +39,9 @@ type PopupWindow interface {
 // the platform doesn't support popups - callers should fall back to drawing
 // inside the owner window.
 func CreatePopupWindow(owner Window, interactive bool) PopupWindow {
+	if IsHeadless() {
+		return newHeadlessPopup(owner)
+	}
 	return createPopupWindow(owner, interactive)
 }
 

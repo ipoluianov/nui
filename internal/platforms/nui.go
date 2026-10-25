@@ -19,6 +19,9 @@ func init() {
 // IsUIThread reports whether the caller runs on the UI thread - the main OS
 // thread, where all the window callbacks are called.
 func IsUIThread() bool {
+	if IsHeadless() {
+		return true
+	}
 	return isUIThread()
 }
 
@@ -32,6 +35,10 @@ func Post(f func()) {
 	if f == nil {
 		return
 	}
+	if IsHeadless() {
+		postHeadless(f)
+		return
+	}
 	postToUIThread(f)
 }
 
@@ -43,7 +50,7 @@ func RunOnUIThread(f func()) {
 	if f == nil {
 		return
 	}
-	if isUIThread() {
+	if IsHeadless() || isUIThread() {
 		f()
 		return
 	}

@@ -44,6 +44,9 @@ type TrayIcon interface {
 
 // CreateTrayIcon puts an icon in the system tray
 func CreateTrayIcon() (TrayIcon, error) {
+	if IsHeadless() {
+		return headlessTray{}, nil
+	}
 	var icon TrayIcon
 	var err error
 	RunOnUIThread(func() {
