@@ -27,6 +27,12 @@ type UIStrings struct {
 	// The print dialog (Form.Print on Linux and macOS)
 	Print, Printer, Copies, Pages, PagesHint, Paper string
 	Portrait, Landscape, SaveAsPDF                  string
+
+	// nui's file dialog (UseBuiltinFileDialogs). FileNotFound and
+	// FileExistsReplace have a %s for the name of the file.
+	Open, Save, SelectFolder, Home, Up               string
+	FileName, FileSize, FileModified, FileType       string
+	ShowHiddenFiles, FileNotFound, FileExistsReplace string
 }
 
 var (
@@ -39,7 +45,11 @@ var (
 			WeekdaysShort: [7]string{"Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"},
 			Print:         "Печать", Printer: "Принтер", Copies: "Копии", Pages: "Страницы",
 			PagesHint: "Все, или например 1-3, 5", Paper: "Бумага",
-			Portrait: "Книжная", Landscape: "Альбомная", SaveAsPDF: "Сохранить в PDF"},
+			Portrait: "Книжная", Landscape: "Альбомная", SaveAsPDF: "Сохранить в PDF",
+			Open: "Открыть", Save: "Сохранить", SelectFolder: "Выбрать папку", Home: "Домой", Up: "Вверх",
+			FileName: "Имя", FileSize: "Размер", FileModified: "Изменён", FileType: "Тип файлов",
+			ShowHiddenFiles: "Показывать скрытые файлы", FileNotFound: "Файл «%s» не найден.",
+			FileExistsReplace: "Файл «%s» уже существует. Заменить его?"},
 		"zh": {OK: "确定", Cancel: "取消", Yes: "是", No: "否",
 			Today: "今天",
 			MonthNames: [12]string{"一月", "二月", "三月", "四月", "五月", "六月",
@@ -47,7 +57,11 @@ var (
 			WeekdaysShort: [7]string{"日", "一", "二", "三", "四", "五", "六"},
 			Print:         "打印", Printer: "打印机", Copies: "份数", Pages: "页面",
 			PagesHint: "全部，或例如 1-3, 5", Paper: "纸张",
-			Portrait: "纵向", Landscape: "横向", SaveAsPDF: "另存为 PDF"},
+			Portrait: "纵向", Landscape: "横向", SaveAsPDF: "另存为 PDF",
+			Open: "打开", Save: "保存", SelectFolder: "选择文件夹", Home: "主目录", Up: "上一级",
+			FileName: "名称", FileSize: "大小", FileModified: "修改时间", FileType: "文件类型",
+			ShowHiddenFiles: "显示隐藏文件", FileNotFound: "找不到文件“%s”。",
+			FileExistsReplace: "文件“%s”已存在。要替换它吗？"},
 	}
 	uiStringsEnglish = UIStrings{OK: "OK", Cancel: "Cancel", Yes: "Yes", No: "No",
 		Today: "Today",
@@ -56,7 +70,11 @@ var (
 		WeekdaysShort: [7]string{"Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"},
 		Print:         "Print", Printer: "Printer", Copies: "Copies", Pages: "Pages",
 		PagesHint: "All, or e.g. 1-3, 5", Paper: "Paper",
-		Portrait: "Portrait", Landscape: "Landscape", SaveAsPDF: "Save as PDF"}
+		Portrait: "Portrait", Landscape: "Landscape", SaveAsPDF: "Save as PDF",
+		Open: "Open", Save: "Save", SelectFolder: "Select Folder", Home: "Home", Up: "Up",
+		FileName: "Name", FileSize: "Size", FileModified: "Modified", FileType: "Files of type",
+		ShowHiddenFiles: "Show hidden files", FileNotFound: "The file \"%s\" is not found.",
+		FileExistsReplace: "The file \"%s\" already exists. Replace it?"}
 	uiStringsCatalog = i18n.NewCatalog(uiStringsEnglish, uiStringsByLang)
 )
 

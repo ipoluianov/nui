@@ -64,7 +64,7 @@ func comCall(obj uintptr, method int, args ...uintptr) uintptr {
 	return ret
 }
 
-func (c *nativeWindow) StartFileDrag(files []string) (effect DragEffect, dropped bool, started bool) {
+func (c *nativeWindow) startFileDragSync(files []string) (effect DragEffect, dropped bool, started bool) {
 	if len(files) == 0 {
 		return DragEffectNone, false, false
 	}

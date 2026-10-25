@@ -65,6 +65,8 @@ type Form struct {
 	topWidget     *Panel
 	hoverWidget   Widgeter
 	focusedWidget Widgeter
+	// textInputRect is the caret given to the input method last
+	textInputRect [4]int
 
 	// menuBar is the main menu above topWidget, nil if none (see SetMenuBar)
 	menuBar *MenuBar
@@ -567,6 +569,9 @@ func (c *Form) SetMenuBar(bar *MenuBar) {
 	c.menuBar = bar
 	if bar != nil {
 		bar.attachToForm(bar, c)
+		if c.active {
+			c.installNativeMenuBar()
+		}
 	}
 	c.layoutMenuBar()
 	c.Update()
@@ -705,6 +710,7 @@ func (c *Form) createWindow(maximized bool) {
 	c.wnd.SetBackgroundColor(currentPalette.Window)
 	c.applyMinSize()
 	registerOpenForm(c)
+	startAccessibility()
 }
 
 // Show opens the form as a non-modal window and returns at once; a hidden
@@ -885,6 +891,37 @@ func (c *Form) processPaint(rgba *image.RGBA) {
 	}
 	c.layoutNow()
 	c.paintScaled(rgba, c.wnd.Scale())
+	c.updateTextInputRect()
+	c.accessibilityFocusChanged()
+}
+
+// textInputClient is a widget that takes text from an input method
+type textInputClient interface {
+	caretRect() (x, y, width, height int)
+}
+
+// updateTextInputRect tells the input method where the caret of the
+// focused text box is, after each frame, when it moved
+func (c *Form) updateTextInputRect() {
+	w := c.FocusedWidget()
+	if w == nil {
+		return
+	}
+	// The registered value: the focused one may be the embedded *Widget
+	if registered, ok := lookupWidget(w.Id()); ok {
+		w = registered
+	}
+	client, ok := w.(textInputClient)
+	if !ok {
+		return
+	}
+	x, y, width, height := client.caretRect()
+	ox, oy := w.RectClientAreaOnWindow()
+	r := [4]int{ox + x - w.ScrollX(), oy + y - w.ScrollY(), width, height}
+	if r != c.textInputRect {
+		c.textInputRect = r
+		c.wnd.SetTextInputRect(r[0], r[1], r[2], r[3])
+	}
 }
 
 // paintScaled paints the form on rgba, scale pixels of it per logical pixel

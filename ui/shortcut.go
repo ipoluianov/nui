@@ -375,7 +375,7 @@ func (c *ContextMenu) itemWithShortcut(key Key, mods KeyModifiers) *ContextMenuI
 // processMenuBarMnemonic opens the main menu whose title has the mnemonic of
 // Alt+key. Returns true if there was one.
 func (c *Form) processMenuBarMnemonic(key Key, mods KeyModifiers) bool {
-	if c.menuBar == nil || !mods.Alt || mods.Ctrl || mods.Cmd {
+	if c.menuBar == nil || c.menuBar.native || !mods.Alt || mods.Ctrl || mods.Cmd {
 		return false
 	}
 	m := mnemonicOfKey(key)

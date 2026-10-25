@@ -20,9 +20,8 @@ type DragData struct {
 	// Source is the widget the drag started from, nil for system files
 	Source Widgeter
 	// DroppedOutside is called when the Files, dragged out of the form, are
-	// dropped on another application (where the platform can drag out:
-	// Windows): effect is what it did with them, DragEffectMove - they are
-	// gone from where they were
+	// dropped on another application: effect is what it did with them,
+	// DragEffectMove - they are gone from where they were
 	DroppedOutside func(effect DragEffect)
 }
 
@@ -184,7 +183,11 @@ func (c *Form) dragFilesOut() bool {
 	saved := c.drag
 	c.drag = dragState{}
 	c.Update()
-	effect, dropped, started := c.wnd.StartFileDrag(saved.data.Files)
+	started := c.wnd.StartFileDrag(saved.data.Files, func(effect DragEffect, dropped bool) {
+		if dropped && saved.data.DroppedOutside != nil {
+			saved.data.DroppedOutside(effect)
+		}
+	})
 	if !started {
 		c.drag = saved
 		return false
@@ -192,9 +195,6 @@ func (c *Form) dragFilesOut() bool {
 	// The system took the release of the button: it goes outside the widgets,
 	// it must not click the one the drag started on
 	c.processMouseUp(MouseButtonLeft, dragCancelledPos, dragCancelledPos)
-	if dropped && saved.data.DroppedOutside != nil {
-		saved.data.DroppedOutside(effect)
-	}
 	return true
 }
 

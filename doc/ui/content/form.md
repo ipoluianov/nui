@@ -38,7 +38,15 @@ form.ShowSelectDirectoryDialog(ui.SelectDirectoryDialogOptions{Title: "Folder"},
 	func(path string, err error) { ... })
 ```
 
-On Linux the dialogs need `zenity` or `kdialog` (`ui.ErrNoFileDialog` otherwise).
+On Linux the system dialogs are `zenity` or `kdialog`. Without either, nui shows its own dialog:
+
+- the path of the folder with Up and Home;
+- the folder's files (folders first);
+- the name, the filter and the hidden files.
+
+Enter or a double click opens a folder or picks a file. A folder or a path typed as the name is opened. Several names can be typed in quotes (`"a.txt" "b.txt"`). On save, the dialog asks before replacing a file and adds the filter's extension to a name without one.
+
+`ui.UseBuiltinFileDialogs(true)` makes the forms use nui's dialog everywhere: the same on every system, and testable with `uitest`, where the system dialogs return "cancelled".
 
 ## Threading
 

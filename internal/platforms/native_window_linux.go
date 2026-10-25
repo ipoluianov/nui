@@ -264,7 +264,10 @@ func createWindow(title string, posX int, posY int, width int, height int, cente
 	c.platform.display = openDisplay()
 	c.platform.screen = xScreen
 	c.platform.done = make(chan struct{})
-	width, height = clampWindowSize(width, height)
+	// The size is logical, see dpi_linux.go; the window, its events and
+	// paint buffer are in physical pixels
+	c.scale = desktopScale(c.platform.display)
+	width, height = clampWindowSize(c.toPhysical(width), c.toPhysical(height))
 
 	// While resizing, the X server keeps the old content in the top-left
 	// corner and fills only the new area with the background color until
@@ -493,7 +496,7 @@ func (c *nativeWindow) idle(tick bool) {
 			c.windowHeight = c.platform.pendingHeight
 			c.platform.awaitMaximize = false // the full size is here
 			if c.onResize != nil {
-				c.onResize(c.windowWidth, c.windowHeight)
+				c.onResize(c.Size())
 			}
 		}
 	}
@@ -616,7 +619,7 @@ func (c *nativeWindow) processEvent(event *xEvent) {
 
 		if configureEvent.SendEvent == 1 && (c.windowPosX != prevWindowPosX || c.windowPosY != prevWindowPosY) {
 			if c.onMove != nil {
-				c.onMove(c.windowPosX, c.windowPosY)
+				c.onMove(c.Pos())
 			}
 		}
 
@@ -699,14 +702,14 @@ func (c *nativeWindow) processEvent(event *xEvent) {
 	case xMotionNotify:
 		motionEvent := (*xMotionEvent)(unsafe.Pointer(event))
 		if c.onMouseMove != nil {
-			c.onMouseMove(int(motionEvent.X), int(motionEvent.Y))
+			c.onMouseMove(c.toLogical(int(motionEvent.X)), c.toLogical(int(motionEvent.Y)))
 		}
 
 	case xButtonPress:
 		buttonEvent := (*xButtonEvent)(unsafe.Pointer(event))
 
-		x := int(buttonEvent.X)
-		y := int(buttonEvent.Y)
+		x := c.toLogical(int(buttonEvent.X))
+		y := c.toLogical(int(buttonEvent.Y))
 
 		switch buttonEvent.Button {
 		case 1:
@@ -783,8 +786,8 @@ func (c *nativeWindow) processEvent(event *xEvent) {
 	case xButtonRelease:
 		buttonEvent := (*xButtonEvent)(unsafe.Pointer(event))
 
-		x := int(buttonEvent.X)
-		y := int(buttonEvent.Y)
+		x := c.toLogical(int(buttonEvent.X))
+		y := c.toLogical(int(buttonEvent.Y))
 
 		switch buttonEvent.Button {
 		case 1:
@@ -996,6 +999,7 @@ func (c *nativeWindow) Move(x, y int) {
 	}
 	c.platform.prevSetPosX = x
 	c.platform.prevSetPosY = y
+	x, y = c.toPhysical(x), c.toPhysical(y)
 	left, _, top, _, ok := c.getFrameExtents()
 	if ok {
 		x -= left
@@ -1011,10 +1015,9 @@ func (c *nativeWindow) Move(x, y int) {
 // monitor setup it lands in the middle of the screen it's actually on.
 func (c *nativeWindow) MoveToCenterOfScreen() {
 	monX, monY, monWidth, monHeight := monitorRectForWindow(c.platform.display, c.platform.screen, c.windowPosX, c.windowPosY, c.windowWidth, c.windowHeight)
-	windowWidth, windowHeight := c.Size()
-	x := monX + (monWidth-windowWidth)/2
-	y := monY + (monHeight-windowHeight)/2
-	c.Move(x, y)
+	x := monX + (monWidth-c.windowWidth)/2
+	y := monY + (monHeight-c.windowHeight)/2
+	c.Move(c.toLogicalScreen(x), c.toLogicalScreen(y))
 }
 
 // clampWindowSize keeps the size within what X accepts: a zero size is a
@@ -1027,7 +1030,7 @@ func (c *nativeWindow) Resize(width, height int) {
 	if c.platform.closed {
 		return
 	}
-	width, height = clampWindowSize(width, height)
+	width, height = clampWindowSize(c.toPhysical(width), c.toPhysical(height))
 	xResizeWindow(c.platform.display, c.platform.window, uint32(width), uint32(height))
 }
 
@@ -1037,32 +1040,34 @@ func (c *nativeWindow) SetMinSize(width, height int) {
 	if c.platform.closed {
 		return
 	}
-	width, height = clampWindowSize(width, height)
+	width, height = clampWindowSize(c.toPhysical(width), c.toPhysical(height))
 	setWindowMinSizeX(c.platform.display, c.platform.window, width, height)
 }
 
+// The position and the size are logical; the fields keep the physical ones
+
 func (c *nativeWindow) PosX() int {
-	return c.windowPosX
+	return c.toLogicalScreen(c.windowPosX)
 }
 
 func (c *nativeWindow) PosY() int {
-	return c.windowPosY
+	return c.toLogicalScreen(c.windowPosY)
 }
 
 func (c *nativeWindow) Pos() (x, y int) {
-	return c.windowPosX, c.windowPosY
+	return c.PosX(), c.PosY()
 }
 
 func (c *nativeWindow) Size() (width, height int) {
-	return c.windowWidth, c.windowHeight
+	return c.Width(), c.Height()
 }
 
 func (c *nativeWindow) Width() int {
-	return c.windowWidth
+	return c.toLogicalSize(c.windowWidth)
 }
 
 func (c *nativeWindow) Height() int {
-	return c.windowHeight
+	return c.toLogicalSize(c.windowHeight)
 }
 
 func (c *nativeWindow) IsMaximized() bool {
@@ -1585,7 +1590,7 @@ func (c *nativeWindow) updateWindowPos() {
 
 func (c *nativeWindow) ClientToScreen(x, y int) (int, int) {
 	if c.platform.closed {
-		return c.windowPosX + x, c.windowPosY + y
+		return c.PosX() + x, c.PosY() + y
 	}
 	display := c.platform.display
 	root := xRootWindow(display, c.platform.screen)
@@ -1597,19 +1602,24 @@ func (c *nativeWindow) ClientToScreen(x, y int) (int, int) {
 		display,
 		c.platform.window,
 		root,
-		int32(x), int32(y),
+		int32(c.toPhysical(x)), int32(c.toPhysical(y)),
 		unsafe.Pointer(&sx), unsafe.Pointer(&sy),
 		unsafe.Pointer(&child),
 	) == 0 {
-		return c.windowPosX + x, c.windowPosY + y
+		return c.PosX() + x, c.PosY() + y
 	}
-	return int(sx), int(sy)
+	return c.toLogicalScreen(int(sx)), c.toLogicalScreen(int(sy))
 }
 
 // ScreenWorkArea intersects the monitor with _NET_WORKAREA. The latter is a
 // single rect over the whole virtual desktop, so this cuts off panels along
 // the outer edges of the desktop, but not ones between monitors.
 func (c *nativeWindow) ScreenWorkArea(x, y int) (int, int, int, int) {
+	ax, ay, aw, ah := c.screenWorkAreaPhysical(c.toPhysical(x), c.toPhysical(y))
+	return c.toLogicalScreen(ax), c.toLogicalScreen(ay), c.toLogical(aw), c.toLogical(ah)
+}
+
+func (c *nativeWindow) screenWorkAreaPhysical(x, y int) (int, int, int, int) {
 	mx, my, mw, mh := monitorRectForWindow(c.platform.display, c.platform.screen, x, y, 1, 1)
 	wx, wy, ww, wh, ok := netWorkAreaX(c.platform.display, c.platform.screen)
 	if !ok {

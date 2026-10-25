@@ -106,3 +106,68 @@ func TestSingleInstance(t *testing.T) {
 	again.Close()
 	form.Activate() // a shown form: nothing breaks
 }
+
+func newDockForm(settings *ui.Settings) (*ui.Form, *ui.DockLayout, map[string]*ui.DockWidget) {
+	form := newForm(640, 420)
+	editor := ui.NewTextBox()
+	editor.SetMultiline(true)
+	editor.SetText("the central widget")
+	docks := ui.NewDockLayout(editor)
+	byTitle := map[string]*ui.DockWidget{}
+	files := ui.NewListView()
+	files.SetItems([]string{"main.go", "dock.go"})
+	byTitle["Files"] = docks.AddDock("Files", files, ui.DockLeft)
+	byTitle["Outline"] = docks.AddDock("Outline", ui.NewLabel("func main"), ui.DockLeft)
+	logs := ui.NewLogView()
+	logs.AppendLine("built")
+	byTitle["Log"] = docks.AddDock("Log", logs, ui.DockBottom)
+	if settings != nil {
+		docks.RememberState(settings, "docks")
+	}
+	form.Panel().AddWidget(0, 0, docks)
+	return form, docks, byTitle
+}
+
+func TestDockLayout(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	settings, _ := ui.OpenSettingsFile(path)
+	form, docks, d := newDockForm(settings)
+	w := uitest.Show(t, form)
+	w.MatchGolden("docks")
+
+	// Moved to the right from its menu, then closed and shown again
+	w.Click(w.FindAll(func(x ui.Widgeter) bool { b, ok := x.(*ui.Button); return ok && b.Text() == "…" })[0])
+	w.Click(w.Find("Dock Right"))
+	if d["Files"].Area() != ui.DockRight {
+		t.Errorf("Files in %v", d["Files"].Area())
+	}
+	if x, _ := d["Files"].Content().RectClientAreaOnWindow(); x < 320 || d["Files"].Content().Width() == 0 {
+		t.Errorf("Files content at x %d, width %d: not at the right", x, d["Files"].Content().Width())
+	}
+	if x, _ := d["Outline"].Content().RectClientAreaOnWindow(); x > 100 || d["Outline"].Content().Width() == 0 {
+		t.Errorf("Outline content at x %d, width %d: not at the left", x, d["Outline"].Content().Width())
+	}
+	w.MatchGolden("docks-moved")
+	d["Log"].SetShown(false)
+	if d["Log"].ToggleAction().Checked() {
+		t.Error("the toggle action stays checked")
+	}
+	d["Log"].ToggleAction().Trigger()
+	if !d["Log"].Shown() {
+		t.Error("the toggle action doesn't show it")
+	}
+	d["Outline"].SetShown(false)
+	docks.SetAreaSize(ui.DockRight, 200)
+	form.Close()
+
+	// The layout comes back
+	settings, _ = ui.OpenSettingsFile(path)
+	form2, docks2, d2 := newDockForm(settings)
+	uitest.Show(t, form2)
+	if d2["Files"].Area() != ui.DockRight || d2["Outline"].Shown() || !d2["Log"].Shown() {
+		t.Errorf("restored: files %v, outline shown %v, log shown %v", d2["Files"].Area(), d2["Outline"].Shown(), d2["Log"].Shown())
+	}
+	if size := docks2.AreaSize(ui.DockRight); size < 190 || size > 210 {
+		t.Errorf("right area %d, want 200", size)
+	}
+}

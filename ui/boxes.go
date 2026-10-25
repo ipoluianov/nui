@@ -115,6 +115,7 @@ func NewFormLayout() *FormLayout {
 // label
 func (c *FormLayout) AddRow(label string, field Widgeter) *Label {
 	l := NewLabel(label)
+	l.SetBuddy(field)
 	c.AddWidget(c.rows, 0, l)
 	c.AddWidget(c.rows, 1, field)
 	c.rows++

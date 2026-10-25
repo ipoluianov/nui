@@ -40,6 +40,7 @@ type xSelectionEvent struct {
 var xdnd struct {
 	aware, enter, position, status, leave, drop, finished uintptr
 	selection, typeList, actionCopy, uriList, property    uintptr
+	actionMove, actionLink, targets                       uintptr
 }
 
 // initXdndAtoms interns the XDND atoms once the display is open
@@ -55,6 +56,9 @@ func initXdndAtoms(display uintptr) {
 	xdnd.selection = intern("XdndSelection")
 	xdnd.typeList = intern("XdndTypeList")
 	xdnd.actionCopy = intern("XdndActionCopy")
+	xdnd.actionMove = intern("XdndActionMove")
+	xdnd.actionLink = intern("XdndActionLink")
+	xdnd.targets = intern("TARGETS")
 	xdnd.uriList = intern("text/uri-list")
 	xdnd.property = intern("NUI_XDND_DATA")
 }
@@ -95,7 +99,7 @@ func (c *nativeWindow) processXdnd(m *xClientMessageEvent) bool {
 		var child uintptr
 		root := xRootWindow(c.platform.display, c.platform.screen)
 		xTranslateCoordinates(c.platform.display, root, c.platform.window, rootX, rootY, unsafe.Pointer(&x), unsafe.Pointer(&y), unsafe.Pointer(&child))
-		d.x, d.y = int(x), int(y)
+		d.x, d.y = c.toLogical(int(x)), c.toLogical(int(y))
 		c.sendXdndStatus(d.source, d.hasURIs && c.onFilesDropped != nil && !c.inputBlocked())
 	case xdnd.leave:
 		*d = dndState{}

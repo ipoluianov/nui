@@ -8,6 +8,8 @@ import (
 	"math"
 	"syscall"
 	"time"
+	"unicode/utf16"
+	"unicode/utf8"
 	"unsafe"
 )
 
@@ -541,12 +543,29 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 		}
 
 	case c_WM_CHAR:
-		//println("Char typed:", rune(wParam), "=", string(rune(wParam)))
-
-		if win != nil && win.onChar != nil && wParam >= 32 {
-			win.onChar(rune(wParam))
+		// A character beyond the BMP (an emoji from the input method or the
+		// emoji panel) comes as two messages, the halves of a surrogate pair
+		r := rune(wParam)
+		if win != nil {
+			if utf16.IsSurrogate(r) {
+				if r < 0xDC00 {
+					win.platform.highSurrogate = r
+					return 0
+				}
+				r = utf16.DecodeRune(win.platform.highSurrogate, r)
+				win.platform.highSurrogate = 0
+			}
+			if win.onChar != nil && r >= 32 && r != utf8.RuneError {
+				win.onChar(r)
+			}
 		}
 		return 0
+
+	case c_WM_IME_STARTCOMPOSITION:
+		// The composition starts at the caret; DefWindowProc shows its window
+		if win != nil {
+			win.applyTextInputRect()
+		}
 
 	case c_WM_MOUSEMOVE:
 		if win != nil && win.onMouseMove != nil {

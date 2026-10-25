@@ -308,6 +308,8 @@ func (c *Form) processDeactivate() {
 func (c *Form) processActivate() {
 	if !c.active {
 		c.active = true
+		// The system menu bar shows the menus of the active form
+		c.installNativeMenuBar()
 		if c.onActivated != nil {
 			c.onActivated()
 		}

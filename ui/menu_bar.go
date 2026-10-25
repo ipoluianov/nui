@@ -19,6 +19,9 @@ type MenuBar struct {
 	// openItem is the item whose menu was opened last; its menu may have
 	// been closed since, see isOpen
 	openItem *MenuBarItem
+	// native: the menus are in the system's menu bar (UseNativeMenuBar),
+	// the bar takes no room in the form
+	native bool
 }
 
 // menuBarItemPadding is the space left and right of a title
@@ -68,6 +71,9 @@ func (c *MenuBar) Items() []*MenuBarItem {
 
 // barHeight is the height the bar takes at the top of the form.
 func (c *MenuBar) barHeight() int {
+	if c.native {
+		return 0
+	}
 	return ThemeRowHeight() + 1 // + the bottom border
 }
 

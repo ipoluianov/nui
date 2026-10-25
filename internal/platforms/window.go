@@ -63,11 +63,12 @@ type Window interface {
 	// coordinates
 	OnFilesDropped(func(files []string, x, y int))
 	// StartFileDrag drags the files out to other applications (e.g. to the
-	// file manager) while the left button is held, and returns when they are
-	// dropped (dropped is true, effect is what the target did with them) or
-	// the drag is cancelled. started is false where the platform can't drag
-	// out: nothing happened then.
-	StartFileDrag(files []string) (effect DragEffect, dropped bool, started bool)
+	// file manager) while the left button is held; done gets the result when
+	// they are dropped (dropped is true, effect is what the target did with
+	// them) or the drag is cancelled: before StartFileDrag returns on Windows
+	// and Linux, later on macOS, where the drag goes on in the event loop.
+	// It returns false where the drag couldn't start: nothing happened then.
+	StartFileDrag(files []string, done func(effect DragEffect, dropped bool)) bool
 
 	// Window appearance
 	SetTitle(title string)
@@ -112,6 +113,11 @@ type Window interface {
 	// pixel takes: 1, or e.g. 2 on a Retina screen. The sizes, positions and
 	// mouse coordinates are all logical.
 	Scale() float64
+
+	// SetTextInputRect tells the input method where the caret is, in the
+	// client area: the window of a composition (Chinese, Japanese, Korean)
+	// and its candidates are shown next to it
+	SetTextInputRect(x, y, width, height int)
 
 	// ClientToScreen converts a point in the window's client area to screen coordinates
 	ClientToScreen(x, y int) (screenX, screenY int)

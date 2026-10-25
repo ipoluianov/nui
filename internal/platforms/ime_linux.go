@@ -116,3 +116,7 @@ func (c *nativeWindow) keyText(event *xEvent) string {
 	}
 	return string(runes)
 }
+
+// SetTextInputRect does nothing: the input method of Xlib used here
+// composes in place (dead keys, Compose) and shows no window
+func (c *nativeWindow) SetTextInputRect(x, y, width, height int) {}

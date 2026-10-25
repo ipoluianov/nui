@@ -157,3 +157,12 @@ func (c *Label) applyThemeMetrics() {
 	c.Widget.applyThemeMetrics()
 	c.updateInnerSize()
 }
+
+// SetBuddy makes the label the name of the widget for a screen reader: a
+// text field without a text of its own is read as "Name: text field".
+// FormLayout.AddRow does it for its rows.
+func (c *Label) SetBuddy(w Widgeter) {
+	if w != nil {
+		w.widgetBase().accessibleLabel = c
+	}
+}

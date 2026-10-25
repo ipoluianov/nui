@@ -44,7 +44,7 @@ var (
 	headlessActive  *HeadlessWindow
 
 	headlessPosted    []func()
-	headlessClipboard string
+	headlessClipboard []ClipboardItem
 )
 
 // SetHeadlessScreen sets the size of the headless screen in logical pixels
@@ -108,6 +108,7 @@ type HeadlessWindow struct {
 	width, height int
 	minW, minH    int
 	scale         float64
+	textInputRect [4]int
 	visible       bool
 	closed        bool
 	maximized     bool
@@ -511,8 +512,8 @@ func (w *HeadlessWindow) OnFilesDropped(f func(files []string, x, y int)) {
 	w.onFilesDropped = f
 }
 
-func (w *HeadlessWindow) StartFileDrag(files []string) (DragEffect, bool, bool) {
-	return 0, false, false
+func (w *HeadlessWindow) StartFileDrag(files []string, done func(DragEffect, bool)) bool {
+	return false
 }
 
 func (w *HeadlessWindow) SetTitle(title string)             { w.title = title }
@@ -530,22 +531,33 @@ func (w *HeadlessWindow) MaximizeWindow() {
 	w.Move(0, 0)
 	w.Resize(headlessScreenW, headlessScreenH)
 }
-func (w *HeadlessWindow) RestoreWindow()                     { w.maximized = false }
-func (w *HeadlessWindow) IsMaximized() bool                  { return w.maximized }
-func (w *HeadlessWindow) SetAlwaysOnTop(onTop bool)          {}
-func (w *HeadlessWindow) RequestAttention()                  {}
-func (w *HeadlessWindow) Beep()                              {}
-func (w *HeadlessWindow) SetAllowMinimize(allow bool)        {}
-func (w *HeadlessWindow) SetAllowMaximize(allow bool)        {}
-func (w *HeadlessWindow) Size() (int, int)                   { return w.width, w.height }
-func (w *HeadlessWindow) Pos() (int, int)                    { return w.x, w.y }
-func (w *HeadlessWindow) PosX() int                          { return w.x }
-func (w *HeadlessWindow) PosY() int                          { return w.y }
-func (w *HeadlessWindow) Width() int                         { return w.width }
-func (w *HeadlessWindow) Height() int                        { return w.height }
-func (w *HeadlessWindow) KeyModifiers() KeyModifiers         { return w.mods }
-func (w *HeadlessWindow) DrawTimeUs() int64                  { return 0 }
-func (w *HeadlessWindow) Scale() float64                     { return w.scale }
+func (w *HeadlessWindow) RestoreWindow()              { w.maximized = false }
+func (w *HeadlessWindow) IsMaximized() bool           { return w.maximized }
+func (w *HeadlessWindow) SetAlwaysOnTop(onTop bool)   {}
+func (w *HeadlessWindow) RequestAttention()           {}
+func (w *HeadlessWindow) Beep()                       {}
+func (w *HeadlessWindow) SetAllowMinimize(allow bool) {}
+func (w *HeadlessWindow) SetAllowMaximize(allow bool) {}
+func (w *HeadlessWindow) Size() (int, int)            { return w.width, w.height }
+func (w *HeadlessWindow) Pos() (int, int)             { return w.x, w.y }
+func (w *HeadlessWindow) PosX() int                   { return w.x }
+func (w *HeadlessWindow) PosY() int                   { return w.y }
+func (w *HeadlessWindow) Width() int                  { return w.width }
+func (w *HeadlessWindow) Height() int                 { return w.height }
+func (w *HeadlessWindow) KeyModifiers() KeyModifiers  { return w.mods }
+func (w *HeadlessWindow) DrawTimeUs() int64           { return 0 }
+func (w *HeadlessWindow) Scale() float64              { return w.scale }
+
+// SetTextInputRect keeps the rect, see TextInputRect
+func (w *HeadlessWindow) SetTextInputRect(x, y, width, height int) {
+	w.textInputRect = [4]int{x, y, width, height}
+}
+
+// TextInputRect returns what the form gave to SetTextInputRect last
+func (w *HeadlessWindow) TextInputRect() (x, y, width, height int) {
+	r := w.textInputRect
+	return r[0], r[1], r[2], r[3]
+}
 func (w *HeadlessWindow) ClientToScreen(x, y int) (int, int) { return x + w.x, y + w.y }
 
 func (w *HeadlessWindow) ScreenWorkArea(x, y int) (int, int, int, int) {

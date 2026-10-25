@@ -5,6 +5,7 @@ package platforms
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 	"unsafe"
 )
@@ -19,7 +20,10 @@ import (
 // into a property of the hidden window and waits for the answer
 // (SelectionNotify); large texts come in parts (INCR).
 //
-// The text lives in the application: when it quits, a clipboard manager
+// Other formats (an image as PNG, the data of an application) are targets
+// named by their MIME types, as GTK and Qt name them.
+//
+// The data lives in the application: when it quits, a clipboard manager
 // (most desktops run one) is asked to keep it, see clipboardHandOver.
 
 const (
@@ -61,14 +65,20 @@ type xSelectionClearEvent struct {
 
 var errClipboardTimeout = errors.New("clipboard: the owner of the clipboard does not answer")
 
-var clip struct {
+var clip clipboardState
+
+type clipboardState struct {
 	window uintptr
-	// The text copied here, while this application owns the clipboard
-	text  string
-	owned bool
+	// The data copied here, while this application owns the clipboard: the
+	// text, if any, and the other formats by their atoms
+	text    string
+	hasText bool
+	items   map[uintptr][]byte
+	owned   bool
 
 	clipboard, targets, utf8, textAtom, plain, incr, property uintptr
-	manager, saveTargets                                      uintptr
+	plainBare                                                 uintptr
+	manager, saveTargets, multiple, timestamp                 uintptr
 }
 
 // clipboardWindow returns the hidden window that owns and receives the
@@ -91,9 +101,12 @@ func clipboardWindow() (display, window uintptr, err error) {
 	clip.utf8 = intern("UTF8_STRING")
 	clip.textAtom = intern("TEXT")
 	clip.plain = intern("text/plain;charset=utf-8")
+	clip.plainBare = intern("text/plain")
 	clip.incr = intern("INCR")
 	clip.property = intern("NUI_CLIPBOARD")
 	clip.manager = intern("CLIPBOARD_MANAGER")
+	clip.multiple = intern("MULTIPLE")
+	clip.timestamp = intern("TIMESTAMP")
 	clip.saveTargets = intern("SAVE_TARGETS")
 
 	root := xRootWindow(xDisplay, xScreen)
@@ -117,20 +130,151 @@ func tryOpenDisplay() (err error) {
 	return nil
 }
 
-func clipboardSetText(text string) error {
+func clipboardSet(items []ClipboardItem) error {
 	display, window, err := clipboardWindow()
 	if err != nil {
 		return err
 	}
-	clip.text = text
+	clip.text, clip.hasText, clip.items = "", false, map[uintptr][]byte{}
+	for _, item := range items {
+		if isTextMIME(item.MIME) {
+			clip.text, clip.hasText = string(item.Data), true
+		} else {
+			clip.items[xInternAtom(display, item.MIME, xFalse)] = item.Data
+		}
+	}
 	xSetSelectionOwner(display, clip.clipboard, window, xCurrentTime)
 	clip.owned = xGetSelectionOwner(display, clip.clipboard) == window
 	xFlush(display)
 	if !clip.owned {
-		clip.text = ""
+		clip.text, clip.hasText, clip.items = "", false, nil
 		return errors.New("clipboard: another application keeps the clipboard")
 	}
 	return nil
+}
+
+func clipboardGet(mime string) ([]byte, bool, error) {
+	if isTextMIME(mime) {
+		formats, err := clipboardFormats()
+		if err != nil || !slices.Contains(formats, MIMEText) {
+			return nil, false, err
+		}
+		text, err := clipboardGetText()
+		return []byte(text), err == nil, err
+	}
+	display, window, err := clipboardWindow()
+	if err != nil {
+		return nil, false, err
+	}
+	owner := xGetSelectionOwner(display, clip.clipboard)
+	if owner == xNone {
+		return nil, false, nil
+	}
+	target := xInternAtom(display, mime, xFalse)
+	if owner == window && clip.owned {
+		data, ok := clip.items[target]
+		return data, ok, nil
+	}
+	data, ok, err := convertClipboard(display, window, target)
+	return []byte(data), ok, err
+}
+
+func clipboardFormats() ([]string, error) {
+	display, window, err := clipboardWindow()
+	if err != nil {
+		return nil, err
+	}
+	owner := xGetSelectionOwner(display, clip.clipboard)
+	if owner == xNone {
+		return nil, nil
+	}
+	var targets []uintptr
+	if owner == window && clip.owned {
+		targets = clip.targetAtoms()
+	} else {
+		xConvertSelection(display, clip.clipboard, clip.targets, clip.property, window, xCurrentTime)
+		xFlush(display)
+		var event xEvent
+		if !waitClipboardEvent(display, window, xSelectionNotify, &event, nil) {
+			return nil, errClipboardTimeout
+		}
+		if (*xSelectionEvent)(unsafe.Pointer(&event)).Property == xNone {
+			return nil, nil
+		}
+		targets = readClipboardAtoms(display, window)
+	}
+	var formats []string
+	for _, atom := range targets {
+		switch atom {
+		case clip.targets, clip.multiple, clip.timestamp, clip.saveTargets:
+			continue
+		case clip.utf8, clip.plain, clip.plainBare, clip.textAtom, xXAString:
+			if !slices.Contains(formats, MIMEText) {
+				formats = append(formats, MIMEText)
+			}
+			continue
+		}
+		if name := atomName(display, atom); name != "" {
+			formats = append(formats, name)
+		}
+	}
+	return formats, nil
+}
+
+// targetAtoms are the targets the data copied here is offered as
+func (c *clipboardState) targetAtoms() []uintptr {
+	atoms := []uintptr{c.targets}
+	if c.hasText {
+		atoms = append(atoms, c.utf8, c.plain, c.textAtom, xXAString)
+	}
+	for atom := range c.items {
+		atoms = append(atoms, atom)
+	}
+	return atoms
+}
+
+// readClipboardAtoms reads and deletes the list of atoms the owner wrote to
+// the property (TARGETS)
+func readClipboardAtoms(display, window uintptr) []uintptr {
+	var typ uintptr
+	var actualFormat int32
+	var nitems, bytesAfter uintptr
+	var prop unsafe.Pointer
+	status := xGetWindowProperty(display, window, clip.property, 0, 4096, xTrue, xAnyPropertyType,
+		unsafe.Pointer(&typ), unsafe.Pointer(&actualFormat), unsafe.Pointer(&nitems), unsafe.Pointer(&bytesAfter), unsafe.Pointer(&prop))
+	if status != xSuccess || prop == nil {
+		return nil
+	}
+	defer xFree(prop)
+	if actualFormat != 32 || nitems == 0 {
+		return nil
+	}
+	// Xlib gives the 32-bit items as longs
+	return slices.Clone(unsafe.Slice((*uintptr)(prop), int(nitems)))
+}
+
+// atomName returns the name of the atom
+func atomName(display, atom uintptr) string {
+	p := xGetAtomName(display, atom)
+	if p == nil {
+		return ""
+	}
+	defer xFree(unsafe.Pointer(p))
+	n := 0
+	for *(*byte)(unsafe.Add(unsafe.Pointer(p), n)) != 0 {
+		n++
+	}
+	return string(unsafe.Slice(p, n))
+}
+
+// maxPropertySize is the most data written to a property at once: the
+// largest request of the server. Larger data would need the INCR protocol.
+func maxPropertySize(display uintptr) int {
+	words := xExtendedMaxRequestSize(display)
+	if words == 0 {
+		words = xMaxRequestSize(display)
+	}
+	return int(words)*4 - 1024
 }
 
 func clipboardGetText() (string, error) {
@@ -259,7 +403,7 @@ func processClipboardEvent(event *xEvent) bool {
 		// Another application copied something: the text here is not the clipboard any more
 		if e := (*xSelectionClearEvent)(unsafe.Pointer(event)); e.Selection == clip.clipboard {
 			clip.owned = false
-			clip.text = ""
+			clip.text, clip.hasText, clip.items = "", false, nil
 		}
 	case xSelectionRequest:
 		answerSelectionRequest((*xSelectionRequestEvent)(unsafe.Pointer(event)))
@@ -267,8 +411,8 @@ func processClipboardEvent(event *xEvent) bool {
 	return true
 }
 
-// answerSelectionRequest gives the text to an application that pastes it:
-// the list of the kinds it is offered as (TARGETS), or the text itself,
+// answerSelectionRequest gives the data to an application that pastes it:
+// the list of the formats it is offered as (TARGETS), or the data itself,
 // written to the property of the requestor and announced with SelectionNotify
 func answerSelectionRequest(r *xSelectionRequestEvent) {
 	var reply xEvent
@@ -286,12 +430,20 @@ func answerSelectionRequest(r *xSelectionRequestEvent) {
 		property = r.Target
 	}
 	if clip.owned && r.Selection == clip.clipboard {
-		switch r.Target {
-		case clip.targets:
-			atoms := []uintptr{clip.targets, clip.utf8, clip.plain, clip.textAtom, xXAString}
+		data, isItem := clip.items[r.Target]
+		switch {
+		case r.Target == clip.targets:
+			atoms := clip.targetAtoms()
 			xChangeProperty(xDisplay, r.Requestor, property, xXAAtom, 32, xPropModeReplace, unsafe.Pointer(&atoms[0]), int32(len(atoms)))
 			n.Property = property
-		case clip.utf8, clip.plain, clip.textAtom, xXAString:
+		case isItem:
+			// Larger than a request: refused, the INCR protocol isn't done
+			if len(data) <= maxPropertySize(xDisplay) {
+				data = append(data[:len(data):len(data)], 0)
+				xChangeProperty(xDisplay, r.Requestor, property, r.Target, 8, xPropModeReplace, unsafe.Pointer(&data[0]), int32(len(data)-1))
+				n.Property = property
+			}
+		case clip.hasText && (r.Target == clip.utf8 || r.Target == clip.plain || r.Target == clip.textAtom || r.Target == xXAString):
 			typ := r.Target
 			if typ == clip.textAtom {
 				typ = clip.utf8
@@ -333,8 +485,11 @@ func clipboardHandOver() {
 	if xGetSelectionOwner(display, clip.manager) == xNone {
 		return
 	}
-	// The kinds to keep, as ICCCM asks: the manager then requests each of them
-	atoms := []uintptr{clip.utf8, clip.plain, xXAString}
+	// The formats to keep, as ICCCM asks: the manager then requests each of them
+	atoms := clip.targetAtoms()[1:]
+	if len(atoms) == 0 {
+		return
+	}
 	xChangeProperty(display, window, clip.property, xXAAtom, 32, xPropModeReplace, unsafe.Pointer(&atoms[0]), int32(len(atoms)))
 	xConvertSelection(display, clip.manager, clip.saveTargets, clip.property, window, xCurrentTime)
 	xFlush(display)

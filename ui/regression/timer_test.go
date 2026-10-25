@@ -39,6 +39,15 @@ func TestTimer(t *testing.T) {
 		t.Errorf("AfterFunc ran %d times", once)
 	}
 
+	// AfterFunc(0): at the next tick, once
+	zero := 0
+	panel.AfterFunc(0, func() { zero++ })
+	w.Tick()
+	w.Tick()
+	if zero != 1 {
+		t.Errorf("AfterFunc(0) ran %d times", zero)
+	}
+
 	// A debounce: restarted before its interval, it runs once after the
 	// last Start
 	searches := 0

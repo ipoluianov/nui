@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"encoding/xml"
 	"fmt"
 	"image/color"
 	"math"
@@ -107,6 +106,14 @@ type Widget struct {
 
 	canBeFocused bool
 
+	// Accessibility, see accessible.go: the name, the description and the
+	// role set by the application, the label that names the widget
+	accessibleName        string
+	accessibleDescription string
+	accessibleRole        AccessibleRole
+	accessibleRoleSet     bool
+	accessibleLabel       *Label
+
 	allowCallMouseClickCallback bool
 
 	dontAllowOnClickIfDisabled bool
@@ -155,6 +162,9 @@ type Widget struct {
 	onMouseWheel    func(deltaX, deltaY int) bool
 	//onClick         func()
 	onScrollChanged func(scrollX, scrollY int)
+	// scrollLineStep is how far an arrow button of the scroll bars scrolls,
+	// scrollBarLineStep if 0
+	scrollLineStep int
 
 	onFocused   func()
 	onFocusLost func()
@@ -1154,11 +1164,15 @@ func (c *Widget) scrollBarStep(vertical bool, part int) {
 		return
 	}
 	delta := 0
+	line := scrollBarLineStep
+	if c.scrollLineStep > 0 {
+		line = c.scrollLineStep
+	}
 	switch part {
 	case scrollPartLineBack:
-		delta = -scrollBarLineStep
+		delta = -line
 	case scrollPartLineForward:
-		delta = scrollBarLineStep
+		delta = line
 	case scrollPartPageBack:
 		delta = -b.view
 	case scrollPartPageForward:
@@ -2276,10 +2290,10 @@ func (c *Widget) layoutGrid(fullWidth, fullHeight int) {
 	cellPadding := c.GetPropInt("spacing", 2)
 
 	cells := c.gridCells()
-	_, minX, maxX, allCellPaddingX := c.makeColumnsInfo(fullWidth, cells)
+	_, _, maxX, allCellPaddingX := c.makeColumnsInfo(fullWidth, cells)
 	columnsInfo, _, _, _ := c.makeColumnsInfo(fullWidth-(panelPadding+allCellPaddingX+panelPadding), cells)
 
-	_, minY, maxY, allCellPaddingY := c.makeRowsInfo(fullHeight, cells)
+	_, _, maxY, allCellPaddingY := c.makeRowsInfo(fullHeight, cells)
 	rowsInfo, _, _, _ := c.makeRowsInfo(fullHeight-(panelPadding+allCellPaddingY+panelPadding+c.insetTop), cells)
 
 	/*if strings.Contains(c.name, "Top") {
@@ -2295,7 +2309,7 @@ func (c *Widget) layoutGrid(fullWidth, fullHeight int) {
 	// Where the columns and the rows start, and how large they are
 	colX, colW := map[int]int{}, map[int]int{}
 	xOffset := panelPadding
-	for x := minX; x <= maxX; x++ {
+	for _, x := range sortedKeys(columnsInfo) {
 		if colInfo, ok := columnsInfo[x]; ok {
 			colX[x], colW[x] = xOffset, colInfo.width
 			xOffset += colInfo.width
@@ -2306,7 +2320,7 @@ func (c *Widget) layoutGrid(fullWidth, fullHeight int) {
 	}
 	rowY, rowH := map[int]int{}, map[int]int{}
 	yOffset := panelPadding + c.insetTop
-	for y := minY; y <= maxY; y++ {
+	for _, y := range sortedKeys(rowsInfo) {
 		if rowInfo, ok := rowsInfo[y]; ok {
 			rowY[y], rowH[y] = yOffset, rowInfo.height
 			yOffset += rowInfo.height
@@ -2405,14 +2419,15 @@ func (c *Widget) makeColumnsInfo(fullWidth int, cells map[gridCell][]Widgeter) (
 	hasExpandableColumns := false
 
 	// Fill columnsInfo
-	for x := minX; x <= maxX; x++ {
+	lines := occupiedLines(cells)
+	for _, x := range lines.cols {
 		var colInfo ContainerGridColumnInfo
 		colInfo.minWidth = MinInt
 		colInfo.maxWidth = MaxInt
 		colInfo.expandable = false
 		found := false
 
-		for y := minY; y <= maxY; y++ {
+		for _, y := range lines.colRows[x] {
 			for _, w := range cells[gridCell{x, y}] {
 				found = true
 				if w.widgetBase().gridColSpanOrOne() > 1 {
@@ -2437,7 +2452,7 @@ func (c *Widget) makeColumnsInfo(fullWidth int, cells map[gridCell][]Widgeter) (
 			colInfo.minWidth = MinInt
 			colInfo.maxWidth = MinInt
 
-			for y := minY; y <= maxY; y++ {
+			for _, y := range lines.colRows[x] {
 				for _, w := range cells[gridCell{x, y}] {
 					if w.widgetBase().gridColSpanOrOne() > 1 {
 						continue
@@ -2457,7 +2472,7 @@ func (c *Widget) makeColumnsInfo(fullWidth int, cells map[gridCell][]Widgeter) (
 			colInfo.minWidth = MinInt
 			colInfo.maxWidth = MinInt
 
-			for y := minY; y <= maxY; y++ {
+			for _, y := range lines.colRows[x] {
 				for _, w := range cells[gridCell{x, y}] {
 					if w.widgetBase().gridColSpanOrOne() > 1 {
 						continue
@@ -2648,7 +2663,8 @@ func (c *Widget) makeRowsInfo(fullHeight int, cells map[gridCell][]Widgeter) (ma
 	hasExpandableRows := false
 
 	// Главный цикл по строкам
-	for y := minY; y <= maxY; y++ {
+	lines := occupiedLines(cells)
+	for _, y := range lines.rows {
 		var rowInfo ContainerGridRowInfo
 		rowInfo.minHeight = MinInt // Минимальная высота строки пока 0
 		rowInfo.maxHeight = MaxInt // Максимальная высота строки пока ... максимум
@@ -2656,7 +2672,7 @@ func (c *Widget) makeRowsInfo(fullHeight int, cells map[gridCell][]Widgeter) (ma
 		found := false             // Признак того, что вообще есть в строке контролы
 
 		// If any widget in the row is expandable, set the expandable flag for the row
-		for x := minX; x <= maxX; x++ {
+		for _, x := range lines.rowCols[y] {
 			for _, w := range cells[gridCell{x, y}] {
 				found = true
 				if w.widgetBase().gridRowSpanOrOne() > 1 {
@@ -2681,7 +2697,7 @@ func (c *Widget) makeRowsInfo(fullHeight int, cells map[gridCell][]Widgeter) (ma
 			rowInfo.minHeight = MinInt
 			rowInfo.maxHeight = MinInt
 
-			for x := minX; x <= maxX; x++ {
+			for _, x := range lines.rowCols[y] {
 				for _, w := range cells[gridCell{x, y}] {
 					if w.widgetBase().gridRowSpanOrOne() > 1 {
 						continue
@@ -2701,7 +2717,7 @@ func (c *Widget) makeRowsInfo(fullHeight int, cells map[gridCell][]Widgeter) (ma
 			rowInfo.minHeight = MinInt
 			rowInfo.maxHeight = MinInt
 
-			for x := minX; x <= maxX; x++ {
+			for _, x := range lines.rowCols[y] {
 				for _, w := range cells[gridCell{x, y}] {
 					if w.widgetBase().gridRowSpanOrOne() > 1 {
 						continue
@@ -3130,183 +3146,6 @@ func (c *Widget) ClearLayoutCache() {
 	}
 }
 
-type uiNode struct {
-	XMLName   xml.Name
-	Attrs     []xml.Attr `xml:",any,attr"`
-	Nodes     []uiNode   `xml:",any"`
-	InnerText string     `xml:",chardata"`
-}
-
-func (c *uiNode) GetChildByName(name string) *uiNode {
-	for index, child := range c.Nodes {
-		if child.XMLName.Local == name {
-			return &c.Nodes[index]
-		}
-	}
-	return nil
-}
-
-func (c *uiNode) GetAttrByName(name string) *xml.Attr {
-	for index, attr := range c.Attrs {
-		if attr.Name.Local == name {
-			return &c.Attrs[index]
-		}
-	}
-	return nil
-}
-
-func (c *uiNode) GetAttrValueByName(name string, defaultValue string) string {
-	for _, attr := range c.Attrs {
-		if attr.Name.Local == name {
-			return attr.Value
-		}
-	}
-	return defaultValue
-}
-
-func (c *uiNode) GetAttrValueByNameInt(name string, defaultValue int) int {
-	for _, attr := range c.Attrs {
-		if attr.Name.Local == name {
-			if intValue, err := strconv.Atoi(attr.Value); err == nil {
-				return intValue
-			}
-			return defaultValue
-		}
-	}
-	return defaultValue
-}
-
-func (c *Widget) SetLayout(layoutAsXml string, eventProcessor interface{}, widgets map[string]Widgeter) error {
-	var n uiNode
-	err := xml.Unmarshal([]byte(layoutAsXml), &n)
-	if err != nil {
-		return fmt.Errorf("failed to parse layout XML: %v", err)
-	}
-	c.buildNode(&n, c, 0, 0, eventProcessor, widgets)
-	return nil
-}
-
-func (c *Widget) buildNode(n *uiNode, parent Widgeter, row int, col int, eventProcessor interface{}, widgets map[string]Widgeter) {
-	var w Widgeter
-	isRow := false
-	switch n.XMLName.Local {
-	case "frame":
-		w = NewFrame()
-	case "panel":
-		w = NewPanel()
-	case "column":
-		w = NewPanel()
-	case "row":
-		w = NewPanel()
-		isRow = true
-	case "label":
-		w = NewLabel("")
-	case "button":
-		w = NewButton("")
-	case "hspacer":
-		w = NewHSpacer()
-	case "vspacer":
-		w = NewVSpacer()
-	case "space":
-		w = NewSpace()
-	case "textbox":
-		w = NewTextBox()
-	case "imagebox":
-		w = NewImageBox()
-	case "checkbox":
-		w = NewCheckbox("")
-	case "radiobutton":
-		w = NewRadioButton("")
-	case "combobox":
-		w = NewComboBox()
-	case "table":
-		{
-			w = NewTable()
-			table := w.(*Table)
-			table.TableSetLayoutXml(n)
-		}
-	case "tabwidget":
-		{
-			w = NewTabWidget()
-			tabWidget := w.(*TabWidget)
-			tabWidget.SetLayoutXml(n, eventProcessor, widgets)
-		}
-	case "scrollarea":
-		w = NewScrollArea()
-	case "progressbar":
-		w = NewProgressBar(0, 100, 0)
-	case "widget":
-		{
-			// <widget id="InnerWidget" />
-			var widgetId string
-			for _, attr := range n.Attrs {
-				if attr.Name.Local == "id" {
-					widgetId = attr.Value
-					break
-				}
-			}
-			if widgetId != "" {
-				if existingWidget, ok := widgets[widgetId]; ok {
-					w = existingWidget
-				} else {
-					fmt.Printf("Widget with id %s not found in widgets map\n", widgetId)
-					return
-				}
-			} else {
-				fmt.Println("Widget tag without id attribute")
-				return
-			}
-		}
-	default:
-		return
-	}
-
-	if parent != nil {
-		parent.AddWidget(row, col, w)
-	}
-
-	// Set attributes - only after adding to parent
-	for _, attr := range n.Attrs {
-		if attr.Name.Local == "id" && n.XMLName.Local != "widget" {
-			w.SetName(attr.Value)
-			continue
-		}
-		if strings.HasPrefix(attr.Name.Local, "on") {
-			// If event processor is map[string]func(), then get function from map
-			if eventProcessorMap, ok := eventProcessor.(map[string]func()); ok {
-				if eventHandler, ok := eventProcessorMap[attr.Value]; ok {
-					w.SetPropFunction(attr.Name.Local, eventHandler)
-					continue
-				}
-			}
-
-			if eventProcessor != nil {
-				// Get function by name from eventProcessor
-				method := reflect.ValueOf(eventProcessor).MethodByName(attr.Value)
-				if method.IsValid() {
-					w.SetPropFunction(attr.Name.Local, method.Interface().(func()))
-				} else {
-					fmt.Printf("Event handler %s not found in eventProcessor\n", attr.Value)
-				}
-			}
-		} else {
-			w.SetProp(attr.Name.Local, attr.Value)
-		}
-	}
-
-	index := 0
-	// Recursively build child nodes
-	for _, childNode := range n.Nodes {
-		if isRow {
-			c.buildNode(&childNode, w, 0, index, eventProcessor, widgets)
-			index++
-		} else {
-			c.buildNode(&childNode, w, index, 0, eventProcessor, widgets)
-			index++
-		}
-	}
-}
-
 func (c *Widget) AllChildren() []Widgeter {
 	var all []Widgeter
 	for _, w := range c.widgets {
@@ -3497,4 +3336,42 @@ func (c *Widget) SetRowStretch(row, weight int) {
 	}
 	c.rowStretch[row] = max(0, weight)
 	c.form.UpdateLayout()
+}
+
+// gridLines are the occupied columns and rows of a grid, sorted: the layout
+// goes over these only, not over all the numbers between the first and the
+// last (a widget in column 1 000 000 used to cost a million empty columns,
+// bug #17)
+type gridLines struct {
+	cols, rows       []int
+	colRows, rowCols map[int][]int // the rows of a column, the columns of a row
+}
+
+func occupiedLines(cells map[gridCell][]Widgeter) gridLines {
+	l := gridLines{colRows: map[int][]int{}, rowCols: map[int][]int{}}
+	for cell := range cells {
+		l.colRows[cell.x] = append(l.colRows[cell.x], cell.y)
+		l.rowCols[cell.y] = append(l.rowCols[cell.y], cell.x)
+	}
+	for x, rows := range l.colRows {
+		slices.Sort(rows)
+		l.cols = append(l.cols, x)
+	}
+	for y, cols := range l.rowCols {
+		slices.Sort(cols)
+		l.rows = append(l.rows, y)
+	}
+	slices.Sort(l.cols)
+	slices.Sort(l.rows)
+	return l
+}
+
+// sortedKeys returns the keys of the map, sorted
+func sortedKeys[V any](m map[int]V) []int {
+	keys := make([]int, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	return keys
 }

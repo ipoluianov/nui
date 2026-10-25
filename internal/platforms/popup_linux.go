@@ -87,6 +87,7 @@ func createPopupWindow(owner Window, interactive bool) PopupWindow {
 	xFlush(display)
 
 	p := &popupWindow{owner: o, display: display, window: window, interactive: interactive}
+	p.scale = o.Scale()
 	popupsMu.Lock()
 	popups[window] = p
 	popupsMu.Unlock()
@@ -119,7 +120,7 @@ func (p *popupWindow) processEvent(event *xEvent) {
 		p.paint()
 	case xMotionNotify:
 		motionEvent := (*xMotionEvent)(unsafe.Pointer(event))
-		p.mouseMove(int(motionEvent.X), int(motionEvent.Y))
+		p.mouseMove(p.toLogical(int(motionEvent.X)), p.toLogical(int(motionEvent.Y)))
 	case xButtonPress, xButtonRelease:
 		buttonEvent := (*xButtonEvent)(unsafe.Pointer(event))
 		var btn MouseButton
@@ -146,10 +147,11 @@ func (p *popupWindow) processEvent(event *xEvent) {
 			}
 			return
 		}
+		x, y := p.toLogical(int(buttonEvent.X)), p.toLogical(int(buttonEvent.Y))
 		if event.eventType() == xButtonPress {
-			p.mouseButtonDown(btn, int(buttonEvent.X), int(buttonEvent.Y))
+			p.mouseButtonDown(btn, x, y)
 		} else {
-			p.mouseButtonUp(btn, int(buttonEvent.X), int(buttonEvent.Y))
+			p.mouseButtonUp(btn, x, y)
 		}
 	case xLeaveNotify:
 		p.mouseLeave()
@@ -193,6 +195,10 @@ func (p *popupWindow) ShowAt(x, y, width, height int) {
 	if p.closed || width <= 0 || height <= 0 {
 		return
 	}
+	// Logical, as the owner's; the window and its paint buffer are physical
+	s := p.Scale()
+	x, y = scaleToPhysical(x, s), scaleToPhysical(y, s)
+	width, height = scaleToPhysical(width, s), scaleToPhysical(height, s)
 	p.width, p.height = width, height
 
 	xMoveWindow(p.display, p.window, int32(x), int32(y))
@@ -243,4 +249,8 @@ func (p *popupWindow) Close() {
 	delete(popups, p.window)
 	xDestroyWindow(p.display, p.window)
 	xFlush(p.display)
+}
+
+func (p *popupWindow) toLogical(v int) int {
+	return scaleToLogical(v, p.Scale())
 }

@@ -157,6 +157,19 @@ func (w *Window) Cursor() ui.MouseCursor {
 	return w.wnd.Cursor()
 }
 
+// Accessible returns the accessible objects of the window, as a screen
+// reader sees them (see ui.Form.Accessible)
+func (w *Window) Accessible() *ui.AccessibleNode {
+	w.frame()
+	return w.Form.Accessible()
+}
+
+// TextInputRect returns where the window told the input method the caret
+// is, in the client area
+func (w *Window) TextInputRect() (x, y, width, height int) {
+	return w.wnd.TextInputRect()
+}
+
 // RequestClose clicks the close button of the window; it returns whether
 // the window closed (OnClose may keep it open)
 func (w *Window) RequestClose() bool {

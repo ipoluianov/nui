@@ -197,19 +197,6 @@ func (c *TabWidget) RemovePage(index int) {
 	}
 }
 
-func (c *TabWidget) SetLayoutXml(n *uiNode, eventProcessor interface{}, widgets map[string]Widgeter) {
-	for _, child := range n.Nodes {
-		if child.XMLName.Local == "tab" {
-			childNode := child
-			childNode.XMLName.Local = "panel"
-			name := child.GetAttrValueByName("text", "")
-			wContent := NewPanel()
-			wContent.buildNode(&childNode, wContent, 0, 0, eventProcessor, widgets)
-			c.AddPage(name, wContent)
-		}
-	}
-}
-
 func (c *TabWidget) AddPage(name string, widgeter Widgeter) {
 	if c.pages == nil {
 		c.pages = make([]tabWidgetPage, 0)

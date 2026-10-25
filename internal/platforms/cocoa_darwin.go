@@ -596,6 +596,7 @@ func nuiWindowWillClose(self objc.ID, _ objc.SEL, notification objc.ID) {
 
 	delete(cocoaDelegates, wid)
 	delete(cocoaWindows, wid)
+	forgetTextInput(wid)
 }
 
 // nuiWindowDidResignKey: the window lost keyboard focus to another window
@@ -615,7 +616,9 @@ func nuiWindowDidBecomeKey(self objc.ID, _ objc.SEL, notification objc.ID) {
 // NUIPaintView: full-window content NSView hosting the software framebuffer
 // and input.
 
-func nuiViewAcceptsFirstResponder(self objc.ID, _ objc.SEL) bool { return true }
+// With the input method, the hidden text view stays the first responder
+// (see ime_darwin.go): a click on the view must not take it
+func nuiViewAcceptsFirstResponder(self objc.ID, _ objc.SEL) bool { return !inputMethodEnabled }
 func nuiViewBecomeFirstResponder(self objc.ID, _ objc.SEL) bool  { return true }
 func nuiViewIsFlipped(self objc.ID, _ objc.SEL) bool             { return false }
 
@@ -951,6 +954,8 @@ func registerNuiClasses() {
 			{Cmd: selDraggingEntered, Fn: nuiViewDraggingEntered},
 			{Cmd: selDraggingUpdated, Fn: nuiViewDraggingEntered},
 			{Cmd: selPerformDragOperation, Fn: nuiViewPerformDragOperation},
+			{Cmd: selSourceOperationMask, Fn: nuiViewSourceOperationMask},
+			{Cmd: selDraggingSessionEnded, Fn: nuiViewDraggingSessionEnded},
 		},
 	)
 	if err != nil {
@@ -1013,6 +1018,7 @@ func initWindow() windowId {
 
 		win.Send(selSetTitle, goStringToNS("NUI Window"))
 		win.Send(selSetDelegate, delegate)
+		installTextInput(win, view)
 
 		nsApp.Send(selActivateIgnoringOtherApps, true)
 

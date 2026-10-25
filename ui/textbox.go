@@ -2,7 +2,9 @@ package ui
 
 import (
 	"fmt"
+	"image/color"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -47,6 +49,14 @@ type TextBox struct {
 	mouseButtonPressed  bool
 	cursorWidth         int
 	leftAndRightPadding int
+
+	// lineNumbers shows the numbers of the lines in a column at the left
+	// (multiline only); gutterDigits and gutterW cache its width
+	lineNumbers  bool
+	gutterDigits int
+	gutterW      int
+	// highlighter gives the styled parts of a line, see SetHighlighter
+	highlighter func(line int, text string) []TextSpan
 
 	dragingCursor bool
 
@@ -107,6 +117,13 @@ type TextBoxSelection struct {
 
 func NewTextBox() *TextBox {
 	var c TextBox
+	c.initTextBox()
+	return &c
+}
+
+// initTextBox makes the text box ready, in place: for the widgets built on
+// it (LogView), whose handlers must be of their own value
+func (c *TextBox) initTextBox() {
 	c.InitWidget()
 	c.SetTypeName("TextBox")
 	c.scrollBarInset = 1 // the scroll bars of a multiline box are inside its frame
@@ -169,8 +186,6 @@ func NewTextBox() *TextBox {
 	c.updateInnerSize()
 
 	c.padding = 4
-
-	return &c
 }
 
 // Lines returns the lines of the text, without the line breaks
@@ -378,7 +393,7 @@ func (c *TextBox) updateInnerSize() {
 		}
 		maxTextWidth = max(maxTextWidth, c.lineWidths[i])
 	}
-	c.innerWidth = maxTextWidth + c.leftAndRightPadding*3
+	c.innerWidth = maxTextWidth + c.textX() + c.leftAndRightPadding*2
 	if c.Multiline() {
 		c.allowScrollY = true
 	}
@@ -442,7 +457,7 @@ func (c *TextBox) Draw(ctx *Canvas, width, height int) {
 				return
 			}
 			for i := 0; i < len(lineCharPos); i++ {
-				lineCharPos[i] = lineCharPos[i] + c.leftAndRightPadding
+				lineCharPos[i] = lineCharPos[i] + c.textX()
 			}
 
 			selXBegin := 0
@@ -473,9 +488,16 @@ func (c *TextBox) Draw(ctx *Canvas, width, height int) {
 	ctx.SetVAlign(VAlignCenter)
 	ctx.SetFontFamily(c.FontFamily())
 	ctx.SetFontSize(c.FontSize())
+	textX := c.textX()
 	for i := first; i <= last; i++ {
-		ctx.DrawText(c.leftAndRightPadding, yStaticOffset+i*oneLineHeight, width-c.leftAndRightPadding*2, oneLineHeight, c.lineToPasswordChars(lines[i]))
+		y := yStaticOffset + i*oneLineHeight
+		if c.highlighter != nil && !c.GetPropBool("ispassword", false) {
+			c.drawHighlighted(ctx, i, lines[i], textX, y, oneLineHeight, textColor)
+			continue
+		}
+		ctx.DrawText(textX, y, width-textX-c.leftAndRightPadding, oneLineHeight, c.lineToPasswordChars(lines[i]))
 	}
+	c.drawGutter(ctx, first, last, yStaticOffset, oneLineHeight)
 
 	// Compare by id via IsFocused() rather than "c.form.focusedWidget == c":
 	// for a TextBox nested inside a custom composite widget, the interface
@@ -488,7 +510,7 @@ func (c *TextBox) Draw(ctx *Canvas, width, height int) {
 	if focus && c.cursorVisible {
 		charPos, err := GetCharPositions(c.FontFamily(), c.FontSize(), c.lineToPasswordChars(lines[c.cursorPosY]))
 		for i := 0; i < len(charPos); i++ {
-			charPos[i] = charPos[i] + c.leftAndRightPadding
+			charPos[i] = charPos[i] + c.textX()
 		}
 		if err != nil {
 			return
@@ -509,8 +531,24 @@ func (c *TextBox) Draw(ctx *Canvas, width, height int) {
 			ctx.SetVAlign(VAlignCenter)
 		}
 		ctx.SetColor(p.PlaceholderText)
-		ctx.DrawText(c.leftAndRightPadding, 0, c.w, c.h, c.Hint())
+		ctx.DrawText(c.textX(), 0, c.w, c.h, c.Hint())
 	}
+}
+
+// caretRect is the caret in the content of the text box (as Draw draws
+// it): where an input method shows its window
+func (c *TextBox) caretRect() (x, y, width, height int) {
+	lineHeight := c.OneLineHeight()
+	y = (c.Height() - lineHeight) / 2
+	if c.Multiline() {
+		y = 1 + c.cursorPosY*lineHeight
+	}
+	x = c.textX()
+	line := c.lines[min(c.cursorPosY, len(c.lines)-1)]
+	if charPos, err := GetCharPositions(c.FontFamily(), c.FontSize(), c.lineToPasswordChars(line)); err == nil && c.cursorPosX < len(charPos) {
+		x += charPos[c.cursorPosX]
+	}
+	return x, y, 1, lineHeight
 }
 
 func (c *TextBox) KeyChar(ch rune, mods KeyModifiers) {
@@ -745,7 +783,7 @@ func (c *TextBox) moveCursorNearPoint(x, y int, modifiers KeyModifiers) {
 
 	charPos, _ := GetCharPositions(c.FontFamily(), c.FontSize(), c.lineToPasswordChars(lines[lineNumber]))
 	for i := 0; i < len(charPos); i++ {
-		charPos[i] = charPos[i] + c.leftAndRightPadding
+		charPos[i] = charPos[i] + c.textX()
 	}
 
 	if len(charPos) == 1 {
@@ -940,7 +978,7 @@ func (c *TextBox) ensureVisibleCursor() {
 	_, oneLineHeight, _ := MeasureText(c.FontFamily(), c.FontSize(), "Q")
 	charPos, err := GetCharPositions(c.FontFamily(), c.FontSize(), c.lineToPasswordChars(lines[c.cursorPosY]))
 	for i := 0; i < len(charPos); i++ {
-		charPos[i] = charPos[i] + c.leftAndRightPadding
+		charPos[i] = charPos[i] + c.textX()
 	}
 	if err != nil {
 		return
@@ -948,10 +986,8 @@ func (c *TextBox) ensureVisibleCursor() {
 	cursorPosInPixels := charPos[c.cursorPosX]
 	curX := cursorPosInPixels - (c.cursorWidth / 2)
 	curY := c.cursorPosY * oneLineHeight
-	// ctx.FillRect(curX, curY, c.cursorWidth, oneLineHeight)
-	//c.ScrollEnsureVisible(curX, curY)
-	//c.ScrollEnsureVisible(curX+c.cursorWidth, curY+oneLineHeight)
-	c.ScrollEnsureVisible(curX, curY)
+	// The column of the line numbers covers the left of the view
+	c.ScrollEnsureVisible(max(0, curX-c.gutterWidth()-c.leftAndRightPadding), curY)
 	c.ScrollEnsureVisible(curX+c.cursorWidth, curY+oneLineHeight)
 }
 
@@ -1366,4 +1402,142 @@ func (c *TextBox) OffsetOf(pos TextPos) int {
 		offset += utf8.RuneCountInString(c.lines[i]) + 1
 	}
 	return offset + pos.Col
+}
+
+// Line numbers and highlighting: the text box as the editor of code
+
+// TextSpan is a styled part of a line, see SetHighlighter: the runes
+// [Start, End) of the line
+type TextSpan struct {
+	Start, End int
+	Color      color.Color // the text color, nil for the box's
+	Background color.Color // nil for none
+	Bold       bool
+	Italic     bool
+}
+
+// SetHighlighter colors the text: f gives the styled parts of a line (its
+// index and text), for the lines shown only, at each paint - a highlighter
+// of syntax, of the matches of a search. Parts may overlap: the later one
+// wins. Bold and italic keep the places of the regular face: they fit
+// best a monospaced font (FontFamilyMono), whose faces are as wide.
+//
+//	box.SetHighlighter(func(line int, text string) []ui.TextSpan {
+//		if i := strings.Index(text, "//"); i >= 0 {
+//			n := utf8.RuneCountInString(text[:i])
+//			return []ui.TextSpan{{Start: n, End: utf8.RuneCountInString(text), Color: gray, Italic: true}}
+//		}
+//		return nil
+//	})
+func (c *TextBox) SetHighlighter(f func(line int, text string) []TextSpan) {
+	c.highlighter = f
+	c.form.Update()
+}
+
+// SetLineNumbers shows the numbers of the lines of a multiline box in a
+// column at its left
+func (c *TextBox) SetLineNumbers(show bool) {
+	c.lineNumbers = show
+	c.gutterDigits = 0
+	c.updateInnerSize()
+	c.form.Update()
+}
+
+func (c *TextBox) LineNumbers() bool {
+	return c.lineNumbers
+}
+
+// textX is where the text starts: after the inset, and the line numbers
+func (c *TextBox) textX() int {
+	return c.leftAndRightPadding + c.gutterWidth()
+}
+
+// gutterWidth is the width of the column of the line numbers, 0 without
+func (c *TextBox) gutterWidth() int {
+	if !c.lineNumbers || !c.Multiline() {
+		return 0
+	}
+	digits := max(2, len(strconv.Itoa(len(c.lines))))
+	if digits != c.gutterDigits {
+		w, _, _ := MeasureText(c.FontFamily(), c.FontSize(), strings.Repeat("0", digits))
+		c.gutterDigits, c.gutterW = digits, w+themeTextInset*2
+	}
+	return c.gutterW
+}
+
+// drawGutter draws the line numbers of the lines shown, in a column that
+// stays at the left when the text scrolls sideways
+func (c *TextBox) drawGutter(ctx *Canvas, first, last, yOffset, lineHeight int) {
+	gw := c.gutterWidth()
+	if gw == 0 {
+		return
+	}
+	p := CurrentPalette()
+	_, vh := c.viewportSize()
+	x := c.scrollX
+	ctx.FillRect(x, c.scrollY, gw, vh, p.Window)
+	ctx.FillRect(x+gw-1, c.scrollY, 1, vh, p.Divider)
+	ctx.SetFontFamily(c.FontFamily())
+	ctx.SetFontSize(c.FontSize())
+	ctx.SetHAlign(HAlignRight)
+	ctx.SetVAlign(VAlignCenter)
+	for i := first; i <= last; i++ {
+		color := p.PlaceholderText
+		if i == c.cursorPosY {
+			color = p.Text
+		}
+		ctx.SetColor(color)
+		ctx.DrawText(x, yOffset+i*lineHeight, gw-themeTextInset, lineHeight, strconv.Itoa(i+1))
+	}
+	ctx.SetHAlign(HAlignLeft)
+}
+
+// drawHighlighted draws a line in the styles of the highlighter
+func (c *TextBox) drawHighlighted(ctx *Canvas, line int, text string, x, y, height int, textColor color.Color) {
+	runes := []rune(text)
+	spans := c.highlighter(line, text)
+	if len(spans) == 0 || len(runes) == 0 {
+		ctx.SetColor(textColor)
+		ctx.DrawText(x, y, MaxInt/4, height, text)
+		return
+	}
+	// The span of each rune, the later span winning
+	of := make([]int, len(runes))
+	for i := range of {
+		of[i] = -1
+	}
+	for k, span := range spans {
+		for i := max(0, span.Start); i < min(len(runes), span.End); i++ {
+			of[i] = k
+		}
+	}
+	positions, err := GetCharPositions(c.FontFamily(), c.FontSize(), text)
+	if err != nil {
+		return
+	}
+	family := c.FontFamily()
+	for start := 0; start < len(runes); {
+		end := start + 1
+		for end < len(runes) && of[end] == of[start] {
+			end++
+		}
+		segColor, segFamily := textColor, family
+		if k := of[start]; k >= 0 {
+			span := spans[k]
+			if span.Background != nil {
+				ctx.FillRect(x+positions[start], y, positions[end]-positions[start], height, span.Background)
+			}
+			if span.Color != nil {
+				segColor = span.Color
+			}
+			if span.Bold || span.Italic {
+				segFamily = StyledFont(family, fontStyleOf(span.Bold, span.Italic))
+			}
+		}
+		ctx.SetColor(segColor)
+		ctx.SetFontFamily(segFamily)
+		ctx.DrawText(x+positions[start], y, MaxInt/4, height, string(runes[start:end]))
+		start = end
+	}
+	ctx.SetFontFamily(family)
 }

@@ -68,3 +68,19 @@ form.AddShortcut("F5", refresh)                         // a shortcut without a 
 - Keys of the numeric keypad: `NumPlus`, `NumMinus`, `NumMultiply`, `NumDivide` (shown as
   "Num +", ...); punctuation keys by their characters: `Ctrl+\`, `Ctrl+.`, `Alt+/`.
 - `ui.ParseShortcut(s)` / `ui.MustParseShortcut(s)` give a `ui.Shortcut` (`String()`, `Matches`).
+
+## The system menu bar (macOS)
+
+```go
+ui.UseNativeMenuBar(true) // before the forms are shown
+```
+
+On macOS the menu bar of the active form goes to the top of the screen, after the application menu (Hide, Hide Others, Show All, Quit). The form shows no bar of its own then. The menus stay the form's:
+
+- items, separators, submenus, check marks and shortcuts (shown as ⌘S);
+- the enabled state of the items and their actions;
+- `OnShow`, called every time a menu opens.
+
+Quit (⌘Q) closes the windows as their close buttons do, so a window that asks about unsaved changes can stay open.
+
+On Windows and Linux there is no system menu bar, and the forms keep their own. The option is off by default until it is checked on more Macs ([platform-checks.md](../../platform-checks.md)).

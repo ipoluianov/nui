@@ -16,6 +16,11 @@ type windowId syscall.Handle
 var appWindowsMu sync.Mutex
 
 type nativeWindowPlatform struct {
+	// textInputRect is the caret, for the input method (SetTextInputRect)
+	textInputRect [4]int
+	// highSurrogate is the first half of a character of two WM_CHARs
+	highSurrogate rune
+
 	// Per-window paint surface and background color, sized to the window's
 	// current dimensions. These used to be process-wide globals, which broke
 	// as soon as a second window (e.g. a modal dialog) was created: every

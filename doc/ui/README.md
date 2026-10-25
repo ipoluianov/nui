@@ -16,6 +16,8 @@ Short reference for `ui` controls. Code snippets are intentionally minimal—see
 ## Containers & layout
 
 - [Layouts: HBox, VBox, FormLayout, DialogButtonBox, grid spans and weights](content/layouts.md)
+- [DockLayout: tool panels around the main area](content/dock.md)
+- [XML layout: SetLayout, Bind](content/xml_layout.md)
 - [Panel](content/panel.md)
 - [Frame](content/frame.md)
 - [GroupBox](content/groupbox.md)
@@ -29,7 +31,7 @@ Short reference for `ui` controls. Code snippets are intentionally minimal—see
 
 ## Input & selection
 
-- [TextBox](content/textbox.md)
+- [TextBox (and a code editor)](content/textbox.md)
 - [NumBox](content/numbox.md)
 - [Button](content/button.md)
 - [ButtonImage](content/button_image.md)
@@ -51,12 +53,15 @@ Short reference for `ui` controls. Code snippets are intentionally minimal—see
 
 - [Table](content/table.md)
 - [ListView and models](content/listview.md)
+- [LogView](content/logview.md)
+- [MarkdownView](content/markdownview.md)
 - [PropertyGrid](content/propertygrid.md)
 - [TreeView](content/treeview.md)
 - [ProgressBar](content/progressbar.md)
 - [Chart](content/chart.md)
 - [TimeChart](content/timechart.md)
 - [ImageBox](content/imagebox.md)
+- [ZoomView and ScrollBar](content/zoomview.md)
 
 ## Dialogs
 
@@ -71,5 +76,6 @@ Short reference for `ui` controls. Code snippets are intentionally minimal—see
 
 - [Timer](content/timer.md)
 - [Clipboard](content/clipboard.md)
+- [Accessibility](content/accessibility.md)
 - [Drag and drop](content/dragdrop.md)
 - [TrayIcon](content/trayicon.md)

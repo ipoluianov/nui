@@ -98,7 +98,9 @@ func (t *Timer) SingleShot() bool {
 }
 
 func (t *Timer) tick() {
-	if !t.running || t.interval <= 0 {
+	// A zero interval: a single shot runs at the next tick, a repeating
+	// timer never (it would run at every tick)
+	if !t.running || t.interval <= 0 && !t.singleShot {
 		return
 	}
 	if !t.immediate && time.Since(t.last) < t.interval {

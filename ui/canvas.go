@@ -1264,3 +1264,44 @@ func (c *Canvas) DrawText(x int, y int, width int, height int, text string) {
 
 	c.Restore()
 }
+
+// DrawImageRect draws the part src of the image (in its own coordinates)
+// stretched to the rectangle of x, y, width, height: zoomed in or out.
+// smooth interpolates the pixels (a photo); without it each image pixel is
+// a sharp square (pixel art, a zoomed-in bitmap being edited). Only the part
+// within the clip is computed.
+func (c *Canvas) DrawImageRect(x, y, width, height int, img image.Image, src image.Rectangle, smooth bool) {
+	src = src.Intersect(img.Bounds())
+	if width <= 0 || height <= 0 || src.Empty() {
+		return
+	}
+	px, py, pw, ph := c.pixelRect(x, y, width, height)
+	dst := image.Rect(px, py, px+pw, py+ph)
+	clip := image.Rect(c.state.clipX, c.state.clipY, c.state.clipX+c.state.clipW, c.state.clipY+c.state.clipH).Intersect(c.rgba.Rect)
+	visible := dst.Intersect(clip)
+	if visible.Empty() {
+		return
+	}
+	// The part of src that lands in the visible part of dst
+	fx := float64(src.Dx()) / float64(dst.Dx())
+	fy := float64(src.Dy()) / float64(dst.Dy())
+	srcVisible := image.Rect(
+		src.Min.X+int(math.Floor(float64(visible.Min.X-dst.Min.X)*fx)),
+		src.Min.Y+int(math.Floor(float64(visible.Min.Y-dst.Min.Y)*fy)),
+		src.Min.X+int(math.Ceil(float64(visible.Max.X-dst.Min.X)*fx)),
+		src.Min.Y+int(math.Ceil(float64(visible.Max.Y-dst.Min.Y)*fy)),
+	).Intersect(src)
+	// The destination of srcVisible, aligned to its whole source pixels
+	dstVisible := image.Rect(
+		dst.Min.X+int(math.Round(float64(srcVisible.Min.X-src.Min.X)/fx)),
+		dst.Min.Y+int(math.Round(float64(srcVisible.Min.Y-src.Min.Y)/fy)),
+		dst.Min.X+int(math.Round(float64(srcVisible.Max.X-src.Min.X)/fx)),
+		dst.Min.Y+int(math.Round(float64(srcVisible.Max.Y-src.Min.Y)/fy)),
+	)
+	target := c.rgba.SubImage(clip).(*image.RGBA)
+	var scaler xdraw.Scaler = xdraw.NearestNeighbor
+	if smooth {
+		scaler = xdraw.ApproxBiLinear
+	}
+	scaler.Scale(target, dstVisible, img, srcVisible, xdraw.Over, nil)
+}

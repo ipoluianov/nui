@@ -279,3 +279,30 @@ func TestTextBoxAPI(t *testing.T) {
 		t.Errorf("clipboard %q", clip)
 	}
 }
+
+// The input method is told where the caret is: under the menu bar, in the
+// scrolled text
+func TestTextInputRect(t *testing.T) {
+	form := newForm(300, 200)
+	form.SetMenuBar(ui.NewMenuBar())
+	form.MenuBar().AddMenu("File")
+	box := ui.NewTextBox()
+	box.SetMultiline(true)
+	box.SetText("first\nsecond line")
+	form.Panel().AddWidget(0, 0, box)
+	w := uitest.Show(t, form)
+	w.Click(box)
+	box.SetCursorPosition(ui.TextPos{Line: 1, Col: 6})
+	w.Settle()
+	w.Screenshot()
+	x, y, _, height := w.TextInputRect()
+	bx, by := box.RectClientAreaOnWindow()
+	lineHeight := box.OneLineHeight()
+	if y < by+lineHeight || y > by+lineHeight+4 || height != lineHeight {
+		t.Errorf("caret y %d height %d; the box at %d, lines of %d", y, height, by, lineHeight)
+	}
+	sixChars, _, _ := ui.MeasureText(box.FontFamily(), box.FontSize(), "second")
+	if x < bx+sixChars || x > bx+sixChars+12 {
+		t.Errorf("caret x %d; the box at %d, %d px of text before it", x, bx, sixChars)
+	}
+}

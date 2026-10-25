@@ -18,6 +18,9 @@ var eventLoopStarted int32
 
 type windowId int
 type nativeWindowPlatform struct {
+	// textInputRect is the caret, for the input method (SetTextInputRect)
+	textInputRect [4]int
+
 	lastCapsLockState bool
 	lastNumLockState  bool
 
@@ -378,4 +381,10 @@ func (c *nativeWindow) ScreenWorkArea(x, y int) (areaX, areaY, areaW, areaH int)
 		areaX, areaY, areaW, areaH = getScreenWorkArea(x, y)
 	})
 	return
+}
+
+// SetTextInputRect keeps the caret for the input method
+func (c *nativeWindow) SetTextInputRect(x, y, width, height int) {
+	c.platform.textInputRect = [4]int{x, y, width, height}
+	c.moveTextInput()
 }
