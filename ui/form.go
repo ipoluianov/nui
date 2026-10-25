@@ -93,6 +93,14 @@ type Form struct {
 
 	needUpdate bool
 
+	// layoutPending is set when the widgets need to be laid out again (see
+	// UpdateLayout); inLayout while they are
+	layoutPending bool
+	inLayout      bool
+	// repaintPosted is set while a repaint asked for off the UI thread waits
+	// to run (see Widget.RequestRepaint)
+	repaintPosted atomic.Bool
+
 	lastUpdateTime time.Time
 
 	updateBlockStack    int
@@ -226,18 +234,39 @@ func (c *Form) Beep() {
 	}
 }
 
+// UpdateLayout asks for the widgets to be laid out again, e.g. after a
+// widget's minimum size changed in a way nui doesn't see. The layout is done
+// once for all the requests: before the form is painted or gets input, or
+// when the position or the size of a widget is asked for. The changes nui
+// knows of (adding, removing, showing and hiding widgets, their minimum and
+// maximum sizes, the texts of labels) ask for it themselves.
 func (c *Form) UpdateLayout() {
-	if c != nil && c.Panel() != nil {
-		c.Panel().ClearLayoutCache()
-		// Lays out the panel too, below the menu bar
-		c.layoutMenuBar()
-		c.applyMinSize()
-		for _, popupWidget := range c.Panel().PopupWidgets {
-			if popupWidget != nil {
-				popupWidget.updateLayout(0, 0, 0, 0)
-			}
+	if c == nil || c.Panel() == nil {
+		return
+	}
+	// Painted by the next turn of the event loop, not at once: a handler
+	// that changes many widgets gets one layout for all of them
+	c.layoutPending = true
+	c.needUpdate = true
+}
+
+// layoutNow lays the widgets out if asked for and not blocked (see
+// LayoutingBlockPush)
+func (c *Form) layoutNow() {
+	if c == nil || !c.layoutPending || c.inLayout || c.layoutingBlockStack > 0 || c.topWidget == nil {
+		return
+	}
+	c.inLayout = true
+	defer func() { c.inLayout = false }()
+	c.layoutPending = false
+	c.Panel().ClearLayoutCache()
+	// Lays out the panel too, below the menu bar
+	c.layoutMenuBar()
+	c.applyMinSize()
+	for _, popupWidget := range c.Panel().PopupWidgets {
+		if popupWidget != nil {
+			popupWidget.updateLayout(0, 0, 0, 0)
 		}
-		c.Update()
 	}
 }
 
@@ -416,6 +445,7 @@ func toRGBA(img image.Image) *image.RGBA {
 // SetSize sets the size of the client area; it doesn't get smaller than the
 // widgets need, see MinSize
 func (c *Form) SetSize(width, height int) {
+	c.layoutNow() // the minimum size of the current widgets
 	width = max(width, c.minWidth)
 	height = max(height, c.minHeight)
 	c.width = width
@@ -525,6 +555,7 @@ func (c *Form) MenuBar() *MenuBar {
 // MinSize returns the smallest size of the client area the widgets fit in:
 // each of them gets at least its minimum size
 func (c *Form) MinSize() (int, int) {
+	c.layoutNow()
 	width := c.topWidget.MinWidth()
 	height := c.topWidget.MinHeight()
 	if c.menuBar != nil {
@@ -817,6 +848,7 @@ func (c *Form) processPaint(rgba *image.RGBA) {
 	if c.wnd == nil {
 		return // closed: the native window goes away with the next turn of the loop
 	}
+	c.layoutNow()
 	c.paintScaled(rgba, c.wnd.Scale())
 }
 
@@ -884,6 +916,7 @@ func (c *Form) DrawWidgetDebugInfo(w Widgeter, cnv *Canvas) {
 }
 
 func (c *Form) processResize(width, height int) {
+	c.layoutNow()
 	c.width = width
 	c.height = height
 	c.layoutMenuBar()
@@ -892,6 +925,7 @@ func (c *Form) processResize(width, height int) {
 }
 
 func (c *Form) processMouseDown(button MouseButton, x int, y int) {
+	c.layoutNow()
 	// fmt.Println("Mouse CLK at:", x, y, "Button:", button)
 	if button == MouseButtonLeft {
 		c.mouseLeftButtonPressed = true
@@ -930,6 +964,7 @@ func (c *Form) processMouseDown(button MouseButton, x int, y int) {
 }
 
 func (c *Form) processMouseDblClick(button MouseButton, x int, y int) {
+	c.layoutNow()
 	if button == MouseButtonLeft {
 		c.mouseLeftButtonPressed = true
 	}
@@ -951,6 +986,7 @@ func (c *Form) processMouseDblClick(button MouseButton, x int, y int) {
 }
 
 func (c *Form) processMouseUp(button MouseButton, x int, y int) {
+	c.layoutNow()
 	mouseLeftButtonPressedWidgetId := ""
 	if c.mouseLeftButtonPressedWidget != nil {
 		mouseLeftButtonPressedWidgetId = c.mouseLeftButtonPressedWidget.Id()
@@ -989,6 +1025,7 @@ func (c *Form) processMouseUp(button MouseButton, x int, y int) {
 }
 
 func (c *Form) processMouseMove(x int, y int) {
+	c.layoutNow()
 	if c.dragMouseMove(x, y) {
 		return
 	}
@@ -1108,6 +1145,7 @@ func (c *Form) FocusedWidget() Widgeter {
 }
 
 func (c *Form) processKeyDown(keyCode Key, mods KeyModifiers) bool {
+	c.layoutNow()
 	c.tooltipSuppress()
 
 	if c.lastKeyboardModifiers != mods {
@@ -1275,6 +1313,7 @@ func (c *Form) processKeyUp(keyCode Key, mods KeyModifiers) {
 }
 
 func (c *Form) processChar(char rune) {
+	c.layoutNow()
 	if c.focusedWidget != nil {
 		c.focusedWidget.ProcessChar(char, c.lastKeyboardModifiers)
 		c.Update()
@@ -1284,6 +1323,7 @@ func (c *Form) processChar(char rune) {
 }
 
 func (c *Form) processMouseWheel(deltaX int, deltaY int) {
+	c.layoutNow()
 	if c.lastKeyboardModifiers.Shift {
 		deltaX, deltaY = deltaY, deltaX // Swap for horizontal scrolling
 	}
@@ -1329,7 +1369,7 @@ func (c *Form) processTimer() {
 		}
 	}
 
-	if c.needUpdate {
+	if c.needUpdate || c.layoutPending {
 		c.realUpdate()
 	}
 }

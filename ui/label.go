@@ -61,8 +61,13 @@ func (c *Label) onPaint(cnv *Canvas) {
 // ///////////////////////////////////////////////////////////////////////////////
 // Props
 func (c *Label) ProcessPropChange(key string, value interface{}) {
+	// A new minimum size lays the form out again (see SetMinWidth); a text
+	// that fits in the same room only repaints
 	c.updateInnerSize()
-	c.form.UpdateLayout()
+	if key != "text" {
+		c.form.UpdateLayout()
+	}
+	c.form.Update()
 }
 
 /////////////////////////////////////////////////////////////////////////////////
@@ -75,6 +80,9 @@ func (c *Label) Text() string {
 
 // SetText sets the text of the Label.
 func (c *Label) SetText(text string) {
+	if text == c.Text() && c.GetProp("text") != nil {
+		return
+	}
 	c.SetProp("text", text)
 }
 

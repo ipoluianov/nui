@@ -382,7 +382,11 @@ func TestGridCellsIndex(t *testing.T) {
 		cells := base.gridCells()
 		for x := -3; x <= 12; x++ {
 			for y := -3; y <= 12; y++ {
-				if got, want := cells[gridCell{x, y}], base.getWidgetInGridCell(x, y); got != want {
+				var got Widgeter
+				if ws := cells[gridCell{x, y}]; len(ws) > 0 {
+					got = ws[0]
+				}
+				if want := base.getWidgetInGridCell(x, y); got != want {
 					t.Errorf("%s cell %d,%d: index %v, lookup %v", w.Name(), x, y, got, want)
 				}
 			}

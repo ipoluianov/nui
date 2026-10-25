@@ -42,6 +42,7 @@ func newMinSizeForm(t *testing.T, minW, minH int) (*Form, *fakeMinSizeWindow, *P
 	child := NewPanel()
 	child.SetMinSize(minW, minH)
 	form.Panel().AddWidget(0, 0, child)
+	form.layoutNow()
 	return form, wnd, child
 }
 
@@ -60,6 +61,7 @@ func TestFormMinSize(t *testing.T) {
 	// The content grows beyond the window: the window grows to it
 	child.SetMinSize(300, 120)
 	form.UpdateLayout()
+	form.layoutNow() // the layout is done with the next frame
 	if wnd.minW != 300 || wnd.minH != 120 {
 		t.Fatalf("window min size = %dx%d, want 300x120", wnd.minW, wnd.minH)
 	}
@@ -84,6 +86,7 @@ func TestFormMinSizeScreen(t *testing.T) {
 	wnd.areaW, wnd.areaH = 800, 600
 	child.SetMinSize(1000, 700)
 	form.UpdateLayout()
+	form.layoutNow() // the layout is done with the next frame
 	if wnd.minW != 800 || wnd.minH != 600 {
 		t.Fatalf("window min size = %dx%d, want the screen 800x600", wnd.minW, wnd.minH)
 	}
@@ -91,7 +94,9 @@ func TestFormMinSizeScreen(t *testing.T) {
 	// The screen is asked again only when the need changes
 	n := wnd.workAreaRequests
 	form.UpdateLayout()
+	form.layoutNow() // the layout is done with the next frame
 	form.UpdateLayout()
+	form.layoutNow() // the layout is done with the next frame
 	if wnd.workAreaRequests != n {
 		t.Errorf("the screen is asked %d times more", wnd.workAreaRequests-n)
 	}

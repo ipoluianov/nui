@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/ipoluianov/nui/internal/platforms"
 )
 
 type Widget struct {
@@ -330,11 +332,12 @@ func (c *Widget) Widgets() []Widgeter {
 	return c.widgets
 }
 
+// SetVisible shows or hides the widget; the widgets around it are laid
+// out again, a hidden one takes no room
 func (c *Widget) SetVisible(visible bool) {
 	if c.visible != visible {
 		c.visible = visible
-		c.updateLayout(c.w, c.h, c.w, c.h)
-		c.form.Update()
+		c.form.UpdateLayout()
 	}
 }
 
@@ -400,6 +403,7 @@ func (c *Widget) SetGridPosition(row, column int) {
 }
 
 func (c *Widget) MinWidth() int {
+	c.layoutIfNeeded() // the cache is of the current widgets
 	panelPadding := c.GetPropInt("padding", 2)
 
 	if c.layoutCacheMinWidthValid {
@@ -436,6 +440,7 @@ func (c *Widget) MinWidth() int {
 }
 
 func (c *Widget) MinHeight() int {
+	c.layoutIfNeeded() // the cache is of the current widgets
 	panelPadding := c.GetPropInt("padding", 2)
 
 	if c.layoutCacheMinHeightValid {
@@ -504,11 +509,7 @@ func (c *Widget) AddWidget(gridRow int, gridColumn int, w Widgeter) {
 	c.widgets = append(c.widgets, w)
 	w.SetParentWidgetId(c.Id())
 	w.attachToForm(w, c.form)
-	c.updateLayout(0, 0, 0, 0)
-	if c.form != nil {
-		c.form.Panel().updateLayout(0, 0, 0, 0) // Global Update Layout
-		c.form.UpdateLayout()
-	}
+	c.form.UpdateLayout()
 }
 
 func (c *Widget) setId(id string) {
@@ -547,10 +548,10 @@ func (c *Widget) RemoveWidget(w Widgeter) {
 			}
 			w.SetParentWidgetId("")
 			c.widgets = append(c.widgets[:i], c.widgets[i+1:]...)
+			c.form.UpdateLayout()
 			return
 		}
 	}
-	c.updateLayout(0, 0, 0, 0)
 }
 
 func (c *Widget) RemoveAllWidgets() {
@@ -561,10 +562,7 @@ func (c *Widget) RemoveAllWidgets() {
 		w.SetParentWidgetId("")
 	}
 	c.widgets = make([]Widgeter, 0)
-	c.updateLayout(0, 0, 0, 0)
-	if c.form != nil {
-		c.form.Update()
-	}
+	c.form.UpdateLayout()
 }
 
 func (c *Widget) FindWidgetByName(name string) Widgeter {
@@ -667,23 +665,69 @@ func (c *Widget) MouseCursor() MouseCursor {
 	return MouseCursorFromString(c.GetPropString("cursor", ""))
 }
 
+// layoutIfNeeded lays the form out if it was asked for: the position and the
+// size of a widget are always those of the current widgets
+func (c *Widget) layoutIfNeeded() {
+	if c.form != nil && c.form.layoutPending {
+		c.form.layoutNow()
+	}
+}
+
 func (c *Widget) X() int {
+	c.layoutIfNeeded()
 	return c.x
 }
 
 func (c *Widget) Y() int {
+	c.layoutIfNeeded()
 	return c.y
 }
 
 func (c *Widget) Width() int {
+	c.layoutIfNeeded()
 	return c.w
 }
 
 func (c *Widget) Height() int {
+	c.layoutIfNeeded()
 	return c.h
 }
 
+// Update repaints the widget with the next frame; it is the form that is
+// repainted. On the UI thread only, see RequestRepaint.
+func (c *Widget) Update() {
+	c.form.Update()
+}
+
+// UpdateLayout lays the widgets of the form out again with the next frame,
+// e.g. after the widget's own minimum size changed (see Form.UpdateLayout)
+func (c *Widget) UpdateLayout() {
+	c.form.UpdateLayout()
+}
+
+// RequestRepaint repaints the widget with the next frame, from any
+// goroutine: e.g. a worker that changed the data the widget paints. Many
+// requests before the frame make one repaint.
+func (c *Widget) RequestRepaint() {
+	f := c.form
+	if f == nil {
+		return
+	}
+	if platforms.IsUIThread() {
+		f.Update()
+		return
+	}
+	if f.repaintPosted.Swap(true) {
+		return
+	}
+	platforms.Post(func() {
+		f.repaintPosted.Store(false)
+		f.Update()
+	})
+}
+
 func (c *Widget) InnerWidth() int {
+	c.layoutIfNeeded()
 	if c.innerWidth == 0 {
 		return c.w
 	}
@@ -691,6 +735,7 @@ func (c *Widget) InnerWidth() int {
 }
 
 func (c *Widget) InnerHeight() int {
+	c.layoutIfNeeded()
 	if c.innerHeight == 0 {
 		return c.h
 	}
@@ -1349,12 +1394,17 @@ func (c *Widget) Name() string {
 	return c.name
 }
 
+// SetPosition places the widget, in its parent's coordinates. The layout of
+// a grid places its children itself: their own positions last until the
+// next layout.
 func (c *Widget) SetPosition(x, y int) {
+	c.layoutIfNeeded() // the changes made before are laid out first
 	c.x = x
 	c.y = y
 }
 
 func (c *Widget) SetSize(w, h int) {
+	c.layoutIfNeeded() // the changes made before are laid out first
 	oldW := c.w
 	oldH := c.h
 	c.w = w
@@ -1365,16 +1415,26 @@ func (c *Widget) SetSize(w, h int) {
 
 func (c *Widget) SetMinSize(minWidth, minHeight int) {
 	c.themeHeight = nil
-	c.minWidth = minWidth
-	c.minHeight = minHeight
+	c.setSizeLimit(&c.minWidth, minWidth)
+	c.setSizeLimit(&c.minHeight, minHeight)
 	c.checkScrolls()
 }
 
 func (c *Widget) SetMaxSize(maxWidth, maxHeight int) {
 	c.themeHeight = nil
-	c.maxWidth = maxWidth
-	c.maxHeight = maxHeight
+	c.setSizeLimit(&c.maxWidth, maxWidth)
+	c.setSizeLimit(&c.maxHeight, maxHeight)
 	c.checkScrolls()
+}
+
+// setSizeLimit sets a minimum or maximum size; a change lays the form out
+// again
+func (c *Widget) setSizeLimit(limit *int, value int) {
+	if *limit == value {
+		return
+	}
+	*limit = value
+	c.form.UpdateLayout()
 }
 
 func (c *Widget) SetAnchors(left, top, right, bottom bool) {
@@ -1500,9 +1560,11 @@ func (c *Widget) ScrollEnsureVisible(x1, y1 int) {
 	}
 }
 
+// getWidgetAt returns the child at the point, the topmost one (added last)
+// where children overlap
 func (c *Widget) getWidgetAt(x, y int) Widgeter {
-
-	for _, w := range c.widgets {
+	for i := len(c.widgets) - 1; i >= 0; i-- {
+		w := c.widgets[i]
 		innerWidth := w.Width()
 		innerHeight := w.Height()
 		//innerWidth := w.InnerWidth()
@@ -1600,7 +1662,8 @@ func (c *Widget) ProcessMouseDown(button MouseButton, x int, y int, mods KeyModi
 	processed := false
 	childHit := false
 
-	for _, w := range c.widgets {
+	for i := len(c.widgets) - 1; i >= 0; i-- { // the topmost first
+		w := c.widgets[i]
 		if x >= w.X() && x < w.X()+w.Width() && y >= w.Y() && y < w.Y()+w.Height() {
 			processed = w.ProcessMouseDown(button, x-w.X(), y-w.Y(), mods)
 			if processed {
@@ -1814,7 +1877,8 @@ func (c *Widget) ProcessMouseDblClick(button MouseButton, x int, y int, mods Key
 
 	processed := false
 
-	for _, w := range c.widgets {
+	for i := len(c.widgets) - 1; i >= 0; i-- { // the topmost first
+		w := c.widgets[i]
 		if x >= w.X() && x < w.X()+w.Width() && y >= w.Y() && y < w.Y()+w.Height() {
 			processed = w.ProcessMouseDblClick(button, x-w.X(), y-w.Y(), mods)
 			if processed {
@@ -1946,21 +2010,21 @@ func (c *Widget) SetYExpandable(expandable bool) {
 }
 
 func (c *Widget) SetMinWidth(minWidth int) {
-	c.minWidth = minWidth
+	c.setSizeLimit(&c.minWidth, minWidth)
 }
 
 func (c *Widget) SetMinHeight(minHeight int) {
 	c.themeHeight = nil
-	c.minHeight = minHeight
+	c.setSizeLimit(&c.minHeight, minHeight)
 }
 
 func (c *Widget) SetMaxWidth(maxWidth int) {
-	c.maxWidth = maxWidth
+	c.setSizeLimit(&c.maxWidth, maxWidth)
 }
 
 func (c *Widget) SetMaxHeight(maxHeight int) {
 	c.themeHeight = nil
-	c.maxHeight = maxHeight
+	c.setSizeLimit(&c.maxHeight, maxHeight)
 }
 
 func (c *Widget) AppendPopupWidget(w Widgeter) {
@@ -2161,8 +2225,7 @@ func (c *Widget) layoutGrid(fullWidth, fullHeight int) {
 			yOffset := panelPadding + c.insetTop
 			for y := minY; y <= maxY; y++ {
 				if rowInfo, ok := rowsInfo[y]; ok {
-					w := cells[gridCell{x, y}]
-					if w != nil {
+					for _, w := range cells[gridCell{x, y}] {
 
 						cX := xOffset
 						cY := yOffset
@@ -2231,7 +2294,7 @@ func (c *Widget) updateInnerSizeFromChildren(vw, vh int) {
 	c.innerHeight = max(innerHeight, vh)
 }
 
-func (c *Widget) makeColumnsInfo(fullWidth int, cells map[gridCell]Widgeter) (map[int]*ContainerGridColumnInfo, int, int, int) {
+func (c *Widget) makeColumnsInfo(fullWidth int, cells map[gridCell][]Widgeter) (map[int]*ContainerGridColumnInfo, int, int, int) {
 	//fmt.Println("makeColumnsInfo", makeColumnsInfoCounter)
 
 	// panelPadding := c.GetPropInt("padding", 2)
@@ -2271,8 +2334,7 @@ func (c *Widget) makeColumnsInfo(fullWidth int, cells map[gridCell]Widgeter) (ma
 		found := false
 
 		for y := minY; y <= maxY; y++ {
-			w := cells[gridCell{x, y}]
-			if w != nil {
+			for _, w := range cells[gridCell{x, y}] {
 				if w.XExpandable() {
 					colInfo.expandable = true // Found expandable by X
 					hasExpandableColumns = true
@@ -2286,8 +2348,7 @@ func (c *Widget) makeColumnsInfo(fullWidth int, cells map[gridCell]Widgeter) (ma
 			colInfo.maxWidth = MinInt
 
 			for y := minY; y <= maxY; y++ {
-				w := cells[gridCell{x, y}]
-				if w != nil {
+				for _, w := range cells[gridCell{x, y}] {
 					wMinWidth := w.MinWidth()
 					if wMinWidth > colInfo.minWidth {
 						colInfo.minWidth = wMinWidth
@@ -2304,8 +2365,7 @@ func (c *Widget) makeColumnsInfo(fullWidth int, cells map[gridCell]Widgeter) (ma
 			colInfo.maxWidth = MinInt
 
 			for y := minY; y <= maxY; y++ {
-				w := cells[gridCell{x, y}]
-				if w != nil {
+				for _, w := range cells[gridCell{x, y}] {
 					wMinWidth := w.MinWidth()
 					if wMinWidth > colInfo.minWidth {
 						colInfo.minWidth = w.MinWidth()
@@ -2404,7 +2464,7 @@ func (c *Widget) makeColumnsInfo(fullWidth int, cells map[gridCell]Widgeter) (ma
 
 }
 
-func (c *Widget) makeRowsInfo(fullHeight int, cells map[gridCell]Widgeter) (map[int]*ContainerGridRowInfo, int, int, int) {
+func (c *Widget) makeRowsInfo(fullHeight int, cells map[gridCell][]Widgeter) (map[int]*ContainerGridRowInfo, int, int, int) {
 	cellPadding := c.GetPropInt("spacing", 2)
 
 	// Определяем минимальный и максимальный индекс строк
@@ -2441,8 +2501,7 @@ func (c *Widget) makeRowsInfo(fullHeight int, cells map[gridCell]Widgeter) (map[
 
 		// If any widget in the row is expandable, set the expandable flag for the row
 		for x := minX; x <= maxX; x++ {
-			w := cells[gridCell{x, y}]
-			if w != nil {
+			for _, w := range cells[gridCell{x, y}] {
 				if w.YExpandable() {
 					rowInfo.expandable = true // Found expandable by Y
 					hasExpandableRows = true
@@ -2456,8 +2515,7 @@ func (c *Widget) makeRowsInfo(fullHeight int, cells map[gridCell]Widgeter) (map[
 			rowInfo.maxHeight = MinInt
 
 			for x := minX; x <= maxX; x++ {
-				w := cells[gridCell{x, y}]
-				if w != nil {
+				for _, w := range cells[gridCell{x, y}] {
 					wMinHeight := w.MinHeight()
 					if wMinHeight > rowInfo.minHeight {
 						rowInfo.minHeight = wMinHeight
@@ -2474,8 +2532,7 @@ func (c *Widget) makeRowsInfo(fullHeight int, cells map[gridCell]Widgeter) (map[
 			rowInfo.maxHeight = MinInt
 
 			for x := minX; x <= maxX; x++ {
-				w := cells[gridCell{x, y}]
-				if w != nil {
+				for _, w := range cells[gridCell{x, y}] {
 					wMinHeight := w.MinHeight()
 					if wMinHeight > rowInfo.minHeight {
 						rowInfo.minHeight = wMinHeight
@@ -2581,16 +2638,17 @@ type gridCell struct{ x, y int }
 // the order they were added. Made once per pass of the layout - looking up
 // every cell among all the children made laying out a container of N
 // widgets O(N^2), and adding N widgets O(N^3).
-func (c *Widget) gridCells() map[gridCell]Widgeter {
-	cells := make(map[gridCell]Widgeter, len(c.widgets))
+// gridCells returns the visible children by grid cell. Several widgets in a
+// cell lie on top of each other, the one added last on top, as in Qt's
+// QGridLayout: the cell is as large as the largest of them needs.
+func (c *Widget) gridCells() map[gridCell][]Widgeter {
+	cells := make(map[gridCell][]Widgeter, len(c.widgets))
 	for _, w := range c.widgets {
 		if !w.IsVisible() {
 			continue
 		}
 		cell := gridCell{w.GridX(), w.GridY()}
-		if _, ok := cells[cell]; !ok {
-			cells[cell] = w
-		}
+		cells[cell] = append(cells[cell], w)
 	}
 	return cells
 }

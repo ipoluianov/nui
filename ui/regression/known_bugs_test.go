@@ -36,34 +36,6 @@ func newForm(width, height int) *ui.Form {
 	return form
 }
 
-// #1: RemoveWidget doesn't lay the parent out: the widget to the right of
-// the removed one stays where it was
-func TestBug01RemoveWidgetLayout(t *testing.T) {
-	form := newForm(400, 200)
-	p := form.Panel()
-	left, right := ui.NewTextBox(), ui.NewTextBox()
-	p.AddWidget(0, 0, left)
-	p.AddWidget(0, 1, right)
-	w := uitest.Show(t, form)
-	before := right.X()
-	p.RemoveWidget(left)
-	w.Settle()
-	knownBug(t, 1, right.X() == before && before > 0, "the right text box stays at x "+itoa(before))
-}
-
-// #2: of two widgets in one grid cell the second isn't laid out
-func TestBug02TwoWidgetsInCell(t *testing.T) {
-	form := newForm(400, 200)
-	p := form.Panel()
-	a, b := ui.NewButton("A"), ui.NewButton("B")
-	p.AddWidget(0, 0, a)
-	p.AddWidget(0, 0, b)
-	p.AddVSpacer(1, 0)
-	uitest.Show(t, form)
-	laidOut := func(w ui.Widgeter) bool { return w.Width() == a.Width() && w.Y() == a.Y() }
-	knownBug(t, 2, !laidOut(b), "B is "+itoa(b.Width())+"x"+itoa(b.Height())+" at "+itoa(b.X())+","+itoa(b.Y()))
-}
-
 // #3: the release of the right (and the middle) button doesn't reach the
 // widget
 func TestBug03RightButtonUp(t *testing.T) {

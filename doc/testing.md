@@ -93,8 +93,9 @@ knownBug(t, 4, clicks > 0, "the button in a disabled panel is clicked")
 - **Баг на месте** — тест пропускается (`SKIP`) с номером бага. `go test ./...` остаётся зелёным.
 - **Баг исправлен** — тест падает с сообщением «known bug #4 seems fixed: make this an ordinary test». Нужно убрать вызов `knownBug` и оставить проверку обычной: теперь она защищает от возврата бага.
 
+Исправленные баги становятся обычными тестами рядом, например #1 и #2 — в [ui/regression/layout_test.go](../ui/regression/layout_test.go). #8 (лишняя раскладка в `Label.SetText`) исправлен, его покрывает `BenchmarkLabelSetText`.
+
 Без теста остаются:
-- #8 — лишняя раскладка в `Label.SetText`, это производительность, её покрывает `BenchmarkLabelSetText`;
 - #9 — `SetAnchors`, пустая заглушка, проверяется по коду;
 - #13 — блокирующий `ShowModal` на macOS, без настоящего окна не воспроизводится.
 

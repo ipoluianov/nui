@@ -85,6 +85,12 @@ func (w *Window) Settle() {
 	platforms.RunHeadlessPosted()
 }
 
+// RunPosted runs the functions posted to the UI thread, as Settle, and
+// returns how many ran
+func RunPosted() int {
+	return platforms.RunHeadlessPosted()
+}
+
 // Tick fires the timers of the open forms once, as the event loop does
 // every few milliseconds, and settles. A widget's timer runs only if its
 // interval has passed: see Wait.

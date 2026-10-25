@@ -107,7 +107,8 @@ func BenchmarkAddWidgets(b *testing.B) {
 }
 
 // BenchmarkLabelSetText: changing the text of one label on a form with 300
-// labels, e.g. a status that follows the mouse
+// labels, e.g. a status that follows the mouse, and laying the form out for
+// the next frame
 func BenchmarkLabelSetText(b *testing.B) {
 	form := ui.NewForm()
 	form.SetSize(800, 600)
@@ -122,6 +123,7 @@ func BenchmarkLabelSetText(b *testing.B) {
 	for b.Loop() {
 		labels[0].SetText(fmt.Sprint("Status ", i))
 		w.Settle()
+		labels[0].Width() // lays the form out if it was asked for
 		i++
 	}
 }
