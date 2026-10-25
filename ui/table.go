@@ -26,6 +26,10 @@ type Table struct {
 	// OnColumnClick: a column header was clicked; the column
 	OnColumnClick Signal[int]
 
+	// model, if set, holds the cells (see SetModel)
+	model     ItemModel
+	modelConn Connection
+
 	// Content of the table
 	headerRowsCount  int
 	headerRows       map[int]*tableHeaderRow
@@ -702,6 +706,15 @@ func (c *Table) getCellObj(row int, col int) *tableCell {
 }
 
 func (c *Table) SetCellText2(row int, col int, text string) {
+	if c.model != nil {
+		// The model keeps the cells: it takes the text or rejects it
+		editor, ok := c.model.(ItemEditor)
+		if ok && c.model.Text(row, col) != text && editor.SetText(row, col, text) {
+			c.OnCellChanged.Emit(TableCell{Row: row, Col: col, Text: c.model.Text(row, col)})
+		}
+		c.form.Update()
+		return
+	}
 	cellObj := c.getCellObj(row, col)
 
 	originalText := cellObj.text
@@ -1171,6 +1184,9 @@ func (c *Table) CurrentColumn() int {
 func (c *Table) GetCellText2(row int, col int) string {
 	if row < 0 || row >= c.rowCount || col < 0 || col >= c.columnCount {
 		return ""
+	}
+	if c.model != nil {
+		return c.model.Text(row, col)
 	}
 	rowObj, exists := c.rows[row]
 	if !exists {
@@ -1663,6 +1679,9 @@ func (c *Table) draw(cnv *Canvas) {
 				var cellExists bool
 				if rowObj1 != nil {
 					cellObj, cellExists = rowObj1.cells[colIndex]
+				}
+				if c.model != nil {
+					cellObj, cellExists = c.modelCell(rowIndex, colIndex, cellObj), true
 				}
 				{
 					_ = cellExists
@@ -2397,4 +2416,73 @@ func (c *Table) handlesKey(key Key, mods KeyModifiers) bool {
 		return false
 	}
 	return c.CurrentRow() >= 0 && c.CurrentColumn() >= 0 && c.editKey(key)
+}
+
+// SetModel shows the model in the table: its rows, its columns (named by a
+// ColumnNamer) and its cells (styled by an ItemStyler, edited through an
+// ItemEditor). The table keeps no cells of its own then: a model of a
+// million rows is as fast as one of ten. A ModelNotifier is followed; after
+// changing another model, call RefreshModel. SetModel(nil) returns to the
+// table's own cells.
+func (c *Table) SetModel(model ItemModel) {
+	c.modelConn.Disconnect()
+	c.model = model
+	if n, ok := model.(ModelNotifier); ok {
+		c.modelConn = n.ModelChanged().Connect(func(struct{}) { c.RefreshModel() })
+	}
+	c.RefreshModel()
+}
+
+// Model returns the model shown, nil if the table keeps its own cells
+func (c *Table) Model() ItemModel {
+	return c.model
+}
+
+// RefreshModel shows the model again after it changed: its number of rows
+// and of columns, the column names, the cells
+func (c *Table) RefreshModel() {
+	if c.model == nil {
+		return
+	}
+	if cols := c.model.ColumnCount(); cols != c.columnCount {
+		c.SetColumnCount(cols)
+	}
+	if namer, ok := c.model.(ColumnNamer); ok {
+		for col := range c.columnCount {
+			c.SetColumnName(col, namer.ColumnName(col))
+		}
+	}
+	rows := c.model.RowCount()
+	if rows != c.rowCount {
+		c.SetRowCount(rows)
+		if c.currentCellY >= rows {
+			c.SetCurrentCell2(max(0, rows-1), max(0, c.currentCellX))
+		}
+	}
+	c.form.Update()
+}
+
+// modelCell is the cell of the model to draw: the text and the style of the
+// model, the rest (the image, the custom drawing) of the table's own cell
+func (c *Table) modelCell(row, col int, own *tableCell) *tableCell {
+	cell := c.newTableCell()
+	if own != nil {
+		*cell = *own
+	}
+	cell.text = c.model.Text(row, col)
+	cell.displayTextExists = false
+	if styler, ok := c.model.(ItemStyler); ok {
+		style := styler.Style(row, col)
+		if style.Color != nil {
+			cell.color = style.Color
+		}
+		if style.HAlign != HAlignLeft {
+			cell.hAlign = style.HAlign
+		}
+		if style.Icon != nil {
+			cell.image = style.Icon
+			cell.imageWidth = c.rowHeight1 - c.cellPadding*2
+		}
+	}
+	return cell
 }

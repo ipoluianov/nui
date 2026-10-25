@@ -182,3 +182,42 @@ func BenchmarkEmptyFormPaint(b *testing.B) {
 		w.Screenshot()
 	}
 }
+
+// millionRows is a model of a million rows by 5 columns, of functions
+func millionRows() *ui.FuncModel {
+	return ui.NewFuncModel(func() int { return 1_000_000 }, 5, func(row, col int) string {
+		return fmt.Sprint(row, ":", col)
+	})
+}
+
+// BenchmarkTableModel: showing a model of a million rows in a table,
+// against BenchmarkTableFill's 100 000 cells set one by one
+func BenchmarkTableModel(b *testing.B) {
+	for b.Loop() {
+		w, t := tableForm(b)
+		t.SetModel(millionRows())
+		w.Settle()
+	}
+}
+
+// BenchmarkTableModelPaint: a frame of the table of a million rows
+func BenchmarkTableModelPaint(b *testing.B) {
+	w, t := tableForm(b)
+	t.SetModel(millionRows())
+	for b.Loop() {
+		w.Screenshot()
+	}
+}
+
+// BenchmarkListViewPaint: a frame of a list of a million rows
+func BenchmarkListViewPaint(b *testing.B) {
+	form := ui.NewForm()
+	form.SetSize(1000, 700)
+	list := ui.NewListView()
+	list.SetModel(millionRows())
+	form.Panel().AddWidget(0, 0, list)
+	w := uitest.Show(b, form)
+	for b.Loop() {
+		w.Screenshot()
+	}
+}

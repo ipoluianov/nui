@@ -45,6 +45,10 @@ func (c *DialogContent) onDialogReject() bool {
 	return true
 }
 
+// ShowDialog shows the widget, a DialogContent mostly, in a modal window
+// over the widget's form and returns at once. The window is sized in the
+// dialog's OnDialogShow (Form().SetSize); without that, it is as large as
+// the dialog's widgets need.
 func (c *Widget) ShowDialog(centralWidget Widgeter) {
 	form := NewForm()
 	form.SetAllowMinimize(false)
@@ -59,8 +63,18 @@ func (c *Widget) ShowDialog(centralWidget Widgeter) {
 	// The show handler sets the size, title and focus: it runs before the window
 	// is created, so the dialog appears at once as it should, without resizing
 	form.parentForm = c.form
+	form.width, form.height = 0, 0
 	if w, ok := centralWidget.(Dialoger); ok {
 		w.onDialogShow()
 	}
+	// A dialog that set no size is as large as its widgets need, and not
+	// narrower than dialogMinWidth
+	if form.width == 0 && form.height == 0 {
+		form.growToMinSize()
+		form.width = max(form.width, dialogMinWidth)
+	}
 	form.ShowModal(c.form)
 }
+
+// dialogMinWidth is the width of a dialog that set no size, at least
+const dialogMinWidth = 320

@@ -12,6 +12,15 @@ t := ui.NewTable()
 focus, etc.) are available too. The methods below are the ones that belong to
 `Table` specifically.
 
+## A model
+
+`SetModel(model ui.ItemModel)` shows a model instead of the table's own cells: the table keeps no cells then, and a model of a million rows is as fast as one of ten. The model gives the rows, the columns (named by a `ColumnNamer`), the texts (styled by an `ItemStyler`); `SetCellText2` and the user's edits go to an `ItemEditor`. A model with `ui.ModelSignal` is followed by itself; after changing another one, call `RefreshModel()`. See [ListView and models](listview.md).
+
+```go
+t.SetModel(ui.NewFuncModel(func() int { return len(rows) }, 3,
+	func(row, col int) string { return rows[row][col] }))
+```
+
 ## Rows & columns
 
 - `SetRowCount(count int)` / `RowCount() int` - how many rows are shown. The cells of the rows beyond the count are kept and come back when the count grows again.

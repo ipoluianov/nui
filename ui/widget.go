@@ -40,6 +40,11 @@ type Widget struct {
 
 	gridX int // Grid position
 	gridY int // Grid position
+	// The cells the widget takes to the right and down, from its own; 0 is 1
+	gridColSpan, gridRowSpan int
+	// The stretch weights of the columns and the rows of the grid (see
+	// SetColumnStretch); absent are 1, a weight makes the line expandable
+	columnStretch, rowStretch map[int]int
 
 	minWidth  int // Minimum width
 	maxWidth  int // Maximum width
@@ -254,6 +259,7 @@ func CurrentEvent() *Event {
 }*/
 
 type ContainerGridColumnInfo struct {
+	stretch    int // the share of the room to give or take, 1 by default
 	minWidth   int
 	maxWidth   int
 	expandable bool
@@ -262,6 +268,7 @@ type ContainerGridColumnInfo struct {
 }
 
 type ContainerGridRowInfo struct {
+	stretch    int // the share of the room to give or take, 1 by default
 	minHeight  int
 	maxHeight  int
 	expandable bool
@@ -2285,50 +2292,56 @@ func (c *Widget) layoutGrid(fullWidth, fullHeight int) {
 		}
 	}*/
 
-	xOffset := panelPadding //+ c.LeftBorderWidth()
+	// Where the columns and the rows start, and how large they are
+	colX, colW := map[int]int{}, map[int]int{}
+	xOffset := panelPadding
 	for x := minX; x <= maxX; x++ {
 		if colInfo, ok := columnsInfo[x]; ok {
-			yOffset := panelPadding + c.insetTop
-			for y := minY; y <= maxY; y++ {
-				if rowInfo, ok := rowsInfo[y]; ok {
-					for _, w := range cells[gridCell{x, y}] {
-
-						cX := xOffset
-						cY := yOffset
-
-						wWidth := colInfo.width
-						if wWidth > w.MaxWidth() {
-							wWidth = w.MaxWidth()
-						}
-						wHeight := rowInfo.height
-						if wHeight > w.MaxHeight() {
-							wHeight = w.MaxHeight()
-						}
-
-						// Place widget in the center of the cell
-						//cX += (colInfo.width - wWidth) / 2
-						//cY += (rowInfo.height - wHeight) / 2
-
-						w.SetPosition(cX, cY)
-
-						if w.IsVisible() {
-							w.SetSize(wWidth, wHeight)
-						} else {
-							w.SetSize(0, 0)
-						}
-					}
-
-					yOffset += rowInfo.height
-					if rowInfo.height > 0 && y < maxY {
-						yOffset += cellPadding
-					}
-				}
-			}
-
+			colX[x], colW[x] = xOffset, colInfo.width
 			xOffset += colInfo.width
 			if colInfo.width > 0 && x < maxX {
 				xOffset += cellPadding
 			}
+		}
+	}
+	rowY, rowH := map[int]int{}, map[int]int{}
+	yOffset := panelPadding + c.insetTop
+	for y := minY; y <= maxY; y++ {
+		if rowInfo, ok := rowsInfo[y]; ok {
+			rowY[y], rowH[y] = yOffset, rowInfo.height
+			yOffset += rowInfo.height
+			if rowInfo.height > 0 && y < maxY {
+				yOffset += cellPadding
+			}
+		}
+	}
+	// extent returns the start and the size of the lines [first, first+span)
+	// that exist, the padding between them included
+	extent := func(starts, sizes map[int]int, first, span int) (int, int) {
+		start, end := starts[first], starts[first]+sizes[first]
+		for line := first + 1; line < first+span; line++ {
+			if lineStart, ok := starts[line]; ok {
+				end = lineStart + sizes[line]
+			}
+		}
+		return start, end - start
+	}
+
+	for cell, ws := range cells {
+		if _, ok := colX[cell.x]; !ok {
+			continue
+		}
+		if _, ok := rowY[cell.y]; !ok {
+			continue
+		}
+		for _, w := range ws {
+			b := w.widgetBase()
+			cX, wWidth := extent(colX, colW, cell.x, b.gridColSpanOrOne())
+			cY, wHeight := extent(rowY, rowH, cell.y, b.gridRowSpanOrOne())
+			wWidth = min(wWidth, w.MaxWidth())
+			wHeight = min(wHeight, w.MaxHeight())
+			w.SetPosition(cX, cY)
+			w.SetSize(wWidth, wHeight)
 		}
 	}
 
@@ -2401,6 +2414,10 @@ func (c *Widget) makeColumnsInfo(fullWidth int, cells map[gridCell][]Widgeter) (
 
 		for y := minY; y <= maxY; y++ {
 			for _, w := range cells[gridCell{x, y}] {
+				found = true
+				if w.widgetBase().gridColSpanOrOne() > 1 {
+					continue
+				}
 				if w.XExpandable() {
 					colInfo.expandable = true // Found expandable by X
 					hasExpandableColumns = true
@@ -2409,12 +2426,22 @@ func (c *Widget) makeColumnsInfo(fullWidth int, cells map[gridCell][]Widgeter) (
 			}
 		}
 
+		colInfo.stretch = 1
+		if stretch := c.columnStretch[x]; stretch > 0 {
+			colInfo.stretch = stretch
+			colInfo.expandable = true
+			hasExpandableColumns = true
+		}
+
 		if colInfo.expandable {
 			colInfo.minWidth = MinInt
 			colInfo.maxWidth = MinInt
 
 			for y := minY; y <= maxY; y++ {
 				for _, w := range cells[gridCell{x, y}] {
+					if w.widgetBase().gridColSpanOrOne() > 1 {
+						continue
+					}
 					wMinWidth := w.MinWidth()
 					if wMinWidth > colInfo.minWidth {
 						colInfo.minWidth = wMinWidth
@@ -2432,6 +2459,9 @@ func (c *Widget) makeColumnsInfo(fullWidth int, cells map[gridCell][]Widgeter) (
 
 			for y := minY; y <= maxY; y++ {
 				for _, w := range cells[gridCell{x, y}] {
+					if w.widgetBase().gridColSpanOrOne() > 1 {
+						continue
+					}
 					wMinWidth := w.MinWidth()
 					if wMinWidth > colInfo.minWidth {
 						colInfo.minWidth = w.MinWidth()
@@ -2446,8 +2476,56 @@ func (c *Widget) makeColumnsInfo(fullWidth int, cells map[gridCell][]Widgeter) (
 			}
 		}
 
+		// A line with only widgets spanning from it: nothing of its own
+		if colInfo.minWidth == MinInt {
+			colInfo.minWidth = 0
+		}
+		if colInfo.maxWidth == MinInt {
+			colInfo.maxWidth = 0
+			if colInfo.expandable {
+				colInfo.maxWidth = MaxInt
+			}
+		}
+
 		if found {
 			columnsInfo[x] = &colInfo
+		}
+	}
+
+	// The widgets spanning lines: the lines they span get the room they need
+	// (the last one gets what is missing), and grow if they do
+	for _, ws := range cells {
+		for _, w := range ws {
+			span := w.widgetBase().gridColSpanOrOne()
+			if span <= 1 {
+				continue
+			}
+			first := w.GridX()
+			var spanned []*ContainerGridColumnInfo
+			for line := first; line < first+span; line++ {
+				if info, ok := columnsInfo[line]; ok {
+					spanned = append(spanned, info)
+				}
+			}
+			if len(spanned) == 0 {
+				continue
+			}
+			have := cellPadding * (len(spanned) - 1)
+			expandable := false
+			for _, info := range spanned {
+				have += info.minWidth
+				expandable = expandable || info.expandable
+			}
+			last := spanned[len(spanned)-1]
+			if need := w.MinWidth() - have; need > 0 {
+				last.minWidth += need
+				last.maxWidth = max(last.maxWidth, last.minWidth)
+			}
+			if w.XExpandable() && !expandable {
+				last.expandable = true
+				last.maxWidth = MaxInt
+				hasExpandableColumns = true
+			}
 		}
 	}
 
@@ -2497,14 +2575,26 @@ func (c *Widget) makeColumnsInfo(fullWidth int, cells map[gridCell][]Widgeter) (
 		}
 
 		if countOfColumnCanChange > 0 && deltaWidth != 0 {
-			pixForOne := deltaWidth / countOfColumnCanChange
-			if math.Abs(float64(pixForOne)) < 1 {
-				break
+			// The columns share the change by their stretch weights (all 1:
+			// equally)
+			weights := 0
+			for _, colInfo := range columnsInfo {
+				if !colInfo.collapsed && (deltaWidth > 0 && colInfo.width < colInfo.maxWidth || deltaWidth < 0 && colInfo.width > colInfo.minWidth) {
+					weights += colInfo.stretch
+				}
 			}
+			moved := false
 			for _, colInfo := range columnsInfo {
 				if !colInfo.collapsed {
-					colInfo.width += pixForOne
+					pix := deltaWidth * colInfo.stretch / weights
+					if pix != 0 {
+						moved = true
+					}
+					colInfo.width += pix
 				}
+			}
+			if !moved {
+				break
 			}
 		} else {
 			break
@@ -2568,6 +2658,10 @@ func (c *Widget) makeRowsInfo(fullHeight int, cells map[gridCell][]Widgeter) (ma
 		// If any widget in the row is expandable, set the expandable flag for the row
 		for x := minX; x <= maxX; x++ {
 			for _, w := range cells[gridCell{x, y}] {
+				found = true
+				if w.widgetBase().gridRowSpanOrOne() > 1 {
+					continue
+				}
 				if w.YExpandable() {
 					rowInfo.expandable = true // Found expandable by Y
 					hasExpandableRows = true
@@ -2576,12 +2670,22 @@ func (c *Widget) makeRowsInfo(fullHeight int, cells map[gridCell][]Widgeter) (ma
 			}
 		}
 
+		rowInfo.stretch = 1
+		if stretch := c.rowStretch[y]; stretch > 0 {
+			rowInfo.stretch = stretch
+			rowInfo.expandable = true
+			hasExpandableRows = true
+		}
+
 		if rowInfo.expandable {
 			rowInfo.minHeight = MinInt
 			rowInfo.maxHeight = MinInt
 
 			for x := minX; x <= maxX; x++ {
 				for _, w := range cells[gridCell{x, y}] {
+					if w.widgetBase().gridRowSpanOrOne() > 1 {
+						continue
+					}
 					wMinHeight := w.MinHeight()
 					if wMinHeight > rowInfo.minHeight {
 						rowInfo.minHeight = wMinHeight
@@ -2599,6 +2703,9 @@ func (c *Widget) makeRowsInfo(fullHeight int, cells map[gridCell][]Widgeter) (ma
 
 			for x := minX; x <= maxX; x++ {
 				for _, w := range cells[gridCell{x, y}] {
+					if w.widgetBase().gridRowSpanOrOne() > 1 {
+						continue
+					}
 					wMinHeight := w.MinHeight()
 					if wMinHeight > rowInfo.minHeight {
 						rowInfo.minHeight = wMinHeight
@@ -2613,8 +2720,56 @@ func (c *Widget) makeRowsInfo(fullHeight int, cells map[gridCell][]Widgeter) (ma
 			}
 		}
 
+		// A line with only widgets spanning from it: nothing of its own
+		if rowInfo.minHeight == MinInt {
+			rowInfo.minHeight = 0
+		}
+		if rowInfo.maxHeight == MinInt {
+			rowInfo.maxHeight = 0
+			if rowInfo.expandable {
+				rowInfo.maxHeight = MaxInt
+			}
+		}
+
 		if found {
 			rowsInfo[y] = &rowInfo
+		}
+	}
+
+	// The widgets spanning lines: the lines they span get the room they need
+	// (the last one gets what is missing), and grow if they do
+	for _, ws := range cells {
+		for _, w := range ws {
+			span := w.widgetBase().gridRowSpanOrOne()
+			if span <= 1 {
+				continue
+			}
+			first := w.GridY()
+			var spanned []*ContainerGridRowInfo
+			for line := first; line < first+span; line++ {
+				if info, ok := rowsInfo[line]; ok {
+					spanned = append(spanned, info)
+				}
+			}
+			if len(spanned) == 0 {
+				continue
+			}
+			have := cellPadding * (len(spanned) - 1)
+			expandable := false
+			for _, info := range spanned {
+				have += info.minHeight
+				expandable = expandable || info.expandable
+			}
+			last := spanned[len(spanned)-1]
+			if need := w.MinHeight() - have; need > 0 {
+				last.minHeight += need
+				last.maxHeight = max(last.maxHeight, last.minHeight)
+			}
+			if w.YExpandable() && !expandable {
+				last.expandable = true
+				last.maxHeight = MaxInt
+				hasExpandableRows = true
+			}
 		}
 	}
 
@@ -2664,14 +2819,26 @@ func (c *Widget) makeRowsInfo(fullHeight int, cells map[gridCell][]Widgeter) (ma
 		}
 
 		if countOfRowCanChange > 0 && deltaHeight != 0 {
-			pixForOne := deltaHeight / countOfRowCanChange
-			if math.Abs(float64(pixForOne)) < 1 {
-				break
+			// The rows share the change by their stretch weights (all 1:
+			// equally)
+			weights := 0
+			for _, rowInfo := range rowsInfo {
+				if !rowInfo.collapsed && (deltaHeight > 0 && rowInfo.height < rowInfo.maxHeight || deltaHeight < 0 && rowInfo.height > rowInfo.minHeight) {
+					weights += rowInfo.stretch
+				}
 			}
+			moved := false
 			for _, rowInfo := range rowsInfo {
 				if !rowInfo.collapsed {
-					rowInfo.height += pixForOne
+					pix := deltaHeight * rowInfo.stretch / weights
+					if pix != 0 {
+						moved = true
+					}
+					rowInfo.height += pix
 				}
+			}
+			if !moved {
+				break
 			}
 		} else {
 			break
@@ -3287,4 +3454,47 @@ func anchored(pos, size, delta int, near, far bool) (int, int) {
 		return pos + delta/2, size
 	}
 	return pos, size
+}
+
+func (c *Widget) gridColSpanOrOne() int { return max(1, c.gridColSpan) }
+func (c *Widget) gridRowSpanOrOne() int { return max(1, c.gridRowSpan) }
+
+// SetGridSpan makes the widget take rowSpan rows and colSpan columns of its
+// parent's grid, from its own cell to the right and down (QGridLayout's
+// spans). The columns it spans get the width it needs.
+func (c *Widget) SetGridSpan(rowSpan, colSpan int) {
+	c.gridRowSpan, c.gridColSpan = max(1, rowSpan), max(1, colSpan)
+	c.form.UpdateLayout()
+}
+
+// GridSpan returns the rows and the columns the widget takes in the grid
+func (c *Widget) GridSpan() (rowSpan, colSpan int) {
+	return c.gridRowSpanOrOne(), c.gridColSpanOrOne()
+}
+
+// AddWidgetSpan adds the widget to the grid at row, col, taking rowSpan
+// rows and colSpan columns
+func (c *Widget) AddWidgetSpan(row, col, rowSpan, colSpan int, w Widgeter) {
+	w.widgetBase().gridRowSpan, w.widgetBase().gridColSpan = max(1, rowSpan), max(1, colSpan)
+	c.AddWidget(row, col, w)
+}
+
+// SetColumnStretch sets the share of the free width the column gets (or
+// gives up) against the other columns: 2 grows twice as fast as 1. A
+// weight makes the column expandable; 0 returns it to its widgets.
+func (c *Widget) SetColumnStretch(col, weight int) {
+	if c.columnStretch == nil {
+		c.columnStretch = map[int]int{}
+	}
+	c.columnStretch[col] = max(0, weight)
+	c.form.UpdateLayout()
+}
+
+// SetRowStretch is SetColumnStretch for a row
+func (c *Widget) SetRowStretch(row, weight int) {
+	if c.rowStretch == nil {
+		c.rowStretch = map[int]int{}
+	}
+	c.rowStretch[row] = max(0, weight)
+	c.form.UpdateLayout()
 }

@@ -12,6 +12,7 @@ Short reference for `ui` controls. Code snippets are intentionally minimal—see
 
 ## Containers & layout
 
+- [Layouts: HBox, VBox, FormLayout, DialogButtonBox, grid spans and weights](content/layouts.md)
 - [Panel](content/panel.md)
 - [Frame](content/frame.md)
 - [GroupBox](content/groupbox.md)
@@ -46,6 +47,7 @@ Short reference for `ui` controls. Code snippets are intentionally minimal—see
 ## Data & visualization
 
 - [Table](content/table.md)
+- [ListView and models](content/listview.md)
 - [PropertyGrid](content/propertygrid.md)
 - [TreeView](content/treeview.md)
 - [ProgressBar](content/progressbar.md)

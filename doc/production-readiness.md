@@ -574,7 +574,11 @@ API: `AddPage`, `SetPageNameFunc`, `SetItems`. Нет:
 ### P1. Слой приложения и недостающие контролы
 
 8. **Layouts**: `HBox`, `VBox`, `FormLayout`, `DialogButtonBox`; span и stretch-веса в grid; авторазмер диалогов по содержимому; ширина Checkbox и RadioButton по тексту.
+
+   **Сделано (2026-10-25)**, см. [layouts.md](ui/content/layouts.md): `HBox`, `VBox`, `FormLayout`, `DialogButtonBox` (порядок кнопок платформы, Enter/Esc); span (`AddWidgetSpan`, `SetGridSpan`) и веса (`SetColumnStretch`, `SetRowStretch`) в сетке; диалог без заданного размера получает размер по содержимому; ширина Checkbox и RadioButton по тексту (фаза 4). Существующие раскладки не изменились (проверено попиксельно на примерах). Не сделано: выравнивание виджета внутри ячейки, отступы у виджета (`Margin`).
 9. **ListView и виртуальная Table** на общей модели (`ItemModel`: `Count`, `Text`, `Icon`, `Style`, `Data` + уведомления), делегат отрисовки с контекстом, сортировка, placeholder.
+
+   **Сделано (2026-10-25)**, см. [listview.md](ui/content/listview.md): `ItemModel` (+ `ItemStyler`, `ItemEditor`, `ColumnNamer`, уведомления через `ModelSignal`), `ListModel`, `FuncModel`; `ListView` (виртуальная отрисовка, выбор с Ctrl/Shift, активация, свой painter, текст пустого списка, `ItemRect` для тестов); `Table.SetModel` — таблица без своих ячеек. Таблица на 1 000 000 строк из модели: подключение 1,2 мс, кадр 3,4 мс (100 000 ячеек по одной — 228 мс). Не сделано: сортировка и фильтр поверх модели, делегат ячейки таблицы с контекстом.
 10. **Action + ToolBar + StatusBar**; пункты меню и кнопки строятся из Action; enabled-состояние пересчитывается при открытии меню и на idle.
 11. **Сервисы окна и приложения**: `SaveState`/`RestoreState` (Form, Splitter, Table header), `Activate()`, `IsMinimized()`, `NormalBounds()`, API экранов, `Settings(app)`, `SingleInstance`.
 12. **Тема**: `OnThemeChanged`, семантические роли цветов у виджетов (`SetForegroundRole`), `ThemedColor`, автотонирование монохромных иконок, отслеживание тёмной темы ОС.
