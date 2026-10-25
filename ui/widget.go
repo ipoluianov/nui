@@ -6,6 +6,7 @@ import (
 	"image/color"
 	"math"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -31,7 +32,11 @@ type Widget struct {
 
 	// inner widgets
 	absolutePositioning bool
-	widgets             []Widgeter
+	// The edges of the parent the widget keeps its distance to, when the
+	// parent places its children absolutely (see SetAnchors)
+	anchorLeft, anchorTop, anchorRight, anchorBottom bool
+
+	widgets []Widgeter
 
 	gridX int // Grid position
 	gridY int // Grid position
@@ -87,7 +92,7 @@ type Widget struct {
 	props          map[string]interface{}
 	propsFunctions map[string]func()
 
-	timers []*timer
+	timers []*Timer
 
 	visible bool
 
@@ -283,7 +288,7 @@ func (c *Widget) InitWidget() {
 	c.name = "Widget-" + c.id
 	c.props = make(map[string]any)
 	c.propsFunctions = make(map[string]func())
-	c.timers = make([]*timer, 0)
+	c.timers = make([]*Timer, 0)
 	c.x = 0
 	c.y = 0
 	c.w = 300
@@ -301,10 +306,7 @@ func (c *Widget) InitWidget() {
 	c.scrollBarXSize = scrollBarSize
 	c.scrollBarYSize = scrollBarSize
 	c.innerWidth = 0
-	/*c.anchorLeft = true
-	c.anchorTop = true
-	c.anchorRight = false
-	c.anchorBottom = false*/
+	c.anchorLeft, c.anchorTop = true, true
 	c.widgets = make([]Widgeter, 0)
 	c.closeByClickOutside = true
 
@@ -322,12 +324,22 @@ func (c *Widget) SetAutoFillBackground(autoFill bool) {
 	c.SetProp("autofillbackground", autoFill)
 }
 
+// Enabled reports whether the widget takes input: it is enabled itself and
+// so are all its parents (a disabled panel disables what is in it)
 func (c *Widget) Enabled() bool {
-	return c.GetPropBool("enabled", true)
+	if !c.GetPropBool("enabled", true) {
+		return false
+	}
+	if parent := c.ParentWidget(); parent != nil {
+		return parent.Enabled()
+	}
+	return true
 }
 
+// SetEnabled enables or disables the widget and, with it, its children
 func (c *Widget) SetEnabled(enabled bool) {
 	c.SetProp("enabled", enabled)
+	c.form.Update()
 }
 
 func (c *Widget) FullPath() []string {
@@ -524,14 +536,6 @@ func (c *Widget) MaxWidth() int {
 
 func (c *Widget) MaxHeight() int {
 	return c.maxHeight
-}
-
-func (c *Widget) AddTimer(intervalMs int, callback func()) {
-	t := &timer{
-		intervalMs: intervalMs,
-		callback:   callback,
-	}
-	c.timers = append(c.timers, t)
 }
 
 func (c *Widget) SetPanelPadding(padding int) {
@@ -1490,11 +1494,14 @@ func (c *Widget) setSizeLimit(limit *int, value int) {
 	c.form.UpdateLayout()
 }
 
+// SetAnchors sets the edges of the parent the widget keeps its distance to
+// when the parent changes its size, for a parent that places its children
+// absolutely (SetAbsolutePositioning), as WinForms' Anchor: left and top by
+// default; right only moves the widget with the right edge; left and right
+// stretch it; none of a pair keeps it at the same place. A grid parent
+// lays its children out itself.
 func (c *Widget) SetAnchors(left, top, right, bottom bool) {
-	/*c.anchorLeft = left
-	c.anchorTop = top
-	c.anchorRight = right
-	c.anchorBottom = bottom*/
+	c.anchorLeft, c.anchorTop, c.anchorRight, c.anchorBottom = left, top, right, bottom
 }
 
 func (c *Widget) SetOnClick(f func()) {
@@ -2010,7 +2017,8 @@ func (c *Widget) ProcessMouseWheel(deltaX, deltaY int) bool {
 func (c *Widget) ProcessTimer() {
 	c.scrollBarRepeat()
 
-	for _, t := range c.timers {
+	// A timer may stop (or start) timers: the list may change meanwhile
+	for _, t := range slices.Clone(c.timers) {
 		t.tick()
 	}
 
@@ -2043,9 +2051,10 @@ func (c *Widget) checkScrolls() {
 	}
 }
 
-/*func (c *Widget) Anchors() (left, top, right, bottom bool) {
+// Anchors returns the edges set by SetAnchors
+func (c *Widget) Anchors() (left, top, right, bottom bool) {
 	return c.anchorLeft, c.anchorTop, c.anchorRight, c.anchorBottom
-}*/
+}
 
 func (c *Widget) SetAbsolutePositioning(absolute bool) {
 	c.absolutePositioning = absolute
@@ -2196,13 +2205,17 @@ func (c *Widget) updateLayout(oldWidth, oldHeight, newWidth, newHeight int) {
 	}
 
 	if c.absolutePositioning {
+		// The children follow the anchored edges of the change of the size
+		dw, dh := 0, 0
+		if oldWidth > 0 && oldHeight > 0 {
+			dw, dh = newWidth-oldWidth, newHeight-oldHeight
+		}
 		for _, w := range c.widgets {
-			newX := w.X()
-			newY := w.Y()
-			newW := w.Width()
-			newH := w.Height()
-			w.SetSize(newW, newH)
-			w.SetPosition(newX, newY)
+			b := w.widgetBase()
+			x, width := anchored(w.X(), w.Width(), dw, b.anchorLeft, b.anchorRight)
+			y, height := anchored(w.Y(), w.Height(), dh, b.anchorTop, b.anchorBottom)
+			w.SetSize(width, height)
+			w.SetPosition(x, y)
 		}
 	} else {
 		c.layoutGridInViewport()
@@ -3260,4 +3273,18 @@ func (c *Widget) setPreviousFocusedWidget(w Widgeter) {
 
 func (c *Widget) getPreviousFocusedWidget() Widgeter {
 	return c.previousFocusedWidget
+}
+
+// anchored returns the place and the size of a child along one axis after
+// the parent grew by delta, with its anchors to the near and the far edge
+func anchored(pos, size, delta int, near, far bool) (int, int) {
+	switch {
+	case near && far:
+		return pos, max(0, size+delta)
+	case far:
+		return pos + delta, size
+	case !near:
+		return pos + delta/2, size
+	}
+	return pos, size
 }

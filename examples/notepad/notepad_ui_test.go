@@ -77,14 +77,21 @@ func TestCloseAsks(t *testing.T) {
 	}
 }
 
-// Escape dismisses the question and keeps the window with its changes
+// Bug #15, fixed: Escape dismisses the question and keeps the window with
+// its changes
 func TestCloseQuestionEscape(t *testing.T) {
 	n := newNotepad()
 	w := uitest.Show(t, n.form)
 	w.Type("x")
 	w.RequestClose()
 	w.Dialog().Key(ui.KeyEsc, ui.KeyModifiers{})
+	if w.Closed() || !strings.HasPrefix(n.text.Text(), "x") {
+		t.Errorf("Escape: closed %v, text %q", w.Closed(), n.text.Text())
+	}
+	// The close button of the question is a Cancel too
+	w.RequestClose()
+	w.Dialog().RequestClose()
 	if w.Closed() {
-		t.Skip("known bug #15 (production-readiness.md): Escape discards the changes and closes")
+		t.Error("closing the question closed the window")
 	}
 }

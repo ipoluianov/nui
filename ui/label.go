@@ -24,9 +24,20 @@ func NewLabel(text string) *Label {
 	c.SetOnPaint(c.onPaint)
 	c.SetText(text)
 	c.innerHeight = ThemeControlHeight()
-	c.setThemeHeight(ThemeControlHeight, false)
+	c.setThemeHeight(c.heightForText, false)
 	c.updateInnerSize()
 	return &c
+}
+
+// heightForText is the label's height: a control's height, or more for a
+// larger font or more lines (bug #14: big text was cut off)
+func (c *Label) heightForText() int {
+	_, textHeight, err := MeasureText(c.FontFamily(), c.FontSize(), "Ag")
+	if err != nil {
+		return ThemeControlHeight()
+	}
+	lines := len(textLines(c.Text()))
+	return max(ThemeControlHeight(), textHeight*lines+controlPaddingY*2)
 }
 
 // Paint handler for the Label widget
@@ -115,6 +126,14 @@ func (c *Label) updateInnerSize() {
 	if err != nil {
 		return
 	}
+	if c.themeHeight != nil {
+		height := c.minHeight
+		c.applyThemeHeight()
+		c.innerHeight = c.minHeight
+		if c.minHeight != height {
+			c.form.UpdateLayout()
+		}
+	}
 
 	if !c.XExpandable() {
 		// if not expandable, set inner width to text width
@@ -136,6 +155,5 @@ func (c *Label) updateInnerSize() {
 
 func (c *Label) applyThemeMetrics() {
 	c.Widget.applyThemeMetrics()
-	c.innerHeight = ThemeControlHeight()
 	c.updateInnerSize()
 }

@@ -46,6 +46,10 @@ type Window struct {
 	wnd  *platforms.HeadlessWindow
 
 	mouseX, mouseY int
+
+	// NoFrames turns off the painting of a frame before each action (see
+	// frame): for benchmarks of the input alone
+	NoFrames bool
 }
 
 // Show shows the form with its size and returns it for the test; the form
@@ -60,7 +64,18 @@ func Show(t testing.TB, form *ui.Form) *Window {
 		}
 	})
 	w.Settle()
+	w.frame()
 	return w
+}
+
+// frame paints the window, as the event loop does between the events: some
+// widgets work out where their parts are when they paint (the tabs of a tab
+// widget), and the user sees the window before acting on it
+func (w *Window) frame() {
+	w.Settle()
+	if !w.NoFrames {
+		w.wnd.Render()
+	}
 }
 
 func wrap(t testing.TB, form *ui.Form) *Window {
@@ -222,6 +237,7 @@ func (w *Window) target(on any) Point {
 // Move moves the mouse to the widget's center or to the point
 func (w *Window) Move(to any) {
 	p := w.target(to)
+	w.frame()
 	w.mouseX, w.mouseY = p.X, p.Y
 	w.wnd.MouseMove(p.X, p.Y)
 	w.Settle()
@@ -230,6 +246,7 @@ func (w *Window) Move(to any) {
 // Press presses the mouse button over the widget's center or the point
 func (w *Window) Press(button ui.MouseButton, at any) {
 	p := w.target(at)
+	w.frame()
 	w.mouseX, w.mouseY = p.X, p.Y
 	w.wnd.MouseDown(button, p.X, p.Y)
 	w.Settle()
@@ -238,6 +255,7 @@ func (w *Window) Press(button ui.MouseButton, at any) {
 // Release releases the mouse button over the widget's center or the point
 func (w *Window) Release(button ui.MouseButton, at any) {
 	p := w.target(at)
+	w.frame()
 	w.mouseX, w.mouseY = p.X, p.Y
 	w.wnd.MouseUp(button, p.X, p.Y)
 	w.Settle()
@@ -307,6 +325,7 @@ func (w *Window) DropFiles(at any, files ...string) {
 
 // Key presses and releases the key with the modifiers
 func (w *Window) Key(key ui.Key, mods ui.KeyModifiers) {
+	w.frame()
 	w.wnd.KeyDown(key, mods)
 	w.wnd.KeyUp(key, mods)
 	w.Settle()
@@ -326,6 +345,7 @@ func (w *Window) Shortcut(shortcut string) {
 // Type types the text as the keyboard would: a character at a time, Enter
 // for "\n" and Tab for "\t"
 func (w *Window) Type(text string) {
+	w.frame()
 	for _, ch := range text {
 		switch ch {
 		case '\n':

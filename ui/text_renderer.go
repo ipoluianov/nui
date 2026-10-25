@@ -294,12 +294,17 @@ func MeasureText(fontFamily string, fontSize float64, text string) (int, int, er
 	return textWidth, textHeight, err
 }
 
-// measureMultilineTextWidth returns the width of the widest line of text,
-// where lines are separated by "\r\n" - the same separator Canvas.DrawText
-// splits on when rendering multiline text.
+// textLines splits the text into lines at "\n" or "\r\n", as
+// Canvas.DrawText draws them
+func textLines(text string) []string {
+	return strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
+}
+
+// measureMultilineTextWidth returns the width of the widest line of text
+// (see textLines)
 func measureMultilineTextWidth(fontFamily string, fontSize float64, text string) (int, error) {
 	maxWidth := 0
-	for _, line := range strings.Split(text, "\r\n") {
+	for _, line := range textLines(text) {
 		lineWidth, _, err := MeasureText(fontFamily, fontSize, line)
 		if err != nil {
 			return 0, err

@@ -145,3 +145,79 @@ func TestRequestRepaintFromGoroutine(t *testing.T) {
 func countPosted(w *uitest.Window) int {
 	return uitest.RunPosted()
 }
+
+// Bug #14, fixed: a label is as high as its font and its lines need
+func TestLabelHeight(t *testing.T) {
+	form := newForm(400, 300)
+	big := ui.NewLabel("Big text")
+	big.SetFontSize(40)
+	lines := ui.NewLabel("one\ntwo\nthree")
+	normal := ui.NewLabel("Normal")
+	form.Panel().AddWidget(0, 0, big)
+	form.Panel().AddWidget(1, 0, lines)
+	form.Panel().AddWidget(2, 0, normal)
+	form.Panel().AddVSpacer(3, 0)
+	uitest.Show(t, form)
+	_, textHeight, _ := ui.MeasureText(big.FontFamily(), big.FontSize(), "Big text")
+	_, lineHeight, _ := ui.MeasureText(lines.FontFamily(), lines.FontSize(), "one")
+	if big.Height() < textHeight || lines.Height() < 3*lineHeight {
+		t.Errorf("big label %d px (text %d), three lines %d px (line %d)", big.Height(), textHeight, lines.Height(), lineHeight)
+	}
+	if normal.Height() != ui.ThemeControlHeight() {
+		t.Errorf("normal label %d px, a control %d", normal.Height(), ui.ThemeControlHeight())
+	}
+	// A text with more lines lays the form out again
+	normal.SetText("a\nb")
+	if normal.Height() <= ui.ThemeControlHeight() {
+		t.Errorf("two lines: %d px", normal.Height())
+	}
+}
+
+// Bug #16, fixed: a NumBox stays one line high in a grid without an
+// expandable row; a click in its middle doesn't step it
+func TestNumBoxHeight(t *testing.T) {
+	form := newForm(300, 200)
+	num := ui.NewNumBox()
+	form.Panel().AddWidget(0, 0, num)
+	form.Panel().AddWidget(1, 0, ui.NewSlider())
+	w := uitest.Show(t, form)
+	num.SetValue(5)
+	w.Click(num)
+	if num.Value() != 5 || num.Height() != ui.ThemeControlHeight() {
+		t.Errorf("value %v, height %d", num.Value(), num.Height())
+	}
+}
+
+// Bug #9, fixed: SetAnchors works for the children placed absolutely
+func TestAnchors(t *testing.T) {
+	form := newForm(400, 300)
+	canvas := ui.NewPanel()
+	canvas.SetAbsolutePositioning(true)
+	canvas.SetXExpandable(true)
+	canvas.SetYExpandable(true)
+	form.Panel().AddWidget(0, 0, canvas)
+	place := func(anchors [4]bool) *ui.Panel {
+		p := ui.NewPanel()
+		canvas.AddWidget(0, 0, p)
+		p.SetAnchors(anchors[0], anchors[1], anchors[2], anchors[3])
+		return p
+	}
+	fixed := place([4]bool{true, true, false, false})
+	right := place([4]bool{false, true, true, false})
+	stretched := place([4]bool{true, true, true, true})
+	w := uitest.Show(t, form)
+	for _, p := range []*ui.Panel{fixed, right, stretched} {
+		p.SetPosition(10, 10)
+		p.SetSize(50, 40)
+	}
+	w.Resize(500, 350)
+	if fixed.X() != 10 || fixed.Width() != 50 {
+		t.Errorf("left-top: x %d, width %d", fixed.X(), fixed.Width())
+	}
+	if right.X() != 110 || right.Width() != 50 {
+		t.Errorf("right: x %d, width %d", right.X(), right.Width())
+	}
+	if stretched.Width() != 150 || stretched.Height() != 90 {
+		t.Errorf("all edges: %dx%d", stretched.Width(), stretched.Height())
+	}
+}

@@ -45,7 +45,7 @@ type Widgeter interface {
 	Enabled() bool
 	SetEnabled(enabled bool)
 
-	AddTimer(duration int, callback func())
+	AddTimer(intervalMs int, callback func()) *Timer
 
 	SetName(name string)
 	SetPosition(x, y int)

@@ -20,7 +20,6 @@ func NewCheckbox(text string) *Checkbox {
 	var c Checkbox
 	c.InitWidget()
 	c.SetTypeName("Checkbox")
-	c.SetMinWidth(150)
 	c.SetMaxWidth(10000)
 	c.setThemeHeight(ThemeControlHeight, true)
 	c.SetMouseCursor(MouseCursorPointer)
@@ -42,7 +41,41 @@ func (c *Checkbox) Text() string {
 
 func (c *Checkbox) SetText(text string) {
 	c.SetProp("text", text)
+	c.SetMinWidth(indicatorMinWidth(&c.Widget, text))
 	c.form.Update()
+}
+
+func (c *Checkbox) applyThemeMetrics() {
+	c.Widget.applyThemeMetrics()
+	c.SetMinWidth(indicatorMinWidth(&c.Widget, c.Text()))
+}
+
+// ProcessPropChange: a font of another size needs another width
+func (c *Checkbox) ProcessPropChange(key string, value interface{}) {
+	if isFontProp(key) {
+		c.SetMinWidth(indicatorMinWidth(&c.Widget, c.Text()))
+	}
+}
+
+// indicatorMinWidth is the width of a check box or a radio button: the
+// indicator and the text (it used to be 150 pixels whatever the text)
+func indicatorMinWidth(c *Widget, text string) int {
+	padding := (ThemeControlHeight() - ThemeIndicatorSize()) / 2
+	width := padding + ThemeIndicatorSize() + 2
+	if text != "" {
+		textWidth, _, _ := MeasureText(c.FontFamily(), c.FontSize(), text)
+		width += indicatorTextGap + textWidth
+	}
+	return width
+}
+
+// isFontProp tells whether the property changes the font of a widget
+func isFontProp(key string) bool {
+	switch key {
+	case "fontfamily", "fontsize", "fontbold", "fontitalic":
+		return true
+	}
+	return false
 }
 
 func (c *Checkbox) SetOnStateChanged(fn func()) {

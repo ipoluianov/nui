@@ -5,7 +5,6 @@ import (
 	"image/color"
 	"image/draw"
 	"math"
-	"strings"
 
 	"github.com/fogleman/gg"
 	xdraw "golang.org/x/image/draw"
@@ -1106,8 +1105,9 @@ func (c *Canvas) DrawImage(x int, y int, img image.Image) {
 	bInner := image.Rectangle{}
 	bInner.Min.X = x + c.state.translateX
 	bInner.Min.Y = y + c.state.translateY
-	bInner.Max.X += bInner.Min.X + img.Bounds().Max.X
-	bInner.Max.Y += bInner.Min.Y + img.Bounds().Max.Y
+	// The image's own bounds may not start at 0, 0 (a SubImage)
+	bInner.Max.X = bInner.Min.X + img.Bounds().Dx()
+	bInner.Max.Y = bInner.Min.Y + img.Bounds().Dy()
 
 	xOffset := 0
 	yOffset := 0
@@ -1138,7 +1138,7 @@ func (c *Canvas) DrawImage(x int, y int, img image.Image) {
 		return
 	}
 
-	draw.Draw(c.rgba, bInner, img, image.Point{xOffset, yOffset}, draw.Over)
+	draw.Draw(c.rgba, bInner, img, img.Bounds().Min.Add(image.Point{xOffset, yOffset}), draw.Over)
 }
 
 // drawImageScaled draws the image, its pixels taken as logical ones,
@@ -1189,7 +1189,7 @@ func (c *Canvas) ClipH() int {
 }
 
 func (c *Canvas) DrawText(x int, y int, width int, height int, text string) {
-	lines := strings.Split(text, "\r\n")
+	lines := textLines(text)
 
 	fontFamily := c.state.fontFamily
 	fontSize := c.state.fontSize

@@ -522,6 +522,10 @@ func (c *Form) IsActive() bool {
 	return c.active
 }
 
+// SetOnGlobalKeyDown sets the function that sees the keys before the
+// focused widget, except the keys a focused text field edits with (see
+// AddShortcut); it returns true for a key it took. While a menu or a list
+// is open the keys go to it, not here.
 func (c *Form) SetOnGlobalKeyDown(onGlobalKeyDown func(keyCode Key, mods KeyModifiers) bool) {
 	c.onGlobalKeyDown = onGlobalKeyDown
 }
@@ -1221,7 +1225,9 @@ func (c *Form) processKeyDown(keyCode Key, mods KeyModifiers) bool {
 		}
 	}
 
-	if c.onGlobalKeyDown != nil {
+	// An open menu or list takes the keys: the application's shortcuts wait
+	// until it closes
+	if c.onGlobalKeyDown != nil && len(c.topWidget.PopupWidgets) == 0 {
 		if c.onGlobalKeyDown(keyCode, mods) {
 			c.Update()
 			return true

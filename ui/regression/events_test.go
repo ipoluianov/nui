@@ -179,3 +179,53 @@ func TestOnResize(t *testing.T) {
 		t.Errorf("OnResize %+v, width %d", got, panel.Width())
 	}
 }
+
+// Bug #4, fixed: a disabled container disables its children
+func TestDisabledParent(t *testing.T) {
+	form := newForm(300, 200)
+	panel := form.Panel().AddPanel(0, 0)
+	clicks := 0
+	btn := panel.AddButton(0, 0, "Click", func() { clicks++ })
+	panel.SetEnabled(false)
+	w := uitest.Show(t, form)
+	w.Click(btn)
+	if clicks != 0 || btn.Enabled() {
+		t.Errorf("in a disabled panel: %d clicks, enabled %v", clicks, btn.Enabled())
+	}
+	panel.SetEnabled(true)
+	w.Click(btn)
+	if clicks != 1 {
+		t.Errorf("enabled again: %d clicks", clicks)
+	}
+}
+
+// Bug #11, fixed: an open list takes the keys, the form's global handler
+// gets them again once it closes
+func TestGlobalKeysUnderPopup(t *testing.T) {
+	form := newForm(300, 200)
+	combo := ui.NewComboBox()
+	combo.AddItem("One", nil)
+	combo.AddItem("Two", nil)
+	form.Panel().AddWidget(0, 0, combo)
+	global := 0
+	form.SetOnGlobalKeyDown(func(key ui.Key, mods ui.KeyModifiers) bool {
+		if key == ui.KeyF5 {
+			global++
+		}
+		return false
+	})
+	w := uitest.Show(t, form)
+	w.Click(combo)
+	if w.Popup() == nil {
+		t.Fatal("the list didn't open")
+	}
+	w.Key(ui.KeyF5, ui.KeyModifiers{})
+	if global != 0 {
+		t.Error("F5 reached the global handler over the open list")
+	}
+	w.Key(ui.KeyEsc, ui.KeyModifiers{})
+	w.Key(ui.KeyF5, ui.KeyModifiers{})
+	if global != 1 {
+		t.Errorf("after the list closed: %d", global)
+	}
+}

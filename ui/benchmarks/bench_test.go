@@ -46,6 +46,7 @@ func textBoxForm(b *testing.B, n int) (*uitest.Window, *ui.TextBox) {
 	w := uitest.Show(b, form)
 	tb.SetText(lines(n))
 	w.Click(uitest.At(tb, 10, 10))
+	w.NoFrames = true // the input alone; BenchmarkTextBoxPaint paints
 	return w, tb
 }
 

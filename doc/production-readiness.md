@@ -240,19 +240,19 @@ nui хорошо решает задачу «нативное окно без cg
 | 1 | ✅ исправлено. `RemoveWidget` не перекладывает родителя: `return` стоит до `c.updateLayout` | `ui/widget.go:541-554` | проба: после удаления левого из двух TextBox правый остался на `x=200` |
 | 2 | ✅ исправлено. Два виджета в одной ячейке грида: второй не раскладывается, остаётся 300×180 в (0,0), предупреждения нет | `gridCells()` → `map[gridCell]Widgeter` | проба |
 | 3 | ✅ исправлено. Отпускание правой и средней кнопки мыши не доходит до `onMouseUp` виджета, захвата мыши для этих кнопок нет | `form.go:911` (`mouseLeftButtonPressedWidget` ставится только при нажатой левой), `widget.go:1680` | по коду; клиент altpaint `canvasinput.go:28`: «nui tells the release of the left button only» |
-| 4 | `SetEnabled(false)` у контейнера не отключает детей: кнопка внутри отключённой Panel нажимается | `Widget.Enabled()` смотрит только на себя | проба: `clicked=1` |
+| 4 | ✅ исправлено. `SetEnabled(false)` у контейнера не отключает детей: кнопка внутри отключённой Panel нажимается | `Widget.Enabled()` смотрит только на себя | проба: `clicked=1` |
 | 5 | ✅ исправлено. Многострочный TextBox на **любое** изменение свойства включает `SetXExpandable(true)`/`SetYExpandable(true)` | `textbox.go:235-256` | по коду; клиент altjarvis `chats_page.go:90` |
-| 6 | `Canvas.DrawImage` игнорирует `img.Bounds().Min` (исходная точка `{xOffset,yOffset}`, ширина берётся из `Max.X`), поэтому sub-image рисуется неверно | `canvas.go:1091-1131` | по коду |
-| 7 | `Canvas.DrawText` переносит строки только по `"\r\n"` | `canvas.go:1182` | по коду |
+| 6 | ✅ исправлено. `Canvas.DrawImage` игнорирует `img.Bounds().Min` (исходная точка `{xOffset,yOffset}`, ширина берётся из `Max.X`), поэтому sub-image рисуется неверно | `canvas.go:1091-1131` | по коду |
+| 7 | ✅ исправлено. `Canvas.DrawText` переносит строки только по `"\r\n"` | `canvas.go:1182` | по коду |
 | 8 | ✅ исправлено. `Label.SetText` раскладывает всю форму даже при неизменном тексте | `label.go:63` | по коду и замеру |
-| 9 | `SetAnchors` ничего не делает (тело закомментировано), но метод публичный | `widget.go:1380` | по коду |
-| 10 | `Table.CopySelectionToClipboard` копирует только текущую ячейку, даже при мультивыделении | `table.go:2228` | по коду |
-| 11 | Глобальный обработчик клавиш получает нажатия при открытом меню или попапе | `form.go:~1130` | клиенты altping, altcalc проверяют `TopPopupWidget() != nil` |
-| 12 | Документация описывает несуществующие API: `ui.ShowEnterStringDialog`, `ui.ShowAboutDialog` (по `git log -S` их никогда не было), `ui.UpdateMainForm()` (в `theme.md` и `timer.md`) | `doc/ui/content/*.md` | grep |
+| 9 | ✅ исправлено. `SetAnchors` ничего не делает (тело закомментировано), но метод публичный | `widget.go:1380` | по коду |
+| 10 | ✅ исправлено. `Table.CopySelectionToClipboard` копирует только текущую ячейку, даже при мультивыделении | `table.go:2228` | по коду |
+| 11 | ✅ исправлено. Глобальный обработчик клавиш получает нажатия при открытом меню или попапе | `form.go:~1130` | клиенты altping, altcalc проверяют `TopPopupWidget() != nil` |
+| 12 | ✅ исправлено. Документация описывает несуществующие API: `ui.ShowEnterStringDialog`, `ui.ShowAboutDialog` (по `git log -S` их никогда не было), `ui.UpdateMainForm()` (в `theme.md` и `timer.md`) | `doc/ui/content/*.md` | grep |
 | 13 | Нестабильная семантика `ShowModal`: блокирует только на macOS | `internal/platforms/window.go:27` | по коду и комментарию |
-| 14 | Высота Label не зависит от размера шрифта: всегда `ThemeControlHeight()`, поэтому крупный текст обрезается снизу | `label.go:130` | вживую: Label 40 px обрезан по нижним выносным элементам |
-| 15 | Вопрос «Сохранить изменения?» в примере notepad: Esc закрывает окно без сохранения. В nui есть только `ShowQuestionMessageBoxYesNo`, и Esc в нём — кнопка «Нет», то есть «не сохранять». Нужен вопрос «Да/Нет/Отмена», где Esc — «Отмена» | `ui/messagebox.go:50`, `examples/notepad/document.go:45` | тест `examples/notepad/notepad_ui_test.go` |
-| 16 | NumBox вытягивается по высоте, если в сетке нет растягиваемой строки (без `AddVSpacer`); ширина его кнопок со стрелками равна высоте поля, поэтому щелчок в середину поля меняет значение | `numbox.go:377` (`buttonRect`) | тест `ui/regression` |
+| 14 | ✅ исправлено. Высота Label не зависит от размера шрифта: всегда `ThemeControlHeight()`, поэтому крупный текст обрезается снизу | `label.go:130` | вживую: Label 40 px обрезан по нижним выносным элементам |
+| 15 | ✅ исправлено. Вопрос «Сохранить изменения?» в примере notepad: Esc закрывает окно без сохранения. В nui есть только `ShowQuestionMessageBoxYesNo`, и Esc в нём — кнопка «Нет», то есть «не сохранять». Нужен вопрос «Да/Нет/Отмена», где Esc — «Отмена» | `ui/messagebox.go:50`, `examples/notepad/document.go:45` | тест `examples/notepad/notepad_ui_test.go` |
+| 16 | ✅ исправлено. NumBox вытягивается по высоте, если в сетке нет растягиваемой строки (без `AddVSpacer`); ширина его кнопок со стрелками равна высоте поля, поэтому щелчок в середину поля меняет значение | `numbox.go:377` (`buttonRect`) | тест `ui/regression` |
 
 ---
 
@@ -320,18 +320,18 @@ nui хорошо решает задачу «нативное окно без cg
 
 ### 7.3. ComboBox
 
-- **Нельзя очистить или удалить элементы**: нет `Clear`, `RemoveItem`, `InsertItem`, `SetItems`. Это самый частый обходной путь: пример converter держит набор ComboBox и подменяет их («a ComboBox can't drop its items»), althex и altjarvis пересоздают ComboBox и заново навешивают обработчики.
-- Нет `ItemData(i)`, `FindData(v)`, `SelectByData`. althex ищет элемент, выбирая по очереди каждый (`disk.go:932`).
+- ✅ сделано: `Clear`, `RemoveItem`, `InsertItem`, `SetItems` (выбранный пункт остаётся выбранным). Было: **нельзя очистить или удалить элементы**. Это самый частый обходной путь: пример converter держит набор ComboBox и подменяет их («a ComboBox can't drop its items»), althex и altjarvis пересоздают ComboBox и заново навешивают обработчики.
+- ✅ сделано: `ItemText(i)`, `ItemData(i)`, `FindText`, `FindData` (выбор по данным — `SetSelectedIndex(c.FindData(v))`). Было: нет `ItemData(i)`, `FindData(v)`, `SelectByData`. althex ищет элемент, выбирая по очереди каждый (`disk.go:932`).
 - Нет `SetItemTextFunc` (i18n).
-- `SetOnSelectedIndexChanged(func())` вызывается без аргументов.
+- ✅ сделано: сигналы `OnSelectionChanged(int)` и `OnActivated(int)`. Было: `SetOnSelectedIndexChanged(func())` вызывается без аргументов.
 - Нет иконок у элементов, разделителей и групп.
 - `combobox.go` содержит два метода `AddItem` с разными сигнатурами: у ComboBox и у ComboBoxPopup.
 
 ### 7.4. TabWidget
 
 API: `AddPage`, `SetPageNameFunc`, `SetItems`. Нет:
-- `CurrentIndex`/`SetCurrentIndex`, `OnCurrentChanged` (altjarvis: «The library's TabWidget cannot switch pages from the code»);
-- `RemovePage`, `InsertPage`, `SetPageVisible`, `SetPageEnabled`;
+- ✅ сделано: `CurrentIndex`/`SetCurrentIndex`/`CurrentPage`, `OnCurrentChanged`, `OnActivated` (altjarvis: «The library's TabWidget cannot switch pages from the code»);
+- ✅ сделано: `RemovePage`, `InsertPage`, `PageCount`/`Page`/`PageIndex`, `SetPageName`; нет `SetPageVisible`, `SetPageEnabled`;
 - закрываемых вкладок, перестановки перетаскиванием, иконок и тултипов вкладок;
 - прокрутки и меню при переполнении;
 - Ctrl+Tab и Ctrl+PgUp/PgDn;
@@ -548,6 +548,8 @@ API: `AddPage`, `SetPageNameFunc`, `SetItems`. Нет:
    - TabWidget: `CurrentIndex`, `SetCurrentIndex`, `OnCurrentChanged`, `RemovePage`, `InsertPage`, `SetPageVisible`.
    - TextBox: курсор, выделение, `InsertText`, `Cut`, `Copy`, `Paste`, `OnEnter`.
    - Checkable-пункты меню.
+
+   **Сделано (2026-10-25):** ComboBox (§7.3), TabWidget (§7.4), TextBox (§7.2); ширина Checkbox и RadioButton по тексту, а не 150 px. Не сделано: `SetPageVisible`, checkable-пункты меню.
 4. **Производительность TextBox** (§4) и хранение ячеек Table.
 
    **TextBox сделан (2026-10-25):**
@@ -560,8 +562,14 @@ API: `AddPage`, `SetPageNameFunc`, `SetItems`. Нет:
 
    Ввод символа на 20 000 строках — 0,3 мс (было 7,4 с), кадр — 4 мс (было 5,5 с), `SetText` — 42 мс (было 15,7 с). Хранение ячеек Table — в фазе 5.
 5. **Баги §5**: `Enabled` у детей, `DrawImage` bounds, `"\n"` в `DrawText`, TextBox expandable, `SetAnchors`, копирование выделения в Table.
+
+   **Сделано (2026-10-25):** все баги таблицы §5, кроме #13 (`ShowModal` на macOS — фаза 6).
 6. **Таймер как объект** (`Stop`, `SingleShot`) и единая семантика `ShowModal`.
+
+   **Таймер сделан (2026-10-25):** `*ui.Timer` со `Start`/`Stop`/`SetSingleShot`, `NewTimer`, `AfterFunc`; `AddTimer` возвращает таймер ([timer.md](ui/content/timer.md)). Единая семантика `ShowModal` — в фазе 6.
 7. **Документация**: убрать несуществующие API; написать короткий `doc/rules.md` (или `llms.txt`) с контрактами: поток, инвалидация, модальность, жизненный цикл, свой виджет, какие сеттеры вызывают события.
+
+   **Сделано (2026-10-25):** [rules.md](rules.md); страницы несуществующих API удалены или переписаны; тест `ui/regression/docs_test.go` проверяет, что каждое `ui.Имя` в документации существует.
 
 ### P1. Слой приложения и недостающие контролы
 

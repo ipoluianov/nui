@@ -42,9 +42,10 @@ func (n *notepad) confirmDiscard(then func()) {
 		then()
 		return
 	}
-	ui.ShowQuestionMessageBoxYesNo(n.form.Panel(), appName,
+	// Esc (Cancel) keeps the document: it must not discard the changes
+	ui.ShowQuestionMessageBoxYesNoCancel(n.form.Panel(), appName,
 		"Do you want to save the changes to "+n.fileName()+"?",
-		func() { n.save(then) }, then)
+		func() { n.save(then) }, then, nil)
 }
 
 func (n *notepad) newDocument() {

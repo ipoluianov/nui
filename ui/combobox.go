@@ -2,6 +2,8 @@ package ui
 
 import (
 	"image/color"
+	"reflect"
+	"slices"
 )
 
 type ComboBox struct {
@@ -55,11 +57,99 @@ func NewComboBox() *ComboBox {
 	return &c
 }
 
+// AddItem adds an item at the end
 func (c *ComboBox) AddItem(text string, data interface{}) {
 	var item ComboBoxItem
 	item.text = text
 	item.data = data
 	c.items = append(c.items, &item)
+	c.form.Update()
+}
+
+// Clear removes all the items: the combo box is as a new one, the first
+// item added is selected
+func (c *ComboBox) Clear() {
+	c.items = nil
+	c.selectedIndex = 0
+	c.form.Update()
+}
+
+// RemoveItem removes the item. The selected item stays selected (its index
+// may change); if it's the one removed, the next one is selected, or the
+// last. OnSelectionChanged is emitted if the index of the selection changes.
+func (c *ComboBox) RemoveItem(index int) {
+	if index < 0 || index >= len(c.items) {
+		return
+	}
+	c.items = slices.Delete(c.items, index, index+1)
+	selected := c.selectedIndex
+	switch {
+	case index < c.selectedIndex:
+		selected--
+	case index == c.selectedIndex:
+		selected = min(index, len(c.items)-1)
+	}
+	c.setSelected(max(selected, 0), index <= c.selectedIndex)
+}
+
+// InsertItem puts an item before the item index (at the end for an index
+// past them); the selected item stays selected
+func (c *ComboBox) InsertItem(index int, text string, data interface{}) {
+	index = max(0, min(index, len(c.items)))
+	c.items = slices.Insert(c.items, index, &ComboBoxItem{text: text, data: data})
+	if len(c.items) > 1 && index <= c.selectedIndex {
+		c.setSelected(c.selectedIndex+1, true)
+		return
+	}
+	c.form.Update()
+}
+
+// SetItems replaces the items with the texts (no data). The item with the
+// text that was selected stays selected, else the first one.
+func (c *ComboBox) SetItems(texts []string) {
+	selectedText := c.SelectedItemText()
+	c.items = make([]*ComboBoxItem, len(texts))
+	for i, text := range texts {
+		c.items[i] = &ComboBoxItem{text: text}
+	}
+	selected := max(0, slices.Index(texts, selectedText))
+	c.setSelected(selected, c.SelectedItemText() != selectedText || selected != c.selectedIndex)
+}
+
+// setSelected selects the item index, emitting OnSelectionChanged if told
+func (c *ComboBox) setSelected(index int, emit bool) {
+	c.selectedIndex = index
+	c.form.Update()
+	if emit {
+		c.OnSelectionChanged.Emit(index)
+	}
+}
+
+// ItemText returns the text of the item, "" if there is no such item
+func (c *ComboBox) ItemText(index int) string {
+	if index < 0 || index >= len(c.items) {
+		return ""
+	}
+	return c.items[index].text
+}
+
+// ItemData returns the data of the item, nil if there is no such item
+func (c *ComboBox) ItemData(index int) interface{} {
+	if index < 0 || index >= len(c.items) {
+		return nil
+	}
+	return c.items[index].data
+}
+
+// FindText returns the index of the first item with the text, -1 if none
+func (c *ComboBox) FindText(text string) int {
+	return slices.IndexFunc(c.items, func(item *ComboBoxItem) bool { return item.text == text })
+}
+
+// FindData returns the index of the first item with the data (equal as
+// reflect.DeepEqual compares), -1 if none
+func (c *ComboBox) FindData(data interface{}) int {
+	return slices.IndexFunc(c.items, func(item *ComboBoxItem) bool { return reflect.DeepEqual(item.data, data) })
 }
 
 // SetItemText changes the text of the item, e.g. for another language;

@@ -4,6 +4,7 @@ import (
 	"image"
 	"image/color"
 	"sort"
+	"strings"
 
 	"github.com/nfnt/resize"
 )
@@ -2269,16 +2270,59 @@ func (c *Table) removeInnerWidget(w Widgeter) {
 	c.RemoveWidget(w)
 }
 
+// CopySelectionToClipboard copies the selection as text that spreadsheets
+// paste into cells: the rows one per line, the cells of a row separated by
+// tabs. Selected rows are copied whole; selected cells as the rectangle
+// around them, the cells in it that aren't selected empty. Without a
+// selection, the current cell.
 func (c *Table) CopySelectionToClipboard() {
-	if c.currentCellY < 0 || c.currentCellY >= c.rowCount || c.currentCellX < 0 || c.currentCellX >= c.columnCount {
-		return
+	if text := c.selectionText(); text != "" {
+		ClipboardSetText(text)
 	}
+}
 
-	text := c.GetCellText2(c.currentCellY, c.currentCellX)
-	if len(text) == 0 {
-		return
+// selectionText is what CopySelectionToClipboard copies
+func (c *Table) selectionText() string {
+	var b strings.Builder
+	writeRow := func(row, fromCol, toCol int, included func(col int) bool) {
+		for col := fromCol; col <= toCol; col++ {
+			if col > fromCol {
+				b.WriteByte('\t')
+			}
+			if included(col) {
+				b.WriteString(c.GetCellText2(row, col))
+			}
+		}
 	}
-	ClipboardSetText(text)
+	all := func(int) bool { return true }
+
+	if rows := c.SelectedRows(); c.selectingRows && len(rows) > 0 {
+		for i, row := range rows {
+			if i > 0 {
+				b.WriteByte('\n')
+			}
+			writeRow(row, 0, c.columnCount-1, all)
+		}
+		return b.String()
+	}
+	if cells := c.SelectedCells(); !c.selectingRows && len(cells) > 0 {
+		minRow, maxRow := cells[0].Row, cells[len(cells)-1].Row
+		minCol, maxCol := cells[0].Col, cells[0].Col
+		for _, cell := range cells {
+			minCol, maxCol = min(minCol, cell.Col), max(maxCol, cell.Col)
+		}
+		for row := minRow; row <= maxRow; row++ {
+			if row > minRow {
+				b.WriteByte('\n')
+			}
+			writeRow(row, minCol, maxCol, func(col int) bool { return c.IsCellSelected(row, col) })
+		}
+		return b.String()
+	}
+	if c.currentCellY < 0 || c.currentCellY >= c.rowCount || c.currentCellX < 0 || c.currentCellX >= c.columnCount {
+		return ""
+	}
+	return c.GetCellText2(c.currentCellY, c.currentCellX)
 }
 
 type tableHeader struct {

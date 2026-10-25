@@ -1,9 +1,16 @@
 package ui
 
-import ()
+import "slices"
 
 type TabWidget struct {
 	Widget
+
+	// OnCurrentChanged: another page became the current one (its index), by
+	// the user or by SetCurrentIndex
+	OnCurrentChanged Signal[int]
+	// OnActivated: the user clicked a tab (its index), also the current one
+	OnActivated Signal[int]
+
 	pages        []tabWidgetPage
 	panelTop     *tabWidgetHeader
 	panelContent *tabWidgetContent
@@ -94,9 +101,100 @@ func (c *tabWidgetContent) ClearLayoutCache() {
 	}
 }
 
+// onTabChanged: the user clicked the tab
 func (c *TabWidget) onTabChanged(index int) {
+	c.SetCurrentIndex(index)
+	c.OnActivated.Emit(index)
+}
+
+// CurrentIndex returns the index of the current page, -1 if there are none
+func (c *TabWidget) CurrentIndex() int {
+	if len(c.pages) == 0 {
+		return -1
+	}
+	return c.currentPage
+}
+
+// SetCurrentIndex shows the page; OnCurrentChanged is emitted if it is
+// another one
+func (c *TabWidget) SetCurrentIndex(index int) {
+	if index < 0 || index >= len(c.pages) {
+		return
+	}
+	changed := index != c.currentPage
 	c.currentPage = index
 	c.rebuildInterface()
+	if changed {
+		c.OnCurrentChanged.Emit(index)
+	}
+}
+
+// CurrentPage returns the widget of the current page, nil if there are none
+func (c *TabWidget) CurrentPage() Widgeter {
+	return c.Page(c.CurrentIndex())
+}
+
+// PageCount returns the number of the pages
+func (c *TabWidget) PageCount() int {
+	return len(c.pages)
+}
+
+// Page returns the widget of the page, nil if there is no such page
+func (c *TabWidget) Page(index int) Widgeter {
+	if index < 0 || index >= len(c.pages) {
+		return nil
+	}
+	return c.pages[index].widget
+}
+
+// PageIndex returns the index of the page of the widget, -1 if none
+func (c *TabWidget) PageIndex(w Widgeter) int {
+	return slices.IndexFunc(c.pages, func(p tabWidgetPage) bool { return p.widget == w })
+}
+
+// SetPageName renames the page
+func (c *TabWidget) SetPageName(index int, name string) {
+	if index < 0 || index >= len(c.pages) {
+		return
+	}
+	c.pages[index].name = name
+	c.pages[index].nameFunc = nil
+	c.rebuildInterface()
+}
+
+// InsertPage puts a page before the page index (at the end for an index
+// past them); the current page stays current
+func (c *TabWidget) InsertPage(index int, name string, w Widgeter) {
+	index = max(0, min(index, len(c.pages)))
+	c.pages = slices.Insert(c.pages, index, tabWidgetPage{name: name, widget: w})
+	if len(c.pages) > 1 && index <= c.currentPage {
+		c.currentPage++
+		c.rebuildInterface()
+		c.OnCurrentChanged.Emit(c.currentPage)
+		return
+	}
+	c.rebuildInterface()
+}
+
+// RemovePage removes the page. The current page stays current; if it's the
+// one removed, the next one becomes current, or the last.
+func (c *TabWidget) RemovePage(index int) {
+	if index < 0 || index >= len(c.pages) {
+		return
+	}
+	c.pages = slices.Delete(c.pages, index, index+1)
+	if index > c.currentPage {
+		c.rebuildInterface()
+		return
+	}
+	if index < c.currentPage {
+		c.currentPage-- // the same page, one place to the left
+	}
+	c.currentPage = max(0, min(c.currentPage, len(c.pages)-1))
+	c.rebuildInterface()
+	if len(c.pages) > 0 {
+		c.OnCurrentChanged.Emit(c.currentPage)
+	}
 }
 
 func (c *TabWidget) SetLayoutXml(n *uiNode, eventProcessor interface{}, widgets map[string]Widgeter) {
@@ -133,7 +231,7 @@ func (c *TabWidget) rebuildInterface() {
 		items[i] = page.name
 	}
 	c.panelTop.SetItems(items)
-	//c.panelTop.AddWidgetOnGrid(NewHSpacer(), 0, len(c.pages))
+	c.panelTop.currentIndex = c.currentPage
 
 	// Build content
 	c.panelContent.RemoveAllWidgets()

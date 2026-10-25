@@ -60,7 +60,9 @@ func NewNumBox() *NumBox {
 	c.SetXExpandable(true)
 	c.SetYExpandable(false)
 	c.SetMinWidth(120)
-	c.setThemeHeight(ThemeControlHeight, false)
+	// One line high, as a line edit: a grid without an expandable row
+	// doesn't stretch it (bug #16)
+	c.setThemeHeight(ThemeControlHeight, true)
 	c.SetMouseCursor(MouseCursorIBeam)
 
 	c.padding = themeTextInset
@@ -374,7 +376,7 @@ func (c *NumBox) ProcessPropChange(key string, value interface{}) {
 }
 
 func (c *NumBox) buttonRect() (x, y, w, h int) {
-	btnW := c.Height()
+	btnW := min(c.Height(), ThemeControlHeight())
 	if btnW < 18 {
 		btnW = 18
 	}

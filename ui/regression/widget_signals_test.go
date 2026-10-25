@@ -202,3 +202,79 @@ func TestThemeSignal(t *testing.T) {
 		t.Errorf("theme signals %d, last dark %v", dark.n, dark.last)
 	}
 }
+
+// Changing the items of a combo box keeps the selected item
+func TestComboBoxItems(t *testing.T) {
+	form := newForm(300, 200)
+	combo := ui.NewComboBox()
+	combo.SetItems([]string{"a", "b", "c", "d"})
+	form.Panel().AddWidget(0, 0, combo)
+	uitest.Show(t, form)
+	changed := count(&combo.OnSelectionChanged)
+
+	combo.SetSelectedIndex(2) // c
+	combo.InsertItem(0, "z", 26)
+	if combo.SelectedItemText() != "c" || combo.SelectedIndex() != 3 {
+		t.Errorf("after InsertItem: %q at %d", combo.SelectedItemText(), combo.SelectedIndex())
+	}
+	combo.RemoveItem(1) // a
+	if combo.SelectedItemText() != "c" || combo.SelectedIndex() != 2 {
+		t.Errorf("after removing a: %q at %d", combo.SelectedItemText(), combo.SelectedIndex())
+	}
+	combo.RemoveItem(2) // c, the selected one: the next is selected
+	if combo.SelectedItemText() != "d" {
+		t.Errorf("after removing c: %q", combo.SelectedItemText())
+	}
+	if combo.FindText("b") != 1 || combo.FindData(26) != 0 || combo.ItemData(0) != 26 || combo.ItemText(9) != "" {
+		t.Errorf("find: %d %d", combo.FindText("b"), combo.FindData(26))
+	}
+	combo.SetItems([]string{"x", "d", "y"})
+	if combo.SelectedItemText() != "d" {
+		t.Errorf("SetItems: %q", combo.SelectedItemText())
+	}
+	if changed.n != 5 {
+		t.Errorf("OnSelectionChanged %d times, want 5", changed.n)
+	}
+	combo.Clear()
+	if combo.ItemCount() != 0 || combo.SelectedItemText() != "" {
+		t.Errorf("Clear: %d items", combo.ItemCount())
+	}
+	combo.AddItem("new", nil)
+	if combo.SelectedItemText() != "new" {
+		t.Errorf("first item after Clear: %q", combo.SelectedItemText())
+	}
+}
+
+// The pages of a tab widget: the current one, changes keep it
+func TestTabWidgetPages(t *testing.T) {
+	form := newForm(400, 300)
+	tabs := ui.NewTabWidget()
+	pages := map[string]*ui.Panel{}
+	for _, name := range []string{"A", "B", "C"} {
+		pages[name] = ui.NewPanel()
+		tabs.AddPage(name, pages[name])
+	}
+	form.Panel().AddWidget(0, 0, tabs)
+	w := uitest.Show(t, form)
+	current, activated := count(&tabs.OnCurrentChanged), count(&tabs.OnActivated)
+
+	tabs.SetCurrentIndex(1)
+	if tabs.CurrentIndex() != 1 || tabs.CurrentPage() != ui.Widgeter(pages["B"]) || current.n != 1 || activated.n != 0 {
+		t.Fatalf("SetCurrentIndex: %d, changed %d, activated %d", tabs.CurrentIndex(), current.n, activated.n)
+	}
+	tabs.InsertPage(0, "Z", ui.NewPanel())
+	if tabs.CurrentPage() != ui.Widgeter(pages["B"]) || tabs.CurrentIndex() != 2 || tabs.PageCount() != 4 {
+		t.Errorf("after InsertPage: %d", tabs.CurrentIndex())
+	}
+	tabs.RemovePage(tabs.PageIndex(pages["B"])) // the current one: the next is current
+	if tabs.CurrentPage() != ui.Widgeter(pages["C"]) {
+		t.Errorf("after removing the current page: %d", tabs.CurrentIndex())
+	}
+	tabs.SetPageName(0, "First")
+
+	// A click on the first tab: the user's choice
+	w.Click(uitest.At(tabs, 20, 10))
+	if tabs.CurrentIndex() != 0 || activated.n != 1 || activated.last != 0 {
+		t.Errorf("click: current %d, activated %d", tabs.CurrentIndex(), activated.n)
+	}
+}

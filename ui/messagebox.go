@@ -95,6 +95,40 @@ func ShowQuestionMessageBoxOKCancel(parentWidget Widgeter, title string, text st
 	showMessageBoxForm(c, parentWidget)
 }
 
+// ShowQuestionMessageBoxYesNoCancel asks a question with three answers, as
+// "Save the changes?" before closing a document: Yes (Enter), No, and Cancel
+// (Esc, or closing the box), which keeps things as they are. The callbacks
+// run after the box closes; any of them may be nil.
+func ShowQuestionMessageBoxYesNoCancel(parentWidget Widgeter, title string, text string, onYes, onNo, onCancel func()) {
+	c, buttonPanel := newMessageBoxForm(title, text)
+	answer := func(f func()) func() {
+		return func() {
+			c.Close()
+			runOnParent(parentWidget, f)
+		}
+	}
+
+	buttonPanel.AddHSpacer(0, 0)
+	yesButton := buttonPanel.AddButton(0, 1, "", answer(onYes))
+	yesButton.SetTextFunc(func() string { return UIText().Yes })
+	noButton := buttonPanel.AddButton(0, 2, "", answer(onNo))
+	noButton.SetTextFunc(func() string { return UIText().No })
+	cancelButton := buttonPanel.AddButton(0, 3, "", answer(onCancel))
+	cancelButton.SetTextFunc(func() string { return UIText().Cancel })
+	buttonPanel.AddHSpacer(0, 4)
+
+	c.SetAcceptButton(yesButton)
+	c.SetCancelButton(cancelButton)
+	// The close button of the box is a Cancel too
+	c.OnClose = func() bool {
+		runOnParent(parentWidget, onCancel)
+		return true
+	}
+	yesButton.Focus()
+
+	showMessageBoxForm(c, parentWidget)
+}
+
 // newMessageBoxForm builds a message box form sized to fit the wrapped text
 // and returns it along with the empty panel reserved for the button row.
 func newMessageBoxForm(title string, text string) (*Form, *Panel) {

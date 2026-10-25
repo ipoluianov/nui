@@ -58,8 +58,6 @@ Short reference for `ui` controls. Code snippets are intentionally minimal—see
 - [Dialog](content/dialog.md)
 - [MessageBox](content/messagebox.md)
 - [QuestionMessageBox](content/question_messagebox.md)
-- [EnterStringDialog](content/enter_string_dialog.md)
-- [AboutDialog](content/about_dialog.md)
 - [Toasts](content/toast.md)
 - [Printing and PDF](content/printing.md)
 

@@ -20,7 +20,6 @@ func NewRadioButton(text string) *RadioButton {
 	var c RadioButton
 	c.InitWidget()
 	c.SetTypeName("RadioButton")
-	c.SetMinWidth(150)
 	c.SetMaxWidth(10000)
 	c.setThemeHeight(ThemeControlHeight, true)
 	c.SetMouseCursor(MouseCursorPointer)
@@ -42,7 +41,20 @@ func (c *RadioButton) Text() string {
 
 func (c *RadioButton) SetText(text string) {
 	c.text = text
+	c.SetMinWidth(indicatorMinWidth(&c.Widget, text))
 	c.form.Update()
+}
+
+func (c *RadioButton) applyThemeMetrics() {
+	c.Widget.applyThemeMetrics()
+	c.SetMinWidth(indicatorMinWidth(&c.Widget, c.text))
+}
+
+// ProcessPropChange: a font of another size needs another width
+func (c *RadioButton) ProcessPropChange(key string, value interface{}) {
+	if isFontProp(key) {
+		c.SetMinWidth(indicatorMinWidth(&c.Widget, c.text))
+	}
 }
 
 func (c *RadioButton) SetOnStateChanged(fn func(btn *RadioButton, checked bool)) {
