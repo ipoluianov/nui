@@ -59,7 +59,7 @@ func NewEditableComboBox() *EditableComboBox {
 
 	c.edit = NewTextBox()
 	c.edit.SetOnTextChanged(c.textChanged)
-	c.edit.SetOnTextBoxKeyDown(c.editKeyDown)
+	c.edit.OnKeyDown.Connect(c.editKeyDown)
 	c.AddWidget(0, 0, c.edit)
 	return &c
 }
@@ -240,8 +240,7 @@ func (c *EditableComboBox) textChanged() {
 	c.showSuggestions(true)
 }
 
-func (c *EditableComboBox) editKeyDown() {
-	ev := CurrentEvent().Parameter.(*EventTextboxKeyDown)
+func (c *EditableComboBox) editKeyDown(ev *KeyEvent) {
 	open := c.popup != nil
 	switch {
 	case (ev.Key == KeyArrowDown && ev.Mods.Alt) || ev.Key == KeyF4:
@@ -274,7 +273,7 @@ func (c *EditableComboBox) editKeyDown() {
 	default:
 		return
 	}
-	ev.Processed = true
+	ev.Handled = true
 }
 
 func (c *EditableComboBox) drawButton(cnv *Canvas) {

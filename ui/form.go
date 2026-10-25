@@ -48,6 +48,10 @@ type Form struct {
 
 	mouseLeftButtonPressed       bool
 	mouseLeftButtonPressedWidget Widgeter
+	// mousePressedWidget got the press of mousePressedButton, any button:
+	// it gets the moves and the release while the button is held
+	mousePressedWidget Widgeter
+	mousePressedButton MouseButton
 
 	topWidget     *Panel
 	hoverWidget   Widgeter
@@ -942,6 +946,9 @@ func (c *Form) processMouseDown(button MouseButton, x int, y int) {
 	c.mouseDownPopup = c.popupUnderMouse
 	target, targetX, targetY := c.mouseTarget(c.popupUnderMouse, x, y)
 	widgetAtCoords := c.widgetUnderMouse(x, y)
+	if c.mousePressedWidget == nil {
+		c.mousePressedWidget, c.mousePressedButton = widgetAtCoords, button
+	}
 	if c.mouseLeftButtonPressed {
 		c.mouseLeftButtonPressedWidget = widgetAtCoords
 		if button == MouseButtonLeft && c.popupUnderMouse == nil {
@@ -959,7 +966,9 @@ func (c *Form) processMouseDown(button MouseButton, x int, y int) {
 			}
 		}
 	}
-	target.ProcessMouseDown(button, targetX, targetY, c.lastKeyboardModifiers)
+	if !c.emitMouse(widgetAtCoords, mouseDownSignal, button, x, y) {
+		target.ProcessMouseDown(button, targetX, targetY, c.lastKeyboardModifiers)
+	}
 	c.Update()
 }
 
@@ -981,15 +990,25 @@ func (c *Form) processMouseDblClick(button MouseButton, x int, y int) {
 	if widgetAtCoords != nil && target != Widgeter(c.menuBar) {
 		widgetAtCoords.Focus()
 	}
+	if c.emitMouse(widgetAtCoords, mouseDoubleClickSignal, button, x, y) {
+		c.Update()
+		return
+	}
 	target.ProcessMouseDblClick(button, targetX, targetY, c.lastKeyboardModifiers)
 	c.Update()
 }
 
 func (c *Form) processMouseUp(button MouseButton, x int, y int) {
 	c.layoutNow()
-	mouseLeftButtonPressedWidgetId := ""
-	if c.mouseLeftButtonPressedWidget != nil {
-		mouseLeftButtonPressedWidgetId = c.mouseLeftButtonPressedWidget.Id()
+	// The release goes to the widget that got the press, of any button
+	var pressed Widgeter
+	if button == c.mousePressedButton {
+		pressed = c.mousePressedWidget
+		c.mousePressedWidget = nil
+	}
+	pressedId := ""
+	if pressed != nil {
+		pressedId = pressed.Id()
 	}
 
 	if button == MouseButtonLeft {
@@ -1009,16 +1028,31 @@ func (c *Form) processMouseUp(button MouseButton, x int, y int) {
 		c.Update() // the press closed that popup
 		return
 	}
+	signalTarget := pressed
+	if signalTarget == nil {
+		signalTarget = c.widgetUnderMouse(x, y)
+	}
+	if c.emitMouse(signalTarget, mouseUpSignal, button, x, y) {
+		c.Update()
+		return
+	}
 	if downPopup != nil {
 		target, targetX, targetY := c.mouseTarget(downPopup, x, y)
-		target.ProcessMouseUp(button, targetX, targetY, c.lastKeyboardModifiers, mouseLeftButtonPressedWidgetId)
+		target.ProcessMouseUp(button, targetX, targetY, c.lastKeyboardModifiers, pressedId)
 	} else {
 		// Wherever the mouse is now, both get it: only the pressed widget
 		// handles it (see onlyForWidgetId)
 		if c.menuBar != nil {
-			c.menuBar.ProcessMouseUp(button, x-c.menuBar.X(), y-c.menuBar.Y(), c.lastKeyboardModifiers, mouseLeftButtonPressedWidgetId)
+			c.menuBar.ProcessMouseUp(button, x-c.menuBar.X(), y-c.menuBar.Y(), c.lastKeyboardModifiers, pressedId)
 		}
-		c.topWidget.ProcessMouseUp(button, x-c.topWidget.X(), y-c.topWidget.Y(), c.lastKeyboardModifiers, mouseLeftButtonPressedWidgetId)
+		c.topWidget.ProcessMouseUp(button, x-c.topWidget.X(), y-c.topWidget.Y(), c.lastKeyboardModifiers, pressedId)
+	}
+
+	// A click: the left button pressed and released on the same widget
+	if button == MouseButtonLeft && pressed != nil && pressed.Enabled() && c.widgetUnderMouse(x, y) == pressed {
+		if b := pressed.widgetBase(); b.OnClick.Connected() && !b.emitsOwnClick {
+			b.OnClick.Emit(pressed)
+		}
 	}
 
 	c.Update()
@@ -1027,6 +1061,16 @@ func (c *Form) processMouseUp(button MouseButton, x int, y int) {
 func (c *Form) processMouseMove(x int, y int) {
 	c.layoutNow()
 	if c.dragMouseMove(x, y) {
+		return
+	}
+	// The pressed widget gets the moves while a button is held
+	signalTarget := c.mousePressedWidget
+	if signalTarget == nil {
+		signalTarget = c.widgetUnderMouse(x, y)
+	}
+	if c.emitMouse(signalTarget, mouseMoveSignal, 0, x, y) {
+		c.lastMouseX, c.lastMouseY = x, y
+		c.Update()
 		return
 	}
 	if c.mouseLeftButtonPressedWidget != nil {
@@ -1150,6 +1194,18 @@ func (c *Form) processKeyDown(keyCode Key, mods KeyModifiers) bool {
 
 	if c.lastKeyboardModifiers != mods {
 		c.lastKeyboardModifiers = mods
+	}
+
+	// The focused widget's handlers see the key first
+	if w := c.focusedWidget; w != nil && w.Enabled() {
+		if b := w.widgetBase(); b.OnKeyDown.Connected() {
+			e := &KeyEvent{Key: keyCode, Mods: mods}
+			b.OnKeyDown.Emit(e)
+			if e.Handled {
+				c.Update()
+				return true
+			}
+		}
 	}
 
 	// The keys that edit text go to a focused text field (see handlesKey)
@@ -1303,6 +1359,16 @@ func (c *Form) processKeyUp(keyCode Key, mods KeyModifiers) {
 		c.lastKeyboardModifiers.Alt = false
 		c.Update()
 	}
+	if w := c.focusedWidget; w != nil && w.Enabled() {
+		if b := w.widgetBase(); b.OnKeyUp.Connected() {
+			e := &KeyEvent{Key: keyCode, Mods: mods}
+			b.OnKeyUp.Emit(e)
+			if e.Handled {
+				c.Update()
+				return
+			}
+		}
+	}
 	if c.focusedWidget != nil {
 		c.focusedWidget.ProcessKeyUp(keyCode, mods)
 		c.Update()
@@ -1314,6 +1380,16 @@ func (c *Form) processKeyUp(keyCode Key, mods KeyModifiers) {
 
 func (c *Form) processChar(char rune) {
 	c.layoutNow()
+	if w := c.focusedWidget; w != nil && w.Enabled() {
+		if b := w.widgetBase(); b.OnChar.Connected() {
+			e := &CharEvent{Char: char, Mods: c.lastKeyboardModifiers}
+			b.OnChar.Emit(e)
+			if e.Handled {
+				c.Update()
+				return
+			}
+		}
+	}
 	if c.focusedWidget != nil {
 		c.focusedWidget.ProcessChar(char, c.lastKeyboardModifiers)
 		c.Update()
@@ -1324,6 +1400,17 @@ func (c *Form) processChar(char rune) {
 
 func (c *Form) processMouseWheel(deltaX int, deltaY int) {
 	c.layoutNow()
+	if w := c.widgetUnderMouse(c.lastMouseX, c.lastMouseY); w != nil && w.Enabled() {
+		if b := w.widgetBase(); b.OnWheel.Connected() {
+			lx, ly := localPoint(w, c.lastMouseX, c.lastMouseY)
+			e := &WheelEvent{DX: deltaX, DY: deltaY, X: lx, Y: ly, Mods: c.lastKeyboardModifiers}
+			b.OnWheel.Emit(e)
+			if e.Handled {
+				c.Update()
+				return
+			}
+		}
+	}
 	if c.lastKeyboardModifiers.Shift {
 		deltaX, deltaY = deltaY, deltaX // Swap for horizontal scrolling
 	}
@@ -1465,4 +1552,35 @@ func (c *Form) SetAcceptButton(button *Button) {
 
 func (c *Form) SetCancelButton(button *Button) {
 	c.cancelButton = button
+}
+
+// The mouse signals of a widget, for emitMouse
+var (
+	mouseDownSignal        = func(b *Widget) *Signal[*MouseEvent] { return &b.OnMouseDown }
+	mouseUpSignal          = func(b *Widget) *Signal[*MouseEvent] { return &b.OnMouseUp }
+	mouseMoveSignal        = func(b *Widget) *Signal[*MouseEvent] { return &b.OnMouseMove }
+	mouseDoubleClickSignal = func(b *Widget) *Signal[*MouseEvent] { return &b.OnMouseDoubleClick }
+)
+
+// emitMouse emits the mouse signal of the widget the event goes to, at the
+// client point (x, y); it returns whether a handler handled the event
+func (c *Form) emitMouse(w Widgeter, signal func(*Widget) *Signal[*MouseEvent], button MouseButton, x, y int) bool {
+	if w == nil || !w.Enabled() {
+		return false
+	}
+	s := signal(w.widgetBase())
+	if !s.Connected() {
+		return false
+	}
+	lx, ly := localPoint(w, x, y)
+	e := &MouseEvent{Button: button, X: lx, Y: ly, Mods: c.lastKeyboardModifiers}
+	s.Emit(e)
+	return e.Handled
+}
+
+// localPoint converts the client point to the coordinates of the widget's
+// content, as its own mouse handlers get them
+func localPoint(w Widgeter, x, y int) (int, int) {
+	wx, wy := w.RectClientAreaOnWindow()
+	return x - wx + w.ScrollX(), y - wy + w.ScrollY()
 }

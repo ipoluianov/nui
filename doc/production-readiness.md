@@ -239,7 +239,7 @@ nui хорошо решает задачу «нативное окно без cg
 |---|---|---|---|
 | 1 | ✅ исправлено. `RemoveWidget` не перекладывает родителя: `return` стоит до `c.updateLayout` | `ui/widget.go:541-554` | проба: после удаления левого из двух TextBox правый остался на `x=200` |
 | 2 | ✅ исправлено. Два виджета в одной ячейке грида: второй не раскладывается, остаётся 300×180 в (0,0), предупреждения нет | `gridCells()` → `map[gridCell]Widgeter` | проба |
-| 3 | Отпускание правой и средней кнопки мыши не доходит до `onMouseUp` виджета, захвата мыши для этих кнопок нет | `form.go:911` (`mouseLeftButtonPressedWidget` ставится только при нажатой левой), `widget.go:1680` | по коду; клиент altpaint `canvasinput.go:28`: «nui tells the release of the left button only» |
+| 3 | ✅ исправлено. Отпускание правой и средней кнопки мыши не доходит до `onMouseUp` виджета, захвата мыши для этих кнопок нет | `form.go:911` (`mouseLeftButtonPressedWidget` ставится только при нажатой левой), `widget.go:1680` | по коду; клиент altpaint `canvasinput.go:28`: «nui tells the release of the left button only» |
 | 4 | `SetEnabled(false)` у контейнера не отключает детей: кнопка внутри отключённой Panel нажимается | `Widget.Enabled()` смотрит только на себя | проба: `clicked=1` |
 | 5 | Многострочный TextBox на **любое** изменение свойства включает `SetXExpandable(true)`/`SetYExpandable(true)` | `textbox.go:235-256` | по коду; клиент altjarvis `chats_page.go:90` |
 | 6 | `Canvas.DrawImage` игнорирует `img.Bounds().Min` (исходная точка `{xOffset,yOffset}`, ширина берётся из `Max.X`), поэтому sub-image рисуется неверно | `canvas.go:1091-1131` | по коду |
@@ -252,6 +252,7 @@ nui хорошо решает задачу «нативное окно без cg
 | 13 | Нестабильная семантика `ShowModal`: блокирует только на macOS | `internal/platforms/window.go:27` | по коду и комментарию |
 | 14 | Высота Label не зависит от размера шрифта: всегда `ThemeControlHeight()`, поэтому крупный текст обрезается снизу | `label.go:130` | вживую: Label 40 px обрезан по нижним выносным элементам |
 | 15 | Вопрос «Сохранить изменения?» в примере notepad: Esc закрывает окно без сохранения. В nui есть только `ShowQuestionMessageBoxYesNo`, и Esc в нём — кнопка «Нет», то есть «не сохранять». Нужен вопрос «Да/Нет/Отмена», где Esc — «Отмена» | `ui/messagebox.go:50`, `examples/notepad/document.go:45` | тест `examples/notepad/notepad_ui_test.go` |
+| 16 | NumBox вытягивается по высоте, если в сетке нет растягиваемой строки (без `AddVSpacer`); ширина его кнопок со стрелками равна высоте поля, поэтому щелчок в середину поля меняет значение | `numbox.go:377` (`buttonRect`) | тест `ui/regression` |
 
 ---
 
@@ -532,6 +533,16 @@ API: `AddPage`, `SetPageNameFunc`, `SetItems`. Нет:
    - Колесо мыши с позицией и модификаторами.
    - mouse-up и захват для всех кнопок (§5 #3).
    - Единое правило «программный сеттер колбэк не вызывает» (или `Changed` и `Activated`).
+
+   **Сделано (2026-10-25)**, см. [events.md](events.md):
+   - `ui.Signal[T]` с `Connect`/`Disconnect`, обработчиков сколько угодно;
+   - у любого виджета: `OnMouseDown/Up/DoubleClick/Move`, `OnWheel` (с позицией и модификаторами), `OnKeyDown/Up`, `OnChar` (с `Handled`, до обработки самим виджетом), `OnClick` (теперь у любого виджета, не только у Button), `OnResize`, `OnFocusChanged`;
+   - правило `On…Changed` — любое изменение, `OnActivated` — действие пользователя — у TextBox (`OnTextChanged`/`OnTextEdited`, плюс `OnSubmit`, `OnEditingFinished`), ComboBox, Checkbox, ToggleSwitch, RadioButton, NumBox, Slider; сигналы Table и TreeView; `ui.OnThemeChanged`;
+   - отпускание и захват для всех кнопок мыши (§5 #3); Button, Checkbox, RadioButton больше не нажимаются правой кнопкой;
+   - `CurrentEvent()` и колбэки, которые без него не работают, помечены `Deprecated`, внутри nui больше не используются;
+   - `TextBox.SetText` уведомлял об изменении дважды и при том же тексте — исправлено.
+
+   Старые `SetOn…` не менялись: их поведение то же, кроме #3. Не сделано: сигналы остальных виджетов (DatePicker, TimePicker, ColorPicker, Calendar, TabWidget, Splitter, Expander, EditableComboBox, PropertyGrid, TimeChart) и формы (`OnMoved`, смена состояния окна).
 3. **Мутационные API базовых контролов.**
    - ComboBox: `Clear`, `RemoveItem`, `InsertItem`, `SetItems`, `ItemData`, `FindData`.
    - TabWidget: `CurrentIndex`, `SetCurrentIndex`, `OnCurrentChanged`, `RemovePage`, `InsertPage`, `SetPageVisible`.

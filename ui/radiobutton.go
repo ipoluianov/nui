@@ -4,6 +4,13 @@ import ()
 
 type RadioButton struct {
 	Widget
+
+	// OnCheckedChanged: the button got or lost the check, by the user, by
+	// SetChecked or by another button of the group
+	OnCheckedChanged Signal[bool]
+	// OnActivated: the user chose this button (clicked it, pressed Space)
+	OnActivated Signal[bool]
+
 	checked        bool
 	text           string
 	onStateChanged func(btn *RadioButton, checked bool)
@@ -63,6 +70,15 @@ func (c *RadioButton) SetChecked(checked bool) {
 	if c.onStateChanged != nil {
 		c.onStateChanged(c, checked)
 	}
+	c.OnCheckedChanged.Emit(checked)
+}
+
+// activate checks the button as the user's choice
+func (c *RadioButton) activate() {
+	if !c.checked {
+		c.SetChecked(true)
+	}
+	c.OnActivated.Emit(true)
 }
 
 func (c *RadioButton) Checked() bool {
@@ -97,19 +113,23 @@ func (c *RadioButton) ProcessKeyDown(key Key, mods KeyModifiers) bool {
 		return true
 	}
 	if key == KeySpace && !mods.Ctrl && !mods.Alt && !mods.Cmd && c.Enabled() {
-		if !c.checked {
-			c.SetChecked(true)
-		}
+		c.activate()
 		return true
 	}
 	return false
 }
 
 func (c *RadioButton) buttonProcessMouseDown(button MouseButton, x int, y int, mods KeyModifiers) bool {
+	if button != MouseButtonLeft {
+		return false // a click is of the left button
+	}
 	return true
 }
 
 func (c *RadioButton) buttonProcessMouseUp(button MouseButton, x int, y int, mods KeyModifiers) bool {
+	if button != MouseButtonLeft {
+		return false // a click is of the left button
+	}
 	if x < 0 || x >= c.Width() || y < 0 || y >= c.Height() {
 		// MouseUp outside the button area, ignore
 		return false
@@ -118,9 +138,7 @@ func (c *RadioButton) buttonProcessMouseUp(button MouseButton, x int, y int, mod
 	hoverWidgeter := c.form.hoverWidget
 	var localWidgeter Widgeter = c
 	if hoverWidgeter == localWidgeter {
-		if !c.checked {
-			c.SetChecked(true)
-		}
+		c.activate()
 	}
 
 	return true

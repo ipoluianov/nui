@@ -12,6 +12,14 @@ import (
 type NumBox struct {
 	Widget
 
+	// OnValueChanged: the value changed, by the user or by SetValue (and the
+	// range)
+	OnValueChanged Signal[float64]
+	// OnActivated: the user changed the value: typed a number and left the
+	// box or pressed Enter, stepped it with the arrows, the buttons or the
+	// wheel
+	OnActivated Signal[float64]
+
 	// editing state
 	text      string
 	cursorPos int // rune index in text
@@ -158,6 +166,16 @@ func (c *NumBox) fireValueChanged() {
 		PushEvent(&ev)
 		f()
 		PopEvent()
+	}
+	c.OnValueChanged.Emit(c.value)
+}
+
+// setValueByUser sets the value the user typed or stepped to
+func (c *NumBox) setValueByUser(v float64) {
+	before, had := c.value, c.hasValue
+	c.SetValue(v)
+	if !had || c.value != before {
+		c.OnActivated.Emit(c.value)
 	}
 }
 
@@ -803,7 +821,7 @@ func (c *NumBox) commitText() {
 		return
 	}
 	if v, ok := c.parseText(c.text); ok {
-		c.SetValue(v)
+		c.setValueByUser(v)
 		return
 	}
 	// If invalid, revert to current value formatting.
@@ -824,7 +842,7 @@ func (c *NumBox) stepBy(delta float64) {
 		p := math.Pow10(c.decimals)
 		v = math.Round(v*p) / p
 	}
-	c.SetValue(v)
+	c.setValueByUser(v)
 }
 
 // handlesKey: the text editing keys go to the number box before the

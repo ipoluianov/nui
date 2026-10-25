@@ -7,6 +7,12 @@ package ui
 //	wifi.SetOnStateChanged(func() { network.SetWifi(wifi.Checked()) })
 type ToggleSwitch struct {
 	Widget
+
+	// OnCheckedChanged: the state changed, by the user or by SetChecked
+	OnCheckedChanged Signal[bool]
+	// OnActivated: the user flipped the switch; the new state
+	OnActivated Signal[bool]
+
 	text           string
 	checked        bool
 	onStateChanged func()
@@ -62,6 +68,12 @@ func (c *ToggleSwitch) Checked() bool {
 // SetChecked sets the state without calling SetOnStateChanged's function
 // and without the animation.
 func (c *ToggleSwitch) SetChecked(checked bool) {
+	changed := checked != c.checked
+	defer func() {
+		if changed {
+			c.OnCheckedChanged.Emit(checked)
+		}
+	}()
 	c.checked = checked
 	c.knob = 0
 	if checked {
@@ -81,6 +93,8 @@ func (c *ToggleSwitch) toggle() {
 	if c.onStateChanged != nil {
 		c.onStateChanged()
 	}
+	c.OnCheckedChanged.Emit(c.checked)
+	c.OnActivated.Emit(c.checked)
 }
 
 func (c *ToggleSwitch) animate() {

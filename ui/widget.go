@@ -149,6 +149,34 @@ type Widget struct {
 	onFocused   func()
 	onFocusLost func()
 
+	// Signals: see signal.go. The input ones are emitted by the form to the
+	// widget the event goes to, before the widget's own handling.
+
+	// OnMouseDown, OnMouseUp, OnMouseDoubleClick: a button pressed,
+	// released, double-clicked; the release goes to the widget that got the
+	// press, wherever the mouse is
+	OnMouseDown, OnMouseUp, OnMouseDoubleClick Signal[*MouseEvent]
+	// OnMouseMove: the mouse moved over the widget, or anywhere while a
+	// button pressed on it is held
+	OnMouseMove Signal[*MouseEvent]
+	// OnWheel: the mouse wheel turned over the widget
+	OnWheel Signal[*WheelEvent]
+	// OnKeyDown, OnKeyUp, OnChar: on the focused widget, before the form's
+	// shortcuts and the widget's own keys
+	OnKeyDown, OnKeyUp Signal[*KeyEvent]
+	OnChar             Signal[*CharEvent]
+	// OnClick: the left button pressed and released on the widget; a
+	// button is also clicked with the keys (Space, Enter) and Push
+	OnClick Signal[Widgeter]
+	// OnResize: the layout gave the widget a new size
+	OnResize Signal[Size]
+	// OnFocusChanged: the widget got (true) or lost the keyboard focus
+	OnFocusChanged Signal[bool]
+
+	// emitsOwnClick is set by the widgets that emit OnClick themselves
+	// (Button): the form doesn't emit it for them
+	emitsOwnClick bool
+
 	// See SetDragSource and SetDropTarget
 	dragSource  func(x, y int) *DragData
 	dropAccept  func(data *DragData, x, y int) bool
@@ -173,18 +201,27 @@ type Widget struct {
 // font size (see ThemeControlHeight); ApplyBaseFontSize updates it.
 var DefaultUiLineHeight = 30
 
+// Event is the data of the callback being called, see CurrentEvent.
+//
+// Deprecated: the signals carry their data (see Signal).
 type Event struct {
 	Parameter any
 }
 
 var eventsStack []*Event
 
+// PushEvent makes p the data of the callback about to be called.
+//
+// Deprecated: the signals carry their data (see Signal).
 func PushEvent(p any) {
 	var ev Event
 	ev.Parameter = p
 	eventsStack = append(eventsStack, &ev)
 }
 
+// PopEvent ends the callback of PushEvent.
+//
+// Deprecated: the signals carry their data (see Signal).
 func PopEvent() {
 	if len(eventsStack) == 0 {
 		return
@@ -192,6 +229,12 @@ func PopEvent() {
 	eventsStack = eventsStack[:len(eventsStack)-1]
 }
 
+// CurrentEvent returns the data of the callback being called, e.g.
+// *EventTextboxKeyDown in the function of TextBox.SetOnTextBoxKeyDown.
+//
+// Deprecated: use the signals, which carry their data: TextBox.OnKeyDown
+// (with Handled) instead of SetOnTextBoxKeyDown, Table.OnCellDoubleClick
+// instead of SetOnCellMouseDblClick.
 func CurrentEvent() *Event {
 	if len(eventsStack) == 0 {
 		return nil
@@ -1368,12 +1411,19 @@ func (c *Widget) ProcessFocused() {
 	if c.onFocused != nil {
 		c.onFocused()
 	}
+	c.OnFocusChanged.Emit(true)
 }
 
 func (c *Widget) ProcessFocusLost() {
 	if c.onFocusLost != nil {
 		c.onFocusLost()
 	}
+	c.OnFocusChanged.Emit(false)
+}
+
+// widgetBase returns the Widget the widget is built on
+func (c *Widget) widgetBase() *Widget {
+	return c
 }
 
 func (c *Widget) IsFocused() bool {
@@ -1411,6 +1461,9 @@ func (c *Widget) SetSize(w, h int) {
 	c.h = h
 	c.updateLayout(oldW, oldH, w, h)
 	c.checkScrolls()
+	if w != oldW || h != oldH {
+		c.OnResize.Emit(Size{w, h})
+	}
 }
 
 func (c *Widget) SetMinSize(minWidth, minHeight int) {

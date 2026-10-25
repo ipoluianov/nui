@@ -151,7 +151,18 @@ func ApplyPalette(palette ThemePalette, dark bool) {
 	for _, form := range openForms() {
 		form.Invoke(form.applyTheme)
 	}
+	if IsUIThread() {
+		OnThemeChanged.Emit(dark)
+	} else {
+		Invoke(func() { OnThemeChanged.Emit(dark) })
+	}
 }
+
+// OnThemeChanged is emitted, on the UI thread, after a theme is applied
+// (ApplyPalette, ApplyDarkTheme, ApplyLightTheme): the argument tells
+// whether it is dark. The widgets repaint in the new colors themselves; a
+// handler recolors what the application colored itself, e.g. its icons.
+var OnThemeChanged Signal[bool]
 
 // ApplyBaseFontSize sets the size of the theme font and lays out the open
 // forms again: the heights of controls follow the font (see ThemeControlHeight).

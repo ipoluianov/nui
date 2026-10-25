@@ -54,11 +54,17 @@ func (c *tabWidgetButton) draw(cnv *Canvas) {
 }
 
 func (c *tabWidgetButton) buttonProcessMouseDown(button MouseButton, x int, y int, mods KeyModifiers) bool {
+	if button != MouseButtonLeft {
+		return false // a click is of the left button
+	}
 	c.pressed = true
 	return true
 }
 
 func (c *tabWidgetButton) buttonProcessMouseUp(button MouseButton, x int, y int, mods KeyModifiers) bool {
+	if button != MouseButtonLeft {
+		return false // a click is of the left button
+	}
 	c.pressed = false
 
 	if x < 0 || x >= c.Width() || y < 0 || y >= c.Height() {

@@ -10,6 +10,13 @@ type ComboBox struct {
 	selectedIndex int
 
 	onSelectedIndexChanged func()
+
+	// OnSelectionChanged: the selected item changed (its index), by the user
+	// or by SetSelectedIndex
+	OnSelectionChanged Signal[int]
+	// OnActivated: the user picked an item (its index), also the one that
+	// was selected
+	OnActivated Signal[int]
 }
 
 type ComboBoxItem struct {
@@ -65,14 +72,19 @@ func (c *ComboBox) SetItemText(index int, text string) {
 	c.form.Update()
 }
 
-// SetSelectedIndex selects the item without calling the
-// SetOnSelectedIndexChanged function.
+// SetSelectedIndex selects the item: OnSelectionChanged is emitted, the
+// SetOnSelectedIndexChanged function and OnActivated, which are of the
+// user's choice, are not called.
 func (c *ComboBox) SetSelectedIndex(index int) {
 	if index < 0 || index >= len(c.items) {
 		return
 	}
+	changed := index != c.selectedIndex
 	c.selectedIndex = index
 	c.form.Update()
+	if changed {
+		c.OnSelectionChanged.Emit(index)
+	}
 }
 
 func (c *ComboBox) SelectedIndex() int {
@@ -96,6 +108,7 @@ func (c *ComboBox) selectByUser(index int) {
 	if changed && c.onSelectedIndexChanged != nil {
 		c.onSelectedIndexChanged()
 	}
+	c.OnActivated.Emit(index)
 }
 
 // ProcessKeyDown lets the keyboard pick an item: Up/Down choose the previous

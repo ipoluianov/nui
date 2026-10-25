@@ -3,6 +3,13 @@ package ui
 import ()
 
 type Checkbox struct {
+	// OnCheckedChanged: the state changed, by the user or by SetChecked and
+	// SetIndeterminate; the argument is Checked()
+	OnCheckedChanged Signal[bool]
+	// OnActivated: the user clicked the checkbox or pressed Space; the
+	// argument is the new Checked()
+	OnActivated Signal[bool]
+
 	Widget
 	//checked        bool
 	//text           string
@@ -97,6 +104,7 @@ func (c *Checkbox) stateChanged(checked bool) {
 		f()
 		PopEvent()
 	}
+	c.OnCheckedChanged.Emit(c.Checked())
 }
 
 func (c *Checkbox) Checked() bool {
@@ -140,10 +148,16 @@ func (c *Checkbox) draw(cnv *Canvas) {
 }
 
 func (c *Checkbox) buttonProcessMouseDown(button MouseButton, x int, y int, mods KeyModifiers) bool {
+	if button != MouseButtonLeft {
+		return false // a click is of the left button
+	}
 	return true
 }
 
 func (c *Checkbox) buttonProcessMouseUp(button MouseButton, x int, y int, mods KeyModifiers) bool {
+	if button != MouseButtonLeft {
+		return false // a click is of the left button
+	}
 	if x < 0 || x >= c.Width() || y < 0 || y >= c.Height() {
 		// MouseUp outside the button area, ignore
 		return false
@@ -183,4 +197,5 @@ func (c *Checkbox) toggle() {
 	default:
 		c.SetChecked(!c.Checked())
 	}
+	c.OnActivated.Emit(c.Checked())
 }

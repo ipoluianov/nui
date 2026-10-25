@@ -18,6 +18,7 @@ type Widgeter interface {
 	InnerWidth() int
 	InnerHeight() int
 	Form() *Form
+	widgetBase() *Widget
 
 	SetProp(key string, value interface{})
 	SetPropFunction(key string, f func())

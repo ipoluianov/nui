@@ -11,6 +11,20 @@ import (
 type Table struct {
 	Widget
 
+	// OnSelectionChanged: the current cell or the selection changed, by
+	// the user or by the code; the current cell
+	OnSelectionChanged Signal[TableCell]
+	// OnCellDoubleClick: a cell was double-clicked. Handled set by a
+	// handler keeps the table from editing the cell
+	OnCellDoubleClick Signal[*TableCellEvent]
+	// OnCellChanged: the text of a cell changed, by SetCellText2 or by the
+	// user's edit
+	OnCellChanged Signal[TableCell]
+	// OnCellEdited: the user edited a cell and accepted the text
+	OnCellEdited Signal[TableCell]
+	// OnColumnClick: a column header was clicked; the column
+	OnColumnClick Signal[int]
+
 	// Content of the table
 	headerRowsCount  int
 	headerRows       map[int]*tableHeaderRow
@@ -375,6 +389,31 @@ func (c *Table) SetOnSelectionChanged(callback func(x int, y int)) {
 	c.onSelectionChanged = callback
 }
 
+// TableCell is a cell of a table: its row and column, and its text where
+// the signal is of a text
+type TableCell struct {
+	Row, Col int
+	Text     string
+}
+
+// TableCellEvent is a mouse event on a cell
+type TableCellEvent struct {
+	Row, Col int
+	Button   MouseButton
+	Mods     KeyModifiers
+	// Handled set by a handler stops the table's own handling
+	Handled bool
+}
+
+// selectionChanged tells the handlers the current cell or the selection
+// changed
+func (c *Table) selectionChanged(row, col int) {
+	if c.onSelectionChanged != nil {
+		c.onSelectionChanged(row, col)
+	}
+	c.OnSelectionChanged.Emit(TableCell{Row: row, Col: col})
+}
+
 func (c *Table) AddWidgetOnTable(widget Widgeter, posCellRow int, posCellCol int, widthInCells int, heightInCells int) {
 	if posCellCol < 0 || posCellRow < 0 || posCellCol >= c.columnCount || posCellRow >= c.rowCount {
 		return
@@ -531,8 +570,8 @@ func (c *Table) ClearRows() {
 	c.updateInnerWidgetsLayout()
 
 	c.form.Update()
-	if hadSelection && c.onSelectionChanged != nil {
-		c.onSelectionChanged(c.CurrentRow(), c.CurrentColumn())
+	if hadSelection {
+		c.selectionChanged(c.CurrentRow(), c.CurrentColumn())
 	}
 }
 
@@ -674,6 +713,9 @@ func (c *Table) SetCellText2(row int, col int, text string) {
 			cellObj.text = originalText
 		}
 	}
+	if cellObj.text != originalText {
+		c.OnCellChanged.Emit(TableCell{Row: row, Col: col, Text: cellObj.text})
+	}
 
 	c.form.Update()
 }
@@ -781,9 +823,7 @@ func (c *Table) SetCurrentCell2(row int, col int) {
 	c.ScrollToCell2(c.currentCellY, c.currentCellX)
 
 	c.form.Update()
-	if c.onSelectionChanged != nil {
-		c.onSelectionChanged(c.currentCellY, c.currentCellX)
-	}
+	c.selectionChanged(c.currentCellY, c.currentCellX)
 }
 
 // moveCurrentCellForSelection updates the active cell the same way SetCurrentCell2
@@ -804,9 +844,7 @@ func (c *Table) moveCurrentCellForSelection(row int, col int) {
 	c.ScrollToCell2(row, col)
 
 	c.form.Update()
-	if c.onSelectionChanged != nil {
-		c.onSelectionChanged(row, col)
-	}
+	c.selectionChanged(row, col)
 }
 
 // navigateTo moves the active cell for keyboard navigation. When extend is
@@ -992,9 +1030,7 @@ func (c *Table) ClearSelection() {
 	c.clearSelectionSets()
 
 	c.form.Update()
-	if c.onSelectionChanged != nil {
-		c.onSelectionChanged(c.CurrentRow(), c.CurrentColumn())
-	}
+	c.selectionChanged(c.CurrentRow(), c.CurrentColumn())
 }
 
 // SelectAll selects every row (in row-selection mode) or every cell (in
@@ -1023,9 +1059,7 @@ func (c *Table) SelectAll() {
 	c.selectedRows = rows
 	c.selectedCells = cells
 	c.form.Update()
-	if c.onSelectionChanged != nil {
-		c.onSelectionChanged(c.currentCellY, c.currentCellX)
-	}
+	c.selectionChanged(c.currentCellY, c.currentCellX)
 }
 
 // SetSelectedRows selects the rows (in row-selection mode), e.g. to keep a
@@ -1054,9 +1088,7 @@ func (c *Table) SetSelectedRows(rows []int) {
 	}
 	c.selectedRows = selected
 	c.form.Update()
-	if c.onSelectionChanged != nil {
-		c.onSelectionChanged(c.currentCellY, c.currentCellX)
-	}
+	c.selectionChanged(c.currentCellY, c.currentCellX)
 }
 
 // SelectedRows returns the sorted list of currently selected row indices.
@@ -1211,6 +1243,7 @@ func (c *Table) onMouseDown(button MouseButton, x int, y int, mods KeyModifiers)
 	headerColumn := c.headerColumnByPosition(x, y)
 	if headerColumn >= 0 {
 		// fmt.Println("Header column clicked:", headerColumn)
+		c.OnColumnClick.Emit(headerColumn)
 		if c.onColumnClick != nil {
 			c.onColumnClick(headerColumn)
 		}
@@ -1294,6 +1327,10 @@ type EventTableCellMouseDblClick struct {
 	Processed bool
 }
 
+// SetOnCellMouseDblClick sets the function called on a double click on a
+// cell; CurrentEvent().Parameter is *EventTableCellMouseDblClick.
+//
+// Deprecated: use OnCellDoubleClick, whose handler gets the cell.
 func (c *Table) SetOnCellMouseDblClick(callback func()) {
 	c.onCellMouseDblClick = callback
 }
@@ -1312,6 +1349,14 @@ func (c *Table) onMouseDblClick(button MouseButton, x int, y int, mods KeyModifi
 			return true
 		}
 		c.SetCurrentCell2(row, col)
+
+		if c.OnCellDoubleClick.Connected() {
+			e := &TableCellEvent{Row: row, Col: col, Button: button, Mods: mods}
+			c.OnCellDoubleClick.Emit(e)
+			if e.Handled {
+				return true
+			}
+		}
 
 		if c.onCellMouseDblClick != nil {
 			var event EventTableCellMouseDblClick
@@ -1483,7 +1528,7 @@ func (c *Table) onMouseMoveHeader(x int, y int, _ KeyModifiers) MouseCursor {
 	if headerColumnBorder >= 0 {
 		return MouseCursorResizeHor
 	}
-	if c.onColumnClick != nil {
+	if c.onColumnClick != nil || c.OnColumnClick.Connected() {
 		return MouseCursorPointer
 	}
 	return MouseCursorArrow
@@ -2100,6 +2145,7 @@ func (c *Table) EditCurrentCell(enteredText string) {
 	commit := func(text string) {
 		if row < c.rowCount && col < c.columnCount { // the cell may be gone
 			c.SetCellText2(row, col, text)
+			c.OnCellEdited.Emit(TableCell{Row: row, Col: col, Text: c.GetCellText2(row, col)})
 		}
 	}
 
@@ -2110,8 +2156,7 @@ func (c *Table) EditCurrentCell(enteredText string) {
 	c.editorTextBox.SetText(enteredText)
 	c.editorTextBox.MoveCursorToEnd()
 	c.editorTextBox.SelectAllText()
-	c.editorTextBox.SetOnTextBoxKeyDown(func() {
-		ev := CurrentEvent().Parameter.(*EventTextboxKeyDown)
+	c.editorTextBox.OnKeyDown.Connect(func(ev *KeyEvent) {
 		if ev.Key == KeyEnter {
 			if c.editorTextBox != nil {
 				commit(c.editorTextBox.Text())
@@ -2120,7 +2165,7 @@ func (c *Table) EditCurrentCell(enteredText string) {
 				c.form.Update()
 				c.Focus()
 			}
-			ev.Processed = true
+			ev.Handled = true
 			return
 		}
 		if ev.Key == KeyEsc {
@@ -2130,7 +2175,7 @@ func (c *Table) EditCurrentCell(enteredText string) {
 				c.form.Update()
 				c.Focus()
 			}
-			ev.Processed = true
+			ev.Handled = true
 			return
 		}
 	})
@@ -2182,15 +2227,14 @@ func (c *Table) EditCell(row, col, colSpan int, text string, onDone func(text st
 			onDone(value, accepted)
 		}
 	}
-	editor.SetOnTextBoxKeyDown(func() {
-		ev := CurrentEvent().Parameter.(*EventTextboxKeyDown)
+	editor.OnKeyDown.Connect(func(ev *KeyEvent) {
 		switch ev.Key {
 		case KeyEnter:
 			finish(true, true)
-			ev.Processed = true
+			ev.Handled = true
 		case KeyEsc:
 			finish(false, true)
-			ev.Processed = true
+			ev.Handled = true
 		}
 	})
 	editor.SetOnFocusLost(func() { finish(true, false) })

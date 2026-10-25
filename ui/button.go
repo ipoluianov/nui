@@ -22,6 +22,7 @@ func NewButton(text string) *Button {
 	c.InitWidget()
 
 	c.dontAllowOnClickIfDisabled = true
+	c.emitsOwnClick = true
 
 	c.SetTypeName("Button")
 	c.SetMinWidth(DefaultButtonMinWidth)
@@ -64,9 +65,21 @@ func (c *Button) Push() {
 	if !c.Enabled() {
 		return
 	}
-	if f := c.GetPropFunction("onclick"); f != nil {
+	c.click()
+}
+
+// click runs the click handler (SetOnClick) and emits OnClick; false if the
+// button has neither
+func (c *Button) click() bool {
+	f := c.GetPropFunction("onclick")
+	if f == nil && !c.OnClick.Connected() {
+		return false
+	}
+	if f != nil {
 		f()
 	}
+	c.OnClick.Emit(c)
+	return true
 }
 
 func (c *Button) ProcessKeyDown(key Key, mods KeyModifiers) bool {
@@ -75,10 +88,7 @@ func (c *Button) ProcessKeyDown(key Key, mods KeyModifiers) bool {
 
 func (c *Button) onKeyDown(key Key, mods KeyModifiers) bool {
 	if key == KeyEnter || key == KeySpace {
-		if f := c.GetPropFunction("onclick"); f != nil {
-			f()
-			return true
-		}
+		return c.click()
 	}
 	return false
 }
@@ -172,6 +182,9 @@ func (c *Button) updateSizeFromText() {
 }
 
 func (c *Button) buttonProcessMouseDown(button MouseButton, x int, y int, mods KeyModifiers) bool {
+	if button != MouseButtonLeft {
+		return false // a click is of the left button
+	}
 	if !c.Enabled() {
 		return false
 	}
@@ -180,6 +193,9 @@ func (c *Button) buttonProcessMouseDown(button MouseButton, x int, y int, mods K
 }
 
 func (c *Button) buttonProcessMouseUp(button MouseButton, x int, y int, mods KeyModifiers) bool {
+	if button != MouseButtonLeft {
+		return false // a click is of the left button
+	}
 	if !c.Enabled() {
 		return false
 	}
@@ -193,9 +209,7 @@ func (c *Button) buttonProcessMouseUp(button MouseButton, x int, y int, mods Key
 	}
 
 	if wasPressed {
-		if f := c.GetPropFunction("onclick"); f != nil {
-			f()
-		}
+		c.click()
 	}
 
 	return true

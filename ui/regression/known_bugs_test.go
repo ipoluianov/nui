@@ -36,25 +36,6 @@ func newForm(width, height int) *ui.Form {
 	return form
 }
 
-// #3: the release of the right (and the middle) button doesn't reach the
-// widget
-func TestBug03RightButtonUp(t *testing.T) {
-	form := newForm(300, 200)
-	target := ui.NewPanel()
-	target.SetMinSize(100, 100)
-	ups := 0
-	target.SetOnMouseUp(func(button ui.MouseButton, x, y int, mods ui.KeyModifiers) bool {
-		if button == ui.MouseButtonRight {
-			ups++
-		}
-		return true
-	})
-	form.Panel().AddWidget(0, 0, target)
-	w := uitest.Show(t, form)
-	w.RightClick(target)
-	knownBug(t, 3, ups == 0, "no right button release")
-}
-
 // #4: a disabled container doesn't disable its children
 func TestBug04DisabledParent(t *testing.T) {
 	form := newForm(300, 200)
@@ -218,6 +199,19 @@ func TestBug14LabelHeight(t *testing.T) {
 	uitest.Show(t, form)
 	_, textHeight, _ := ui.MeasureText(label.FontFamily(), label.FontSize(), "Big text")
 	knownBug(t, 14, label.Height() < textHeight, "label "+itoa(label.Height())+" px, text "+itoa(textHeight)+" px")
+}
+
+// #16: a NumBox grows high when no row of the grid is expandable, and its
+// arrow buttons are as wide as it is high: a click in its middle steps it
+func TestBug16NumBoxHeight(t *testing.T) {
+	form := newForm(300, 200)
+	num := ui.NewNumBox()
+	form.Panel().AddWidget(0, 0, num)
+	form.Panel().AddWidget(1, 0, ui.NewSlider())
+	w := uitest.Show(t, form)
+	num.SetValue(5)
+	w.Click(num)
+	knownBug(t, 16, num.Value() != 5, "a click in the middle changed 5 to "+fmt.Sprint(num.Value())+", the box is "+itoa(num.Height())+" px high")
 }
 
 func itoa(n int) string { return strconv.Itoa(n) }

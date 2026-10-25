@@ -26,6 +26,23 @@ import (
 type TreeView struct {
 	Widget
 
+	// OnSelectionChanged: the current node or the selection changed, by the
+	// user or by the code; the current node (nil if none)
+	OnSelectionChanged Signal[*TreeNode]
+	// OnNodeActivated: the user double-clicked a node or pressed Enter on it,
+	// where that doesn't start editing
+	OnNodeActivated Signal[*TreeNode]
+	// OnExpanding: a node is about to expand: its children can be added in
+	// a handler, e.g. a folder loaded when it's opened (see SetHasChildren)
+	OnExpanding Signal[*TreeNode]
+	// OnCollapsed: a node collapsed
+	OnCollapsed Signal[*TreeNode]
+	// OnCellEdited: the user edited a cell of a node and it was accepted
+	// (see SetOnCellChanged)
+	OnCellEdited Signal[TreeCell]
+	// OnColumnClick: a column header was clicked; the column
+	OnColumnClick Signal[int]
+
 	nodes []*TreeNode // top-level nodes
 
 	columnCount        int
@@ -516,6 +533,14 @@ func (c *TreeView) fireSelectionChanged() {
 	if c.onSelectionChanged != nil {
 		c.onSelectionChanged(c.current)
 	}
+	c.OnSelectionChanged.Emit(c.current)
+}
+
+// TreeCell is a cell of a tree view: the node, the column and the text
+type TreeCell struct {
+	Node *TreeNode
+	Col  int
+	Text string
 }
 
 func (c *TreeView) selectOnly(node *TreeNode) {
@@ -627,15 +652,14 @@ func (c *TreeView) EditCell(node *TreeNode, col int, enteredText string) {
 		editor.SetText(enteredText)
 		editor.MoveCursorToEnd()
 	}
-	editor.SetOnTextBoxKeyDown(func() {
-		ev := CurrentEvent().Parameter.(*EventTextboxKeyDown)
+	editor.OnKeyDown.Connect(func(ev *KeyEvent) {
 		switch ev.Key {
 		case KeyEnter:
 			c.finishEdit(true, true)
-			ev.Processed = true
+			ev.Handled = true
 		case KeyEsc:
 			c.finishEdit(false, true)
-			ev.Processed = true
+			ev.Handled = true
 		}
 	})
 	// A click elsewhere commits; the focus stays where it went
@@ -677,6 +701,7 @@ func (c *TreeView) finishEdit(commit bool, refocus bool) {
 	}
 	if commit && node.tree == c && (c.onCellChanged == nil || c.onCellChanged(node, col, text)) {
 		node.SetText(col, text)
+		c.OnCellEdited.Emit(TreeCell{Node: node, Col: col, Text: text})
 	}
 	c.form.Update()
 }
@@ -1020,8 +1045,11 @@ func (c *TreeView) onMouseDown(button MouseButton, x int, y int, mods KeyModifie
 			c.columnResizingIndex = border
 			return true
 		}
-		if col := c.columnAt(x); col >= 0 && c.onColumnClick != nil {
-			c.onColumnClick(col)
+		if col := c.columnAt(x); col >= 0 && (c.onColumnClick != nil || c.OnColumnClick.Connected()) {
+			c.OnColumnClick.Emit(col)
+			if c.onColumnClick != nil {
+				c.onColumnClick(col)
+			}
 		}
 		return true
 	}
@@ -1150,6 +1178,7 @@ func (c *TreeView) activate(node *TreeNode) {
 	if c.onNodeActivated != nil {
 		c.onNodeActivated(node)
 	}
+	c.OnNodeActivated.Emit(node)
 }
 
 func (c *TreeView) onMouseMove(x int, y int, mods KeyModifiers) bool {
@@ -1192,7 +1221,7 @@ func (c *TreeView) onMouseMoveHeader(x int, y int) MouseCursor {
 	if c.headerBorderAt(x) >= 0 {
 		return MouseCursorResizeHor
 	}
-	if c.onColumnClick != nil {
+	if c.onColumnClick != nil || c.OnColumnClick.Connected() {
 		return MouseCursorPointer
 	}
 	return MouseCursorArrow
@@ -1755,6 +1784,9 @@ func (n *TreeNode) Expand() {
 	if n.expanded {
 		return
 	}
+	if n.tree != nil {
+		n.tree.OnExpanding.Emit(n)
+	}
 	if n.tree != nil && n.tree.onExpand != nil {
 		n.tree.onExpand(n)
 	}
@@ -1772,6 +1804,9 @@ func (n *TreeNode) Collapse() {
 		n.tree.nodeCollapsed(n)
 	}
 	n.changed(true)
+	if n.tree != nil {
+		n.tree.OnCollapsed.Emit(n)
+	}
 	if n.tree != nil && n.tree.onCollapse != nil {
 		n.tree.onCollapse(n)
 	}

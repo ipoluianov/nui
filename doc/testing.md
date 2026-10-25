@@ -93,7 +93,7 @@ knownBug(t, 4, clicks > 0, "the button in a disabled panel is clicked")
 - **Баг на месте** — тест пропускается (`SKIP`) с номером бага. `go test ./...` остаётся зелёным.
 - **Баг исправлен** — тест падает с сообщением «known bug #4 seems fixed: make this an ordinary test». Нужно убрать вызов `knownBug` и оставить проверку обычной: теперь она защищает от возврата бага.
 
-Исправленные баги становятся обычными тестами рядом, например #1 и #2 — в [ui/regression/layout_test.go](../ui/regression/layout_test.go). #8 (лишняя раскладка в `Label.SetText`) исправлен, его покрывает `BenchmarkLabelSetText`.
+Исправленные баги становятся обычными тестами рядом: #1 и #2 — в [layout_test.go](../ui/regression/layout_test.go), #3 — в [events_test.go](../ui/regression/events_test.go). Там же и в [widget_signals_test.go](../ui/regression/widget_signals_test.go) — тесты сигналов. #8 (лишняя раскладка в `Label.SetText`) исправлен, его покрывает `BenchmarkLabelSetText`.
 
 Без теста остаются:
 - #9 — `SetAnchors`, пустая заглушка, проверяется по коду;

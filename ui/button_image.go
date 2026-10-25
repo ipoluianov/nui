@@ -131,11 +131,17 @@ func (c *ButtonImage) draw(cnv *Canvas) {
 }
 
 func (c *ButtonImage) buttonProcessMouseDown(button MouseButton, x int, y int, mods KeyModifiers) bool {
+	if button != MouseButtonLeft {
+		return false // a click is of the left button
+	}
 	c.pressed = true
 	return true
 }
 
 func (c *ButtonImage) buttonProcessMouseUp(button MouseButton, x int, y int, mods KeyModifiers) bool {
+	if button != MouseButtonLeft {
+		return false // a click is of the left button
+	}
 	wasPressed := c.pressed
 	c.pressed = false
 

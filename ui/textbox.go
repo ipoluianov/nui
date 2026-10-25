@@ -9,6 +9,20 @@ import (
 type TextBox struct {
 	Widget
 
+	// OnTextChanged: the text changed, by the user or by SetText
+	OnTextChanged Signal[string]
+	// OnTextEdited: the user changed the text: typed, deleted, pasted, cut,
+	// undid or redid an edit
+	OnTextEdited Signal[string]
+	// OnSubmit: Enter pressed in a single-line box; while a handler is
+	// connected, Enter doesn't reach the form (its accept button)
+	OnSubmit Signal[string]
+	// OnEditingFinished: the user is done editing: pressed Enter in a
+	// single-line box, or left the box after changing its text
+	OnEditingFinished Signal[string]
+
+	textAtFocus string // the text when the box got the focus
+
 	hintFunc func() string // see SetHintFunc
 
 	cursorPosX          int
@@ -84,6 +98,14 @@ func NewTextBox() *TextBox {
 
 	c.SetOnKeyDown(func(key Key, mods KeyModifiers) bool {
 		return c.KeyDown(key, mods)
+	})
+	c.OnFocusChanged.Connect(func(focused bool) {
+		if focused {
+			c.textAtFocus = c.Text()
+		} else if c.Text() != c.textAtFocus {
+			c.textAtFocus = c.Text()
+			c.OnEditingFinished.Emit(c.Text())
+		}
 	})
 
 	c.SetOnChar(func(char rune, mods KeyModifiers) bool {
@@ -162,6 +184,11 @@ type EventTextboxKeyDown struct {
 	Processed bool
 }
 
+// SetOnTextBoxKeyDown sets the function called on a key press, before the
+// text box handles it; CurrentEvent().Parameter is *EventTextboxKeyDown.
+//
+// Deprecated: use OnKeyDown (or OnSubmit for Enter): its handler gets the
+// key and sets Handled.
 func (c *TextBox) SetOnTextBoxKeyDown(onKeyDown func()) {
 	c.SetPropFunction("onkeydown", onKeyDown)
 }
@@ -563,6 +590,14 @@ func (c *TextBox) KeyDown(key Key, mods KeyModifiers) bool {
 	}
 
 	if key == KeyEnter {
+		if !c.Multiline() && mods == (KeyModifiers{}) {
+			c.textAtFocus = c.Text()
+			c.OnEditingFinished.Emit(c.Text())
+			if c.OnSubmit.Connected() {
+				c.OnSubmit.Emit(c.Text())
+				return true
+			}
+		}
 		if c.ReadOnly() {
 			return true
 		}
@@ -857,6 +892,7 @@ func (c *TextBox) clearSelection() {
 }
 
 func (c *TextBox) modifyText(cmd textboxModifyCommand, modifiers KeyModifiers, data interface{}) {
+	oldText := c.Text()
 	c.redraw()
 	c.recordUndo(cmd)
 
@@ -993,15 +1029,25 @@ func (c *TextBox) modifyText(cmd textboxModifyCommand, modifiers KeyModifiers, d
 		// The next typing at this place joins this undo step
 		c.lastEditX, c.lastEditY = c.cursorPosX, c.cursorPosY
 
-		f := c.GetPropFunction("ontextchanged")
-		if f != nil {
-			PushEvent(nil)
-			f()
-			PopEvent()
+		if newText != oldText {
+			c.textChanged(cmd != textboxModifyCommandSetText)
 		}
 	}
 
 	c.form.Update()
+}
+
+// textChanged tells the handlers the text changed, by the user or not
+func (c *TextBox) textChanged(byUser bool) {
+	if f := c.GetPropFunction("ontextchanged"); f != nil {
+		PushEvent(nil)
+		f()
+		PopEvent()
+	}
+	c.OnTextChanged.Emit(c.Text())
+	if byUser {
+		c.OnTextEdited.Emit(c.Text())
+	}
 }
 
 func (c *TextBox) SelectAllText() {
@@ -1142,16 +1188,15 @@ func (c *TextBox) ClearUndo() {
 
 // restoreState shows a state of the history, as an edit of the user
 func (c *TextBox) restoreState(state textBoxState) {
+	before := c.Text()
 	c.lastEditActive = false
 	c.Widget.SetProp("text", state.text)
 	c.updateInnerSize()
 	c.moveCursor(state.x, state.y, KeyModifiers{})
 	c.clearSelection()
 	c.ensureVisibleCursor()
-	if f := c.GetPropFunction("ontextchanged"); f != nil {
-		PushEvent(nil)
-		f()
-		PopEvent()
+	if state.text != before {
+		c.textChanged(true)
 	}
 	c.form.Update()
 }

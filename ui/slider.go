@@ -15,6 +15,14 @@ import (
 //	volume.SetOnValueChanged(func() { player.SetVolume(volume.Value()) })
 type Slider struct {
 	Widget
+
+	// OnValueChanged: the value changed, by the user or by SetValue (and the
+	// range or the step)
+	OnValueChanged Signal[float64]
+	// OnActivated: the user changed the value: with the mouse, also while
+	// dragging, the keys or the wheel
+	OnActivated Signal[float64]
+
 	min, max     float64
 	value        float64
 	step         float64
@@ -124,8 +132,13 @@ func (c *Slider) SetTickInterval(interval float64) {
 // SetValue sets the value, kept in the range and on the step, without
 // calling SetOnValueChanged's function.
 func (c *Slider) SetValue(value float64) {
-	c.value = c.snap(value)
+	v := c.snap(value)
+	changed := v != c.value
+	c.value = v
 	c.form.Update()
+	if changed {
+		c.OnValueChanged.Emit(v)
+	}
 }
 
 func (c *Slider) Value() float64 {
@@ -171,6 +184,8 @@ func (c *Slider) changeValue(v float64) {
 	if c.onValueChanged != nil {
 		c.onValueChanged()
 	}
+	c.OnValueChanged.Emit(v)
+	c.OnActivated.Emit(v)
 }
 
 // Geometry: positions along the track, in pixels from the widget's start

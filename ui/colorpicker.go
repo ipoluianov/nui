@@ -303,12 +303,11 @@ func newColorPickerPopup(picker *ColorPicker) *colorPickerPopup {
 
 	c.hexBox = NewTextBox()
 	c.hexBox.SetOnTextChanged(c.hexChanged)
-	c.hexBox.SetOnTextBoxKeyDown(func() {
-		ev := CurrentEvent().Parameter.(*EventTextboxKeyDown)
+	c.hexBox.OnKeyDown.Connect(func(ev *KeyEvent) {
 		if ev.Key == KeyEnter {
 			c.hexChanged()
 			c.picker.ClosePopup()
-			ev.Processed = true
+			ev.Handled = true
 		}
 	})
 	c.AddWidget(0, 0, c.hexBox)
