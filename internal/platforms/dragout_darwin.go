@@ -14,8 +14,9 @@ import (
 // loop after StartFileDrag returns: done is called at its end.
 
 const (
-	nsDragOperationLink = 2
-	nsDragOperationMove = 16
+	nsDragOperationLink    = 2
+	nsDragOperationGeneric = 4
+	nsDragOperationMove    = 16
 )
 
 var (
@@ -28,8 +29,11 @@ var (
 	selIconForFile              = objc.RegisterName("iconForFile:")
 	selCurrentEvent             = objc.RegisterName("currentEvent")
 
-	clsNSDraggingItem = objc.GetClass("NSDraggingItem")
-	clsNSWorkspace    = objc.GetClass("NSWorkspace")
+	// Looked up in init (cocoa_darwin.go) once AppKit is loaded: a variable
+	// initializer runs before, when GetClass finds no AppKit class (0), and
+	// alloc of it gives nil
+	clsNSDraggingItem objc.Class
+	clsNSWorkspace    objc.Class
 )
 
 // dragOutDone is the done of the drag going on, by the view that started
@@ -74,9 +78,11 @@ func (c *nativeWindow) StartFileDrag(files []string, done func(effect DragEffect
 	return started
 }
 
-// nuiViewSourceOperationMask: the files may be copied, moved or linked
+// nuiViewSourceOperationMask: the files may be copied, moved or linked, or
+// taken as the target likes (Generic: Terminal, which pastes the paths, and
+// other applications ask for it; it ends as Copy)
 func nuiViewSourceOperationMask(self objc.ID, _ objc.SEL, session objc.ID, context int) uint {
-	return nsDragOperationCopy | nsDragOperationMove | nsDragOperationLink
+	return nsDragOperationCopy | nsDragOperationMove | nsDragOperationLink | nsDragOperationGeneric
 }
 
 // nuiViewDraggingSessionEnded gives the result to the done of the drag. The

@@ -120,6 +120,9 @@ func TestMenuShortcuts(t *testing.T) {
 }
 
 func TestMenuKeyboard(t *testing.T) {
+	// The mnemonics, as on Windows and Linux (macOS has none)
+	defer func(was bool) { menuMnemonics = was }(menuMnemonics)
+	menuMnemonics = true
 	form, _, clicks := newMenuTestForm(t)
 	alt := KeyModifiers{Alt: true}
 	file := form.menuBar.items[0].menu
@@ -200,5 +203,16 @@ func TestTypingKeysStayInTextBox(t *testing.T) {
 	}
 	if textEditingKey(KeyDot, KeyModifiers{Ctrl: true}) || textEditingKey(KeyF5, KeyModifiers{}) {
 		t.Error("Ctrl+. and F5 are shortcuts")
+	}
+}
+
+// Without the mnemonics (macOS) Option with a letter is a character for the
+// text box and the input method, not a key of the menu
+func TestNoMenuMnemonics(t *testing.T) {
+	defer func(was bool) { menuMnemonics = was }(menuMnemonics)
+	menuMnemonics = false
+	form, _, _ := newMenuTestForm(t)
+	if form.processKeyDown(KeyF, KeyModifiers{Alt: true}) || form.TopPopupWidget() != nil {
+		t.Errorf("Option+F opened %v", form.TopPopupWidget())
 	}
 }

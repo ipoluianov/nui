@@ -281,9 +281,11 @@ func charPositions(fontFamily string, fontSize float64, text string) ([]int, err
 				advance += face.Kern(prev, r)
 			}
 			positions[runeIndex] = advance.Round()
-			if a, ok := face.GlyphAdvance(r); ok {
-				advance += a
-			}
+			// A character no font has is drawn as the box of the font
+			// (.notdef), and measured with it: its width counts here too,
+			// ok or not
+			a, _ := face.GlyphAdvance(r)
+			advance += a
 			prev = r
 			runeIndex++
 		}

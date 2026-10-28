@@ -137,12 +137,21 @@ func (n *notepad) buildMenu() *ui.MenuBar {
 	// Undo, the clipboard and Select All are also keys of the text box
 	// itself; the menu items do the same from anywhere
 	edit := bar.AddMenu("&Edit")
-	edit.AddItem("&Undo", n.editAction(n.text.Undo)).SetImage(icons.Undo(icons.Size)).SetShortcut("Mod+Z")
-	edit.AddItem("&Redo", n.editAction(n.text.Redo)).SetImage(icons.Redo(icons.Size)).SetShortcut("Mod+Y")
+	undo := edit.AddItem("&Undo", n.editAction(n.text.Undo)).SetImage(icons.Undo(icons.Size)).SetShortcut("Mod+Z")
+	redo := edit.AddItem("&Redo", n.editAction(n.text.Redo)).SetImage(icons.Redo(icons.Size)).SetShortcut("Mod+Y")
 	edit.AddSeparator()
-	edit.AddItem("Cu&t", n.editAction(n.text.Cut)).SetShortcut("Mod+X")
-	edit.AddItem("&Copy", n.editAction(n.text.Copy)).SetShortcut("Mod+C")
-	edit.AddItem("&Paste", n.editAction(n.text.Paste)).SetShortcut("Mod+V")
+	cut := edit.AddItem("Cu&t", n.editAction(n.text.Cut)).SetShortcut("Mod+X")
+	copyItem := edit.AddItem("&Copy", n.editAction(n.text.Copy)).SetShortcut("Mod+C")
+	paste := edit.AddItem("&Paste", n.editAction(n.text.Paste)).SetShortcut("Mod+V")
+	// Grayed when there is nothing to take back, to copy or to paste: the
+	// state is set each time the menu opens
+	edit.SetOnShow(func() {
+		undo.SetEnabled(n.text.CanUndo())
+		redo.SetEnabled(n.text.CanRedo())
+		cut.SetEnabled(n.text.HasSelection())
+		copyItem.SetEnabled(n.text.HasSelection())
+		paste.SetEnabled(ui.ClipboardHasFormat(ui.MIMEText))
+	})
 	edit.AddItem("Select &All", n.editAction(n.text.SelectAllText)).SetShortcut("Mod+A")
 	edit.AddSeparator()
 	edit.AddItem("&Find...", n.showFind).SetImage(icons.Search(icons.Size)).SetShortcut("Mod+F")

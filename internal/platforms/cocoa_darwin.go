@@ -392,6 +392,8 @@ func init() {
 	clsNSSavePanel = objc.GetClass("NSSavePanel")
 	clsNSURL = objc.GetClass("NSURL")
 	clsNSMutableArray = objc.GetClass("NSMutableArray")
+	clsNSDraggingItem = objc.GetClass("NSDraggingItem")
+	clsNSWorkspace = objc.GetClass("NSWorkspace")
 
 	registerNuiClasses()
 }
@@ -768,6 +770,7 @@ func nuiHandleMouseDown(self, event objc.ID, button int) {
 	win := objc.Send[objc.ID](self, selWindow)
 	id := wndID(win)
 	syncEventModifiers(id, event)
+	emptyTextInputOf(id) // the click may move the caret
 	p := eventLocationInView(self, event)
 	x, y := viewPointToInt(p)
 	if objc.Send[int](event, selClickCount) == 2 {

@@ -95,3 +95,33 @@ func TestCloseQuestionEscape(t *testing.T) {
 		t.Error("closing the question closed the window")
 	}
 }
+
+// The items of Edit are grayed when they can't do anything: Undo of the new
+// document, Copy without a selection, Paste with no text to paste
+func TestEditMenuGrayed(t *testing.T) {
+	n := newNotepad()
+	w := uitest.Show(t, n.form)
+	ui.ClipboardSetText("")
+
+	enabled := func(item string) bool {
+		w.Click(w.Find("Edit"))
+		defer w.Key(ui.KeyEsc, ui.KeyModifiers{})
+		return w.Find(item).Enabled()
+	}
+	if enabled("Undo") || enabled("Redo") || enabled("Copy") || enabled("Cut") {
+		t.Error("Undo, Redo, Copy or Cut enabled in the new document")
+	}
+	w.Click(n.text)
+	w.Type("x")
+	if !enabled("Undo") {
+		t.Error("Undo grayed after typing")
+	}
+	w.Shortcut("Mod+A")
+	if !enabled("Copy") || !enabled("Cut") {
+		t.Error("Copy or Cut grayed with the text selected")
+	}
+	ui.ClipboardSetText("clip")
+	if !enabled("Paste") {
+		t.Error("Paste grayed with text in the clipboard")
+	}
+}

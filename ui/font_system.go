@@ -1,8 +1,10 @@
 package ui
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -264,7 +266,11 @@ func openFontFile(path, postScriptName string) (f *sfnt.Font, exact bool, err er
 	if err != nil {
 		return nil, false, err
 	}
-	collection, err := sfnt.ParseCollectionReaderAt(file)
+	var src io.ReaderAt = file
+	if patches := cmapEncodingPatches(file); len(patches) > 0 {
+		src = patchedReaderAt{file, patches}
+	}
+	collection, err := sfnt.ParseCollectionReaderAt(src)
 	if err != nil || collection.NumFonts() == 0 {
 		file.Close()
 		return nil, false, fmt.Errorf("font file %s: %v", path, err)
@@ -278,6 +284,75 @@ func openFontFile(path, postScriptName string) (f *sfnt.Font, exact bool, err er
 	// The file stays open while the font is in use: the application's lifetime
 	f, err = collection.Font(0)
 	return f, false, err
+}
+
+// Older fonts of Apple (Helvetica Neue) map the characters only in a cmap
+// subtable of Unicode 1.0 or 1.1 (platform 0, encoding 0 or 1), which sfnt
+// rejects: "unsupported cmap encodings". Its formats are the ones of the
+// Unicode BMP encoding (3), so the file is read with those encodings given
+// as 3 - a few bytes changed as they are read, the file isn't loaded whole.
+
+// patchedReaderAt reads r with the bytes at the offsets of patches replaced
+type patchedReaderAt struct {
+	r       io.ReaderAt
+	patches map[int64]byte
+}
+
+func (p patchedReaderAt) ReadAt(b []byte, off int64) (int, error) {
+	n, err := p.r.ReadAt(b, off)
+	for at, v := range p.patches {
+		if at >= off && at < off+int64(n) {
+			b[at-off] = v
+		}
+	}
+	return n, err
+}
+
+// cmapEncodingPatches returns the offsets of the low bytes of the old
+// Unicode encodings in the cmap tables of the font file (or collection),
+// with 3 for each
+func cmapEncodingPatches(r io.ReaderAt) map[int64]byte {
+	u16 := func(off int64) (uint16, bool) {
+		var b [2]byte
+		_, err := r.ReadAt(b[:], off)
+		return binary.BigEndian.Uint16(b[:]), err == nil
+	}
+	u32 := func(off int64) (uint32, bool) {
+		var b [4]byte
+		_, err := r.ReadAt(b[:], off)
+		return binary.BigEndian.Uint32(b[:]), err == nil
+	}
+	fonts := []int64{0}
+	if tag, ok := u32(0); ok && tag == 0x74746366 { // "ttcf"
+		n, _ := u32(8)
+		fonts = nil
+		for i := int64(0); i < int64(min(n, 256)); i++ {
+			if off, ok := u32(12 + 4*i); ok {
+				fonts = append(fonts, int64(off))
+			}
+		}
+	}
+	patches := map[int64]byte{}
+	for _, font := range fonts {
+		tables, _ := u16(font + 4)
+		for i := int64(0); i < int64(tables); i++ {
+			record := font + 12 + 16*i
+			if tag, _ := u32(record); tag != 0x636d6170 { // "cmap"
+				continue
+			}
+			cmap, _ := u32(record + 8)
+			subtables, _ := u16(int64(cmap) + 2)
+			for j := int64(0); j < int64(subtables); j++ {
+				enc := int64(cmap) + 4 + 8*j
+				pid, _ := u16(enc)
+				psid, _ := u16(enc + 2)
+				if pid == 0 && psid <= 2 {
+					patches[enc+3] = 3
+				}
+			}
+		}
+	}
+	return patches
 }
 
 func hasGlyph(f *sfnt.Font, buf *sfnt.Buffer, r rune) bool {

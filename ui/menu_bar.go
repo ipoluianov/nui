@@ -220,7 +220,7 @@ func (c *MenuBarItem) draw(ctx *Canvas) {
 	ctx.SetFontSize(c.FontSize())
 	ctx.DrawText(0, 0, c.Width(), c.Height(), c.text)
 	// The mnemonics show while Alt is held, as in the system menus
-	if c.form != nil && c.form.lastKeyboardModifiers.Alt {
+	if menuMnemonics && c.form != nil && c.form.lastKeyboardModifiers.Alt {
 		drawMnemonicUnderline(ctx, 0, 0, c.Width(), c.Height(), c.text, c.mnemonicIndex)
 	}
 }

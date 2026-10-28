@@ -171,6 +171,12 @@ func (s Shortcut) String() string {
 // Mnemonics. "&File" is shown as "File" with F underlined: Alt+F opens the
 // menu, or F chooses the item in an open menu. "&&" is a "&".
 
+// menuMnemonics tells whether the menus have mnemonics: not on macOS, where
+// the menus have none and Option with a letter types a character (an
+// accent, a dead key) - it must reach the text box and the input method,
+// not open the menu
+var menuMnemonics = runtime.GOOS != "darwin"
+
 // parseMnemonic returns the text to show, the mnemonic letter (lower case, 0
 // if none) and the index (in runes) of the underlined letter, -1 if none
 func parseMnemonic(text string) (shown string, mnemonic rune, index int) {
@@ -375,7 +381,7 @@ func (c *ContextMenu) itemWithShortcut(key Key, mods KeyModifiers) *ContextMenuI
 // processMenuBarMnemonic opens the main menu whose title has the mnemonic of
 // Alt+key. Returns true if there was one.
 func (c *Form) processMenuBarMnemonic(key Key, mods KeyModifiers) bool {
-	if c.menuBar == nil || c.menuBar.native || !mods.Alt || mods.Ctrl || mods.Cmd {
+	if !menuMnemonics || c.menuBar == nil || c.menuBar.native || !mods.Alt || mods.Ctrl || mods.Cmd {
 		return false
 	}
 	m := mnemonicOfKey(key)
@@ -450,7 +456,7 @@ func (c *Form) processMenuKeys(key Key, mods KeyModifiers) bool {
 			return true
 		}
 		for _, item := range menu.items {
-			if item.mnemonic == m && item.selectable() {
+			if menuMnemonics && item.mnemonic == m && item.selectable() {
 				item.activateByKeyboard()
 				break
 			}

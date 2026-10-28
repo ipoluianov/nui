@@ -75,7 +75,18 @@ func main() {
 	form.SetTitle("nui font check")
 	form.SetSize(1200, 860)
 	p := form.Panel()
-	rows := []int{0, 0} // in the two columns
+	// The italic and the text box first: the faces below are taller than a
+	// laptop screen
+	big := ui.NewLabel("Italic 40 px: lIfI")
+	big.SetFontItalic(true)
+	big.SetFontSize(40)
+	big.SetMinHeight(60) // a Label is as high as a control whatever its font size
+	p.AddWidget(0, 0, big)
+	tb := ui.NewTextBox()
+	tb.SetFontFamily("jetbrainsmono:bold:italic")
+	tb.SetText("Text box in JetBrains Mono Bold Italic: click between letters")
+	p.AddWidget(0, 1, tb)
+	rows := []int{1, 1} // in the two columns
 	for i, family := range families {
 		col := i * 2 / len(families)
 		name := family
@@ -98,19 +109,7 @@ func main() {
 			rows[col]++
 		}
 	}
-	row := max(rows[0], rows[1])
-	big := ui.NewLabel("Italic 40 px: lIfI")
-	big.SetFontItalic(true)
-	big.SetFontSize(40)
-	big.SetMinHeight(60) // a Label is as high as a control whatever its font size
-	p.AddWidget(row, 0, big)
-	row++
-	tb := ui.NewTextBox()
-	tb.SetFontFamily("jetbrainsmono:bold:italic")
-	tb.SetText("Text box in JetBrains Mono Bold Italic: click between letters")
-	p.AddWidget(row, 0, tb)
-	row++
-	p.AddVSpacer(row, 0)
+	p.AddVSpacer(max(rows[0], rows[1]), 0)
 	form.Show()
 	form.Exec()
 }

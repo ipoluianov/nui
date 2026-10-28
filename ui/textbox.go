@@ -32,8 +32,12 @@ type TextBox struct {
 	lines []string
 	// lineWidths are the measured widths of the lines, -1 if not measured
 	lineWidths []int
-	text       string // the joined text, if textValid
-	textValid  bool
+	// measure counts the times the lines were measured anew (remeasure): the
+	// widths in the undo history of an older one are of another font size
+	// or scale of the screen
+	measure   int
+	text      string // the joined text, if textValid
+	textValid bool
 	// editByCode is set while the code edits the text (InsertText): the
 	// edit is not the user's (see OnTextEdited)
 	editByCode bool
@@ -83,7 +87,9 @@ type TextBox struct {
 type textBoxState struct {
 	lines  []string
 	widths []int
-	x, y   int
+	// measure is the measuring the widths are of (see TextBox.measure)
+	measure int
+	x, y    int
 }
 
 // textBoxUndoLimit is how many steps Undo goes back
@@ -309,6 +315,7 @@ func (c *TextBox) Text() string {
 
 // remeasure measures the lines again, e.g. in another font
 func (c *TextBox) remeasure() {
+	c.measure++
 	for i := range c.lineWidths {
 		c.lineWidths[i] = -1
 	}
@@ -1187,9 +1194,11 @@ func (c *TextBox) FontSize() float64 {
 	return 16
 }*/
 
+// applyThemeMetrics measures the lines again: the font size or the scale
+// of the screen (see setTextScale) changed their widths
 func (c *TextBox) applyThemeMetrics() {
 	c.Widget.applyThemeMetrics()
-	c.updateInnerSize()
+	c.remeasure()
 }
 
 // handlesKey: the text editing keys go to the text box before the shortcuts
@@ -1268,7 +1277,7 @@ func (c *TextBox) ClearUndo() {
 // state is the current state for the undo history: copies of the slices,
 // the strings are shared
 func (c *TextBox) state() textBoxState {
-	return textBoxState{slices.Clone(c.lines), slices.Clone(c.lineWidths), c.cursorPosX, c.cursorPosY}
+	return textBoxState{slices.Clone(c.lines), slices.Clone(c.lineWidths), c.measure, c.cursorPosX, c.cursorPosY}
 }
 
 // restoreState shows a state of the history, as an edit of the user. The
@@ -1277,6 +1286,11 @@ func (c *TextBox) restoreState(state textBoxState) {
 	changed := !slices.Equal(state.lines, c.lines)
 	c.lastEditActive = false
 	c.lines, c.lineWidths = state.lines, state.widths
+	if state.measure != c.measure {
+		for i := range c.lineWidths {
+			c.lineWidths[i] = -1
+		}
+	}
 	c.textValid = false
 	c.clearSelection()
 	c.updateInnerSize()

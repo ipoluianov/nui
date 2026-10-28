@@ -13,7 +13,9 @@ import (
 // "AVAWAT Ta" is kerned in Noto Sans
 func TestCharPositionsMatchMeasureText(t *testing.T) {
 	for _, family := range []string{FontFamilySans, FontFamilyMono} {
-		for _, text := range []string{"", "a", "Hello, world", "Привет, мир", "AVAWAT Ta"} {
+		// A character no font has (an emoji, an unassigned code) counts
+		// with the width of the box drawn for it
+		for _, text := range []string{"", "a", "Hello, world", "Привет, мир", "AVAWAT Ta", "a😀b", "\u0378ab"} {
 			positions, err := GetCharPositions(family, 14, text)
 			if err != nil {
 				t.Fatal(err)

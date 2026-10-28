@@ -219,7 +219,7 @@ func (c *ContextMenuItem) Draw(ctx *Canvas) {
 	ctx.SetHAlign(HAlignLeft)
 	ctx.SetColor(textColor)
 	ctx.DrawText(textX, 0, textAreaWidth, c.Height(), displayText)
-	if displayText == c.text {
+	if menuMnemonics && displayText == c.text {
 		drawMnemonicUnderline(ctx, textX, 0, textAreaWidth, c.Height(), c.text, c.mnemonicIndex)
 	}
 

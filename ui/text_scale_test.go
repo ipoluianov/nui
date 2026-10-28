@@ -53,3 +53,20 @@ func inkRightEdge(img *image.RGBA) int {
 	}
 	return 0
 }
+
+// A text box filled before its window is shown (at the scale 1) measures its
+// lines again for the scale of the screen: drawn clipped to the old width,
+// the end of the line was cut off
+func TestTextBoxRemeasuredForScale(t *testing.T) {
+	defer setTextScale(1)
+	setTextScale(1)
+	tb := NewTextBox()
+	tb.SetFontFamily("jetbrainsmono:bold:italic")
+	tb.SetText("Text box in JetBrains Mono Bold Italic: click between letters")
+	setTextScale(2)
+	tb.applyThemeMetrics() // as the form does when the scale changes
+	want, _, _ := MeasureText(tb.FontFamily(), tb.FontSize(), tb.Text())
+	if tb.lineWidths[0] != want {
+		t.Errorf("line width %d, measured at the scale %d", tb.lineWidths[0], want)
+	}
+}
