@@ -659,6 +659,7 @@ func (c *Form) createWindow(maximized bool) {
 	c.growToMinSize()
 	c.appliedMinWidth, c.appliedMinHeight = 0, 0
 	c.wnd = platforms.CreateWindow(c.title, c.posX, c.posY, c.width, c.height, centerOnScreen, maximized)
+	setTextScale(c.wnd.Scale())
 	c.wnd.OnPaint(c.processPaint)
 	c.wnd.OnResize(c.processResize)
 	c.wnd.OnMouseButtonDown(func(button MouseButton, x, y int) {
@@ -889,6 +890,7 @@ func (c *Form) processPaint(rgba *image.RGBA) {
 	if c.wnd == nil {
 		return // closed: the native window goes away with the next turn of the loop
 	}
+	setTextScale(c.wnd.Scale()) // the window may have moved to another screen
 	c.layoutNow()
 	c.paintScaled(rgba, c.wnd.Scale())
 	c.updateTextInputRect()

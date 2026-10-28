@@ -119,6 +119,10 @@ const renderedTextsMaxBytes = 64 << 20
 var _ = mustRegisterFont(FontFamilySans, fontNotoSans)
 var _ = mustRegisterFont(FontFamilyMono, fontJetBrainsMono)
 
+// The built-in mono font is the first fallback: it has the symbols Noto
+// Sans lacks, e.g. the keys of the shortcuts on macOS (⌘ ⇧ ⌃ ⌥) and arrows
+var _ = func() bool { AddFallbackFont(FontFamilyMono); return true }()
+
 func mustRegisterFont(family string, data []byte) bool {
 	if err := RegisterFont(family, data); err != nil {
 		panic(err)
@@ -246,7 +250,20 @@ func DrawText(rgba *image.RGBA, text string, textColor color.Color, fontFamily s
 // GetCharPositions returns the x of each character of text and, last, the
 // width of the whole text. Advances and kerning are added up the same way
 // as in MeasureText and in drawing, so the cursor stays on the characters.
+// On a scaled screen they are measured in its pixels (see textScale).
 func GetCharPositions(fontFamily string, fontSize float64, text string) ([]int, error) {
+	s := textScale()
+	if s == 1 {
+		return charPositions(fontFamily, fontSize, text)
+	}
+	positions, err := charPositions(fontFamily, fontSize*s, text)
+	for i, p := range positions {
+		positions[i] = toLogicalText(p, s)
+	}
+	return positions, err
+}
+
+func charPositions(fontFamily string, fontSize float64, text string) ([]int, error) {
 	if sf := systemFontFor(fontFamily, fontSize, text); sf != nil {
 		return sf.Positions(text), nil
 	}
@@ -275,7 +292,18 @@ func GetCharPositions(fontFamily string, fontSize float64, text string) ([]int, 
 	return positions, err
 }
 
+// MeasureText returns the width and the height of text, a single line. On
+// a scaled screen it is measured in its pixels (see textScale).
 func MeasureText(fontFamily string, fontSize float64, text string) (int, int, error) {
+	s := textScale()
+	if s == 1 {
+		return measureText(fontFamily, fontSize, text)
+	}
+	width, height, err := measureText(fontFamily, fontSize*s, text)
+	return toLogicalText(width, s), toLogicalText(height, s), err
+}
+
+func measureText(fontFamily string, fontSize float64, text string) (int, int, error) {
 	if sf := systemFontFor(fontFamily, fontSize, text); sf != nil {
 		positions := sf.Positions(text)
 		ascent, descent := sf.Metrics()

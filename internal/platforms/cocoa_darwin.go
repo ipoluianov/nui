@@ -1036,6 +1036,12 @@ func initWindow() windowId {
 			sharedAppDelegate = objc.ID(nuiAppDelegateClass).Send(selAlloc).Send(selInit)
 			nsApp.Send(selSetDelegate, sharedAppDelegate)
 		}
+		// Without a menu bar of its own (UseNativeMenuBar) the application
+		// gets the application menu alone: Hide, Show All and Quit with
+		// their keys (Cmd+Q) are there on every Mac application
+		if mainMenu == 0 {
+			setNativeMenuBar(executableName(), nil)
+		}
 
 		delegate := objc.ID(nuiAppDelegateClass).Send(selAlloc).Send(selInit)
 

@@ -62,14 +62,21 @@ func TestFallbackFont(t *testing.T) {
 		t.Skip("no character that only JetBrains Mono has")
 	}
 
-	before, _, _ := MeasureText("test-goregular", 14, string(missing))
-	AddFallbackFont(FontFamilyMono)
+	// Without the fallbacks first, the built-in mono one included
+	fontsMu.Lock()
+	saved := fallbackFonts
+	fallbackFonts = nil
+	faceCache = make(map[faceKey]*faceEntry)
+	fontsMu.Unlock()
 	t.Cleanup(func() {
 		fontsMu.Lock()
-		fallbackFonts = nil
+		fallbackFonts = saved
 		faceCache = make(map[faceKey]*faceEntry)
 		fontsMu.Unlock()
+		clearAllRenderedTexts()
 	})
+	before, _, _ := MeasureText("test-goregular", 14, string(missing))
+	AddFallbackFont(FontFamilyMono)
 	after, _, _ := MeasureText("test-goregular", 14, string(missing))
 
 	want, _ := monoFace.GlyphAdvance(missing)
@@ -122,5 +129,20 @@ func BenchmarkMeasureTextParseEachTime(b *testing.B) {
 		face, _ := opentype.NewFace(f, &opentype.FaceOptions{Size: 14, DPI: 72, Hinting: font.HintingFull})
 		font.MeasureString(face, "Button text")
 		face.Close()
+	}
+}
+
+// The keys of the shortcuts on macOS and arrows, which Noto Sans lacks, come
+// from the built-in mono font: not drawn as boxes in the menus
+func TestShortcutSymbolsHaveGlyphs(t *testing.T) {
+	err := withFace(FontFamilySans, 14, func(face font.Face) {
+		for _, r := range "⌘⇧⌃⌥←→↑↓" {
+			if _, ok := face.GlyphAdvance(r); !ok {
+				t.Errorf("no glyph for %c", r)
+			}
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }

@@ -3,6 +3,9 @@
 package platforms
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/ebitengine/purego/objc"
@@ -96,6 +99,16 @@ func setNativeMenuBar(appName string, menus []*NativeMenu) bool {
 		mainMenu = bar.Send(selRetain)
 	})
 	return true
+}
+
+// executableName is the name of the application in its menu: the name of
+// the program file
+func executableName() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return "Application"
+	}
+	return strings.TrimSuffix(filepath.Base(exe), filepath.Ext(exe))
 }
 
 // newDynamicMenu makes the NSMenu of a NativeMenu, filled now (for its
