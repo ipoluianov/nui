@@ -369,9 +369,7 @@ func (c *Form) Close() {
 		return
 	}
 	if c.wnd != nil && !c.closed {
-		for _, f := range c.closing {
-			f()
-		}
+		c.runClosing()
 	}
 	c.closing = nil
 	c.tooltipClose()
@@ -871,9 +869,21 @@ func (c *Form) processWindowClose() bool {
 	if c.OnClose != nil && !c.OnClose() {
 		return false
 	}
+	// Closed by the user (or RequestClose) the window saves its state and
+	// cancels its work as when closed by the program (see Close)
+	c.runClosing()
 	c.closeToasts()
 	c.markClosed()
 	return true
+}
+
+// runClosing runs the functions to run before the window closes, once
+func (c *Form) runClosing() {
+	closing := c.closing
+	c.closing = nil
+	for _, f := range closing {
+		f()
+	}
 }
 
 // applyTheme repaints the form in the current theme, see ApplyPalette.

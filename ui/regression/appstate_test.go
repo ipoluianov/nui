@@ -1,6 +1,7 @@
 package regression
 
 import (
+	"context"
 	"path/filepath"
 	"testing"
 	"time"
@@ -169,5 +170,53 @@ func TestDockLayout(t *testing.T) {
 	}
 	if size := docks2.AreaSize(ui.DockRight); size < 190 || size > 210 {
 		t.Errorf("right area %d, want 200", size)
+	}
+}
+
+// Closed by the user (the close button) the window saves its state too, not
+// only closed by the program
+func TestRememberStateClosedByUser(t *testing.T) {
+	uitest.SetScreen(1920, 1080, 1)
+	path := filepath.Join(t.TempDir(), "settings.json")
+	settings, _ := ui.OpenSettingsFile(path)
+
+	form := newForm(400, 300)
+	form.RememberState(settings, "main")
+	form.Move(100, 120)
+	w := uitest.Show(t, form)
+	w.Resize(500, 350)
+	if !w.RequestClose() {
+		t.Fatal("not closed")
+	}
+
+	settings, _ = ui.OpenSettingsFile(path)
+	var saved ui.FormState
+	if !settings.Get("main", &saved) || saved.Width != 500 || saved.Height != 350 || saved.X != 100 {
+		t.Errorf("saved %+v", saved)
+	}
+}
+
+// The work of a form closed by the user is cancelled, its done isn't called
+func TestRunAsyncCancelledByCloseButton(t *testing.T) {
+	form := newForm(300, 200)
+	w := uitest.Show(t, form)
+	cancelled := make(chan bool, 1)
+	doneCalled := false
+	ui.RunAsync(form.Panel(), func(ctx context.Context, p *ui.Progress) (int, error) {
+		select {
+		case <-ctx.Done():
+			cancelled <- true
+		case <-time.After(2 * time.Second):
+			cancelled <- false
+		}
+		return 0, ctx.Err()
+	}, func(int, error) { doneCalled = true })
+	w.RequestClose()
+	if !<-cancelled {
+		t.Error("the work isn't cancelled")
+	}
+	w.Wait(50 * time.Millisecond)
+	if doneCalled {
+		t.Error("done called for the closed form")
 	}
 }

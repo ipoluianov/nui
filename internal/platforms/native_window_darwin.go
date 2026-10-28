@@ -112,9 +112,10 @@ func createWindow(title string, posX int, posY int, width int, height int, cente
 
 	c.SetTitle(title)
 
-	if c.showMaximized {
-		c.MaximizeWindow()
-	} else if center {
+	// Maximized by the first Show, as on Windows: the form puts the window
+	// in its place first, and zoom: keeps the frame it starts from as the
+	// one Restore goes back to
+	if center {
 		c.MoveToCenterOfScreen()
 	} else {
 		c.Move(posX, posY)
@@ -127,6 +128,10 @@ func createWindow(title string, posX int, posY int, width int, height int, cente
 
 func (c *nativeWindow) Show() {
 	showWindow(c.hwnd)
+	if c.showMaximized {
+		c.showMaximized = false
+		runOnMainSync(c.MaximizeWindow)
+	}
 }
 
 // Hide orders the window out until the next Show. It stays open meanwhile.
