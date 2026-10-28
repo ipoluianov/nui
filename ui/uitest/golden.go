@@ -7,10 +7,13 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
-// The golden images are in testdata/golden of the package under test.
+// The golden images are in testdata/golden of the package under test, the
+// ones that differ by the platform in testdata/golden/<GOOS> (see
+// MatchGoldenImage).
 // Write them anew with
 //
 //	go test ./mypackage -update-golden
@@ -43,6 +46,12 @@ func (w *Window) MatchGolden(name string) {
 func MatchGoldenImage(t testing.TB, name string, img *image.RGBA) {
 	t.Helper()
 	dir := filepath.Join("testdata", "golden")
+	// A picture that differs by the platform (the order of the dialog
+	// buttons, the names of the shortcuts) has its own golden image in
+	// testdata/golden/<GOOS>
+	if osDir := filepath.Join(dir, runtime.GOOS); fileExists(filepath.Join(osDir, name+".png")) {
+		dir = osDir
+	}
 	path := filepath.Join(dir, name+".png")
 	actualPath := filepath.Join(dir, name+".actual.png")
 	diffPath := filepath.Join(dir, name+".diff.png")
@@ -138,4 +147,9 @@ func writePNG(path string, img image.Image) error {
 		return err
 	}
 	return f.Close()
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }

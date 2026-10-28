@@ -78,8 +78,9 @@ func TestActions(t *testing.T) {
 	if wrap.Checked() || wrapItem.Checked() {
 		t.Error("the toolbar button doesn't uncheck")
 	}
-	if save.Tooltip() != "Save (Ctrl+S)" {
-		t.Errorf("tooltip %q", save.Tooltip())
+	// The shortcut is shown in the names of the platform: ⌃S on macOS
+	if want := "Save (" + ui.MustParseShortcut("Ctrl+S").String() + ")"; save.Tooltip() != want {
+		t.Errorf("tooltip %q, want %q", save.Tooltip(), want)
 	}
 	w.Click(wrapButton)
 	w.Click(w.Find("View"))

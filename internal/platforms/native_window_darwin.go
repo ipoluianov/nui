@@ -4,15 +4,10 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
-	"sync/atomic"
 	"time"
 
 	"github.com/ebitengine/purego/objc"
 )
-
-// Cocoa has one shared NSApplication run loop for the whole process; only the
-// first window to reach Exec() may start it.
-var eventLoopStarted int32
 
 // Darwin/Cocoa implementation; window chrome and bridges live in cocoa_darwin.go.
 
@@ -26,11 +21,21 @@ type nativeWindowPlatform struct {
 
 	keyModifiers KeyModifiers
 
-	// Throttles go_on_timer per window; must not be shared across windows.
-	lastTimerTick time.Time
-
 	// bgColor clears the frame before onPaint
 	bgColor color.RGBA
+
+	// maximizing is set while zoom: animates the window to the maximized
+	// frame: AppKit reports isZoomed only at the end, and the frames on the
+	// way must not count as the normal size (Form.State, RememberState)
+	maximizing bool
+	// zooms counts the zoom: calls: the time limit of an older one leaves a
+	// newer one alone
+	zooms int
+
+	// closed is set when the window closes; done is closed then too, for
+	// Exec calls from other goroutines
+	closed bool
+	done   chan struct{}
 }
 
 /*type NativeWindow struct {
@@ -77,11 +82,6 @@ type nativeWindowPlatform struct {
 
 var hwnds map[windowId]*nativeWindow
 
-// The first window created is treated as the app's main window: closing it quits the
-// whole app immediately, instead of macOS's default of waiting for every window to close.
-var mainWindowID windowId
-var mainWindowIDSet bool
-
 func init() {
 	hwnds = make(map[windowId]*nativeWindow)
 }
@@ -96,14 +96,11 @@ func createWindow(title string, posX int, posY int, width int, height int, cente
 	c.showMaximized = maximized
 
 	c.platform.bgColor = color.RGBA{0, 50, 0, 255}
+	c.platform.done = make(chan struct{})
 
 	c.hwnd = initWindow()
 	// Register before Resize so ObjC-triggered go_on_resize reaches Go with a populated hwnds map.
 	hwnds[c.hwnd] = &c
-	if !mainWindowIDSet {
-		mainWindowIDSet = true
-		mainWindowID = c.hwnd
-	}
 
 	c.Resize(width, height)
 	c.windowWidth = int(width)
@@ -124,7 +121,7 @@ func createWindow(title string, posX int, posY int, width int, height int, cente
 	}
 
 	c.windowPosX, c.windowPosY = c.requestWindowPosition()
-	c.startTimer(1)
+	c.startTimer(float64(timerInterval / time.Millisecond))
 	return &c
 }
 
@@ -145,14 +142,16 @@ func (c *nativeWindow) Update() {
 	onMainThread(func() { updateWindow(c.hwnd) })
 }
 
-// Exec runs the ONE shared NSApplication run loop for the whole process, not
-// just this window's: the first caller starts and blocks on it for as long
-// as the app runs; later callers just return immediately since that shared
-// loop already services their window too.
+// Exec waits until the window is closed. On the main thread it runs the
+// event loop meanwhile, serving all the windows; on another goroutine it
+// just waits. The same as on Linux and Windows: the application doesn't
+// quit when a window closes, the code after Exec runs.
 func (c *nativeWindow) Exec() {
-	if atomic.CompareAndSwapInt32(&eventLoopStarted, 0, 1) {
-		runEventLoop()
+	if !isMainThread() {
+		<-c.platform.done
+		return
 	}
+	runLoopUntil(func() bool { return c.platform.closed })
 }
 
 func (c *nativeWindow) Close() bool {
@@ -329,7 +328,7 @@ func (c *nativeWindow) Height() int {
 }
 
 func (c *nativeWindow) IsMaximized() bool {
-	return isWindowZoomed(c.hwnd)
+	return c.platform.maximizing || isWindowZoomed(c.hwnd)
 }
 
 // KeyModifiers is the state of the keys right now: [NSEvent modifierFlags]

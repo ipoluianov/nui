@@ -29,8 +29,34 @@ func go_on_paint(hwnd windowId, ptr unsafe.Pointer, width int, height int, scale
 func go_on_resize(hwnd windowId, width int, height int) {
 	// width/height: NSWindow.contentLayoutRect (client area)
 	if win, ok := hwnds[hwnd]; ok {
+		if win.platform.maximizing && isWindowZoomed(hwnd) {
+			win.platform.maximizing = false // the animation got there
+		}
 		win.windowResized(width, height)
 	}
+}
+
+// zoomAnimationLimit is longer than the animation of zoom: (about 0.35 s):
+// should the window never get maximized (e.g. it already fills the screen),
+// it stops counting as maximizing then
+const zoomAnimationLimit = time.Second
+
+// go_on_will_zoom: the window is about to be maximized (or restored)
+func go_on_will_zoom(hwnd windowId, maximize bool) {
+	win, ok := hwnds[hwnd]
+	if !ok || !maximize {
+		return
+	}
+	win.platform.maximizing = true
+	win.platform.zooms++
+	zoom := win.platform.zooms
+	time.AfterFunc(zoomAnimationLimit, func() {
+		dispatchAsyncMain(func() {
+			if win.platform.zooms == zoom {
+				win.platform.maximizing = false
+			}
+		})
+	})
 }
 
 func go_on_close_request(hwnd windowId) bool {
@@ -43,9 +69,22 @@ func go_on_close_request(hwnd windowId) bool {
 
 func go_on_window_will_close(hwnd windowId) {
 	closePopupsOf(hwnd)
+	if win, ok := hwnds[hwnd]; ok && !win.platform.closed {
+		win.platform.closed = true
+		close(win.platform.done)
+	}
 	delete(hwnds, hwnd)
-	if mainWindowIDSet && hwnd == mainWindowID {
-		quitApp()
+	wakeEventLoop() // an Exec may wait for this window
+}
+
+// requestQuit closes the windows, each asked first as by its close button: a
+// window that refuses (unsaved changes) stays, and the application with it.
+// Quit in the application menu and in the Dock come here.
+func requestQuit() {
+	for _, w := range hwnds {
+		if w.onCloseRequest == nil || w.onCloseRequest() {
+			w.Close()
+		}
 	}
 }
 
@@ -171,16 +210,13 @@ func go_on_mouse_double_click(hwnd windowId, button, x, y int) {
 	}
 }
 
+// timerInterval is the tick of the window's timer (OnTimer), as on Linux:
+// the ui timers and the joined repaints (a frame of a 60 Hz screen) run on it
+const timerInterval = 10 * time.Millisecond
+
 func go_on_timer(hwnd windowId) {
-	if win, ok := hwnds[hwnd]; ok {
-		dtNow := time.Now()
-		if dtNow.Sub(win.platform.lastTimerTick) < time.Millisecond*50 {
-			return
-		}
-		win.platform.lastTimerTick = dtNow
-		if win.onTimer != nil {
-			win.onTimer()
-		}
+	if win, ok := hwnds[hwnd]; ok && win.onTimer != nil {
+		win.onTimer()
 	}
 }
 

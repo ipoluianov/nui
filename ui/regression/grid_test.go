@@ -4,6 +4,7 @@ import (
 	"image"
 	"image/color"
 	"math"
+	"runtime"
 	"testing"
 	"time"
 
@@ -110,9 +111,13 @@ func TestBoxesAndDialogButtons(t *testing.T) {
 	if dialog.name.X()+dialog.name.Width() < width-20 {
 		t.Errorf("the name box ends at %d of %d", dialog.name.X()+dialog.name.Width(), width)
 	}
-	cancel := dialog.buttons.Button(ui.ButtonReject)
-	if x, _ := cancel.RectClientAreaOnWindow(); x+cancel.Width() < width-10 {
-		t.Errorf("Cancel ends at x %d of %d", x+cancel.Width(), width)
+	// The last button is OK on macOS, Cancel elsewhere
+	last := dialog.buttons.Button(ui.ButtonReject)
+	if runtime.GOOS == "darwin" {
+		last = dialog.buttons.Button(ui.ButtonAccept)
+	}
+	if x, _ := last.RectClientAreaOnWindow(); x+last.Width() < width-10 {
+		t.Errorf("the last button ends at x %d of %d", x+last.Width(), width)
 	}
 	d.MatchGolden("box-dialog")
 	// Enter is the OK button

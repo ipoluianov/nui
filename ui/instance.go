@@ -123,16 +123,25 @@ func (c *SingleInstance) Close() {
 	}
 }
 
+// maxSocketPath is the longest unix socket path every system takes (104
+// bytes with the terminating zero on macOS, 108 on Linux)
+const maxSocketPath = 103
+
 // instanceSocketPath returns where the running copy of the directory
 // listens. A unix socket path is limited to about 100 bytes, which a long
 // home path can exceed, so the short runtime directory is used when there
-// is one (Linux).
+// is one (Linux), and the per-user temporary directory when the path in the
+// settings directory is too long (macOS: ~/Library/Application Support/...).
 func instanceSocketPath(dir string) string {
+	sum := sha256.Sum256([]byte(dir))
+	name := "nui-" + hex.EncodeToString(sum[:8]) + ".sock"
 	if runtimeDir := os.Getenv("XDG_RUNTIME_DIR"); runtimeDir != "" {
-		sum := sha256.Sum256([]byte(dir))
-		return filepath.Join(runtimeDir, "nui-"+hex.EncodeToString(sum[:8])+".sock")
+		return filepath.Join(runtimeDir, name)
 	}
-	return filepath.Join(dir, "instance.sock")
+	if path := filepath.Join(dir, "instance.sock"); len(path) <= maxSocketPath {
+		return path
+	}
+	return filepath.Join(os.TempDir(), name)
 }
 
 // askToShow gives the arguments to the running copy and asks it to show its

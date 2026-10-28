@@ -116,8 +116,14 @@ var (
 	selSetActivationPolicy       = objc.RegisterName("setActivationPolicy:")
 	selSetDelegate               = objc.RegisterName("setDelegate:")
 	selActivateIgnoringOtherApps = objc.RegisterName("activateIgnoringOtherApps:")
+	selSetTolerance              = objc.RegisterName("setTolerance:")
 	selRun                       = objc.RegisterName("run")
-	selTerminate                 = objc.RegisterName("terminate:")
+	selStop                      = objc.RegisterName("stop:")
+	selNextEventMatchingMask     = objc.RegisterName("nextEventMatchingMask:untilDate:inMode:dequeue:")
+	selSendEvent                 = objc.RegisterName("sendEvent:")
+	selPostEventAtStart          = objc.RegisterName("postEvent:atStart:")
+	selDistantFuture             = objc.RegisterName("distantFuture")
+	selOtherEventWithType        = objc.RegisterName("otherEventWithType:location:modifierFlags:timestamp:windowNumber:context:subtype:data1:data2:")
 	selModalWindow               = objc.RegisterName("modalWindow")
 	selStopModal                 = objc.RegisterName("stopModal")
 	selRunModalForWindow         = objc.RegisterName("runModalForWindow:")
@@ -215,8 +221,10 @@ var (
 	selFileURLWithPath            = objc.RegisterName("fileURLWithPath:")
 
 	selApplicationShouldTerminateAfterLastWindowClosed = objc.RegisterName("applicationShouldTerminateAfterLastWindowClosed:")
+	selApplicationShouldTerminate                      = objc.RegisterName("applicationShouldTerminate:")
 	selWindowDidMove                                   = objc.RegisterName("windowDidMove:")
 	selWindowShouldClose                               = objc.RegisterName("windowShouldClose:")
+	selWindowShouldZoomToFrame                         = objc.RegisterName("windowShouldZoom:toFrame:")
 	selWindowWillClose                                 = objc.RegisterName("windowWillClose:")
 	selWindowDidResignKey                              = objc.RegisterName("windowDidResignKey:")
 	selWindowDidBecomeKey                              = objc.RegisterName("windowDidBecomeKey:")
@@ -270,6 +278,8 @@ var (
 	clsNSGraphicsContext objc.Class
 	clsNSTimer           objc.Class
 	clsNSRunLoop         objc.Class
+	clsNSDate            objc.Class
+	clsNSEvent           objc.Class
 	clsNSThread          objc.Class
 	clsNSTrackingArea    objc.Class
 	clsNSOpenPanel       objc.Class
@@ -374,6 +384,8 @@ func init() {
 	clsNSGraphicsContext = objc.GetClass("NSGraphicsContext")
 	clsNSTimer = objc.GetClass("NSTimer")
 	clsNSRunLoop = objc.GetClass("NSRunLoop")
+	clsNSDate = objc.GetClass("NSDate")
+	clsNSEvent = objc.GetClass("NSEvent")
 	clsNSThread = objc.GetClass("NSThread")
 	clsNSTrackingArea = objc.GetClass("NSTrackingArea")
 	clsNSOpenPanel = objc.GetClass("NSOpenPanel")
@@ -546,10 +558,25 @@ func drawableRectInContentView(win, view objc.ID) nsRect {
 // delegate methods via respondsToSelector:, so formal protocol conformance
 // isn't required for AppKit to call these.
 
-// AppKit also asks this when the last visible window is ordered out, e.g. a
-// form hidden to the tray: only quit once no form window is left open.
+// The application never quits by itself when its windows close: as on
+// Linux and Windows, Exec returns once its window is closed and the program
+// goes on (and ends when main returns). AppKit also asks this when the last
+// visible window is ordered out, e.g. a form hidden to the tray.
 func nuiAppShouldTerminateAfterLastWindowClosed(self objc.ID, _ objc.SEL, _ objc.ID) bool {
-	return len(cocoaWindows) == 0
+	return false
+}
+
+// nsTerminateCancel is NSApplicationTerminateReply's NSTerminateCancel
+const nsTerminateCancel = 0
+
+// applicationShouldTerminate: is asked by Quit in the Dock menu, by logging
+// out and by [NSApp terminate:]: terminate: would end the process at once,
+// skipping the code after Exec. Instead the windows are asked to close, as
+// by their close buttons (see requestQuit), and the program ends when its
+// Exec returns.
+func nuiAppShouldTerminate(self objc.ID, _ objc.SEL, _ objc.ID) uint {
+	requestQuit()
+	return nsTerminateCancel
 }
 
 func nuiWindowDidMove(self objc.ID, _ objc.SEL, notification objc.ID) {
@@ -561,6 +588,15 @@ func nuiWindowDidMove(self objc.ID, _ objc.SEL, notification objc.ID) {
 
 func nuiWindowShouldClose(self objc.ID, _ objc.SEL, sender objc.ID) bool {
 	return go_on_close_request(wndID(sender))
+}
+
+// nuiWindowShouldZoom comes before zoom: (Maximize, Restore, the green
+// button, a double click on the title) animates the window to its new
+// frame. The frame comes as four doubles: purego callbacks take no structs,
+// and an NSRect is passed in four float registers.
+func nuiWindowShouldZoom(self objc.ID, _ objc.SEL, win objc.ID, _, _, _, _ float64) bool {
+	go_on_will_zoom(wndID(win), !objc.Send[bool](win, selIsZoomed))
+	return true
 }
 
 // nuiWindowWillClose ends the nested modal loop started by ShowModalWindow
@@ -913,8 +949,10 @@ func registerNuiClasses() {
 		nil, nil,
 		[]objc.MethodDef{
 			{Cmd: selApplicationShouldTerminateAfterLastWindowClosed, Fn: nuiAppShouldTerminateAfterLastWindowClosed},
+			{Cmd: selApplicationShouldTerminate, Fn: nuiAppShouldTerminate},
 			{Cmd: selWindowDidMove, Fn: nuiWindowDidMove},
 			{Cmd: selWindowShouldClose, Fn: nuiWindowShouldClose},
+			{Cmd: selWindowShouldZoomToFrame, Fn: nuiWindowShouldZoom},
 			{Cmd: selWindowWillClose, Fn: nuiWindowWillClose},
 			{Cmd: selWindowDidResignKey, Fn: nuiWindowDidResignKey},
 			{Cmd: selWindowDidBecomeKey, Fn: nuiWindowDidBecomeKey},
@@ -965,7 +1003,7 @@ func registerNuiClasses() {
 
 /////////////////////////////////////////////////////
 // Window creation and lifecycle (mirrors window.m's InitWindow/ShowWindow/
-// RunEventLoop/CloseWindowById/QuitApp/ShowModalWindow)
+// CloseWindowById/ShowModalWindow; the event loop is runLoopUntil)
 
 // sharedAppDelegate is a single, permanent NUIAppDelegate instance used only
 // for NSApplicationDelegate duties (applicationShouldTerminateAfterLast
@@ -1030,9 +1068,65 @@ func initWindow() windowId {
 	return wid
 }
 
-func runEventLoop() {
-	withAutoreleasePool(func() {
-		objc.ID(clsNSApplication).Send(selSharedApplication).Send(selRun)
+const (
+	nsEventMaskAny                = ^uint64(0)
+	nsEventTypeApplicationDefined = 15
+)
+
+// appRunning is set while the outermost loop is in [NSApp run]
+var appRunning bool
+
+// runLoopUntil runs the event loop of the application, serving all the
+// windows, until done is true. The outermost loop is [NSApp run]: AppKit
+// does part of its work only while it runs (isRunning), e.g. it makes
+// another window the key one when the key window closes. wakeEventLoop
+// stops it to look at done, and it runs again if done is still false. An
+// Exec called from a handler (inside run) takes the events itself, checking
+// done after each one.
+func runLoopUntil(done func() bool) {
+	nsApp := objc.ID(clsNSApplication).Send(selSharedApplication)
+	if !appRunning {
+		for !done() {
+			appRunning = true
+			withAutoreleasePool(func() { nsApp.Send(selRun) })
+			appRunning = false
+		}
+		return
+	}
+	mode := goStringToNS("kCFRunLoopDefaultMode") // NSDefaultRunLoopMode
+	for !done() {
+		withAutoreleasePool(func() {
+			// The main dispatch queue (Post, the timers) is served inside
+			// the wait as well
+			until := objc.ID(clsNSDate).Send(selDistantFuture)
+			ev := nsApp.Send(selNextEventMatchingMask, nsEventMaskAny, until, mode, true)
+			if ev != 0 {
+				nsApp.Send(selSendEvent, ev)
+			}
+		})
+	}
+}
+
+// wakeEventLoop has runLoopUntil look at its condition again, after a
+// window closed: [NSApp run] is stopped, and an event is posted, since both
+// run (after stop:) and the inner loop look only after an event. It is
+// deferred a turn of the loop, out of the close sequence of the window;
+// during a modal session it does nothing, as stop: would end the modal loop
+// instead - the modal window wakes the loop once it closes.
+func wakeEventLoop() {
+	dispatchAsyncMain(func() {
+		nsApp := objc.ID(clsNSApplication).Send(selSharedApplication)
+		if objc.Send[objc.ID](nsApp, selModalWindow) != 0 {
+			return
+		}
+		if appRunning {
+			nsApp.Send(selStop, objc.ID(0))
+		}
+		ev := objc.ID(clsNSEvent).Send(selOtherEventWithType, uint(nsEventTypeApplicationDefined),
+			nsPoint{}, uint(0), float64(0), 0, objc.ID(0), int16(0), 0, 0)
+		if ev != 0 {
+			nsApp.Send(selPostEventAtStart, ev, false)
+		}
 	})
 }
 
@@ -1044,15 +1138,6 @@ func closeWindowById(id windowId) {
 	if win, ok := cocoaWindows[int(id)]; ok {
 		win.Send(selClose)
 	}
-}
-
-// quitApp is deferred a tick (dispatch_async) so it doesn't reenter while
-// the caller's own window-close sequence is still on the stack (called from
-// go_on_window_will_close, i.e. from nuiWindowWillClose).
-func quitApp() {
-	dispatchAsyncMain(func() {
-		objc.ID(clsNSApplication).Send(selSharedApplication).Send(selTerminate, objc.ID(0))
-	})
 }
 
 // showWindow runs directly when already on the main thread (e.g. the first
@@ -1467,6 +1552,9 @@ func startTimer(id windowId, intervalMs float64) {
 	timer := objc.ID(clsNSTimer).Send(selTimerWithTimeIntervalRepeatsBlock, intervalMs/1000.0, true, uintptr(block))
 	timer.Send(selRetain) // NSTimer's own block-copy is independent of ours; see dispatchAsyncMain's comment.
 	block.Release()
+	// The system may join the wakeups of the timers within the tolerance,
+	// which saves the battery
+	timer.Send(selSetTolerance, intervalMs/1000.0/5)
 
 	mainRunLoop := objc.ID(clsNSRunLoop).Send(selMainRunLoop)
 	// Timers scheduled only in the default run loop mode pause during modal/

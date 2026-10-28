@@ -199,12 +199,7 @@ func nuiMenuItemClicked(self objc.ID, _ objc.SEL, sender objc.ID) {
 	}
 }
 
-// nuiQuit closes the windows, each asked first as by its close button: a
-// window that refuses (unsaved changes) stays, and the application with it
+// nuiQuit is Quit in the application menu: see requestQuit
 func nuiQuit(self objc.ID, _ objc.SEL, _ objc.ID) {
-	for _, w := range hwnds {
-		if w.onCloseRequest == nil || w.onCloseRequest() {
-			w.Close()
-		}
-	}
+	requestQuit()
 }
