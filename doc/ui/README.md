@@ -58,8 +58,10 @@ Short reference for `ui` controls. Code snippets are intentionally minimal—see
 - [PropertyGrid](content/propertygrid.md)
 - [TreeView](content/treeview.md)
 - [ProgressBar](content/progressbar.md)
+- [Charts: lines, bars, pies, scatter, candles, sparklines; axes, gestures, export](content/charts.md)
 - [Chart](content/chart.md)
 - [TimeChart](content/timechart.md)
+- [Canvas: paths, gradients, markers, turned text, SVG](content/canvas.md)
 - [ImageBox](content/imagebox.md)
 - [ZoomView and ScrollBar](content/zoomview.md)
 

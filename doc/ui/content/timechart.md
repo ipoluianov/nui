@@ -5,9 +5,12 @@ axis, each with its own Y axis and any number of **series**. Every series reads
 its points from a **data source** you provide, so the same chart works for live
 monitoring, historical data from a server and trading (OHLC) data.
 
-`TimeChart` embeds `Widget`, so all generic widget methods are available too.
-See `examples/monitor` for a runnable demo (live ping to several servers,
-downsampling, candles).
+`TimeChart` is a [ChartView](charts.md) of a time axis, so everything a
+chart has is available too: the tooltip and the crosshair, the gestures of
+`Interaction`, annotations, export to PNG, SVG and CSV, printing. Each area
+is a `ChartPane` (`area.Pane()`), each series a `LineSeries` or a
+`CandleSeries` (`series.Series()`). See `examples/monitor` for a runnable
+demo (live ping to several servers, downsampling, candles).
 
 ## Quick start
 

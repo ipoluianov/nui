@@ -43,6 +43,8 @@ type Canvas struct {
 	// scale is how many pixels of the image a logical pixel takes, e.g. 2
 	// on a Retina screen
 	scale float64
+	// rec records the shapes as SVG too (SetRecorder)
+	rec *SVGRecorder
 }
 
 type VAlign int
@@ -333,6 +335,12 @@ func (c *Canvas) mixPixelAt(i int, r, g, b, alpha uint32) {
 func (c *Canvas) DrawLine(x1 int, y1 int, x2 int, y2 int, width int, col color.Color) {
 	if c.clipEmpty() {
 		return
+	}
+	if c.rec != nil {
+		p := NewPath()
+		p.MoveTo(float64(x1)+0.5, float64(y1)+0.5)
+		p.LineTo(float64(x2)+0.5, float64(y2)+0.5)
+		c.rec.strokePath(c, p, StrokeStyle{Width: float64(max(width, 1))}, col)
 	}
 	if (x1 == x2 || y1 == y2) && width == 1 {
 		if x1 == x2 {
@@ -941,6 +949,9 @@ func CohenSutherland(x1, y1, x2, y2, left, top, right, bottom int) (int, int, in
 }
 
 func (c *Canvas) FillRect(x int, y int, width int, height int, colr color.Color) {
+	if c.rec != nil {
+		c.rec.rect(c, float64(x), float64(y), float64(width), float64(height), colr, false)
+	}
 	x, y, width, height = c.pixelRect(x, y, width, height)
 	c.fillRectPixels(x, y, width, height, colr)
 }
@@ -1028,6 +1039,9 @@ func (c *Canvas) fillRectPixels(x int, y int, width int, height int, colr color.
 }
 
 func (c *Canvas) DrawRect(x int, y int, width int, height int) {
+	if c.rec != nil {
+		c.rec.rect(c, float64(x), float64(y), float64(width), float64(height), c.state.col, true)
+	}
 	// The sides, a logical pixel wide, without overlapping in the corners: a
 	// translucent color is blended once on each pixel
 	px, py, pw, ph := c.pixelRect(x, y, width, height)
@@ -1226,6 +1240,14 @@ func (c *Canvas) DrawText(x int, y int, width int, height int, text string) {
 
 		//c.DrawText(xx, yOffset+y, str, fontFamily, fontSize, colr, underline)
 		//c.DrawText(xx, yOffset+y, str, fontFamily, fontSize, colr, underline)
+
+		if c.rec != nil {
+			tx := xx
+			if hAlign != HAlignLeft && textWidth == 0 {
+				tx = 0
+			}
+			c.rec.text(c, str, float64(tx), float64(yOffset), float64(textHeight), 0, 0, 0)
+		}
 
 		// The text is drawn at the size it takes in pixels, not stretched
 		textX := c.state.translateX + c.scaled(xx)

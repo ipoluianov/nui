@@ -60,6 +60,9 @@ Widgets (no child elements):
 | `<slider>` | `min`, `max`, `step`, `value` | |
 | `<progressbar>` | `value` (0–100) | |
 | `<datepicker>`, `<timepicker>`, `<colorpicker>`, `<imagebox>` | | |
+| `<linechart>` | `values` (`"3,5,4,7"`), `title`, `xtitle`, `ytitle` | |
+| `<barchart>` | `items` (`"Jan:120|Feb:95"`), `horizontal`, `stacked`, `title`, `xtitle`, `ytitle` | |
+| `<piechart>` | `items` (`"Linux:60|Windows:30"`), `donut` (the hole, `0.5`), `title` | |
 | `<hspacer>`, `<vspacer>`, `<space>` | | |
 | `<widget>` | `id`: an application widget from `widgets` | |
 

@@ -343,10 +343,29 @@ func init() {
 		"timepicker":  {make: func() Widgeter { return NewTimePicker() }, children: "none"},
 		"colorpicker": {make: func() Widgeter { return NewColorPicker() }, children: "none"},
 		"imagebox":    {make: func() Widgeter { return NewImageBox() }, children: "none"},
+		// The charts: <linechart values="3,5,4,7" title="Load"/>,
+		// <barchart items="Jan:120|Feb:95"/>, <piechart items="Linux:60|Windows:30" donut="0.5"/>
+		"linechart": {make: func() Widgeter { return NewLineChart() }, children: "none",
+			attrs: chartXMLAttrs("values title xtitle ytitle", func(w Widgeter, k, v string) { w.(*LineChart).ProcessPropChange(k, v) })},
+		"barchart": {make: func() Widgeter { return NewBarChart() }, children: "none",
+			attrs: chartXMLAttrs("items horizontal stacked title xtitle ytitle", func(w Widgeter, k, v string) { w.(*BarChart).ProcessPropChange(k, v) })},
+		"piechart": {make: func() Widgeter { return NewPieChart() }, children: "none",
+			attrs: chartXMLAttrs("items donut title", func(w Widgeter, k, v string) { w.(*PieChart).ProcessPropChange(k, v) })},
 		// <widget id="chart"/>: a widget made by the application, from the
 		// map given to SetLayout
 		"widget": {children: "none"},
 	}
+}
+
+// chartXMLAttrs returns the attributes of a chart element (the names apart
+// by spaces), all set by set
+func chartXMLAttrs(names string, set func(w Widgeter, key, value string)) map[string]xmlAttr {
+	m := map[string]xmlAttr{}
+	for _, k := range strings.Fields(names) {
+		k := k
+		m[k] = textAttr(func(w Widgeter, v string) { set(w, k, v) })
+	}
+	return m
 }
 
 func merge(maps ...map[string]xmlAttr) map[string]xmlAttr {

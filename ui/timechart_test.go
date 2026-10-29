@@ -60,7 +60,7 @@ func TestTimeChartScrollsSmoothly(t *testing.T) {
 
 	from, to := base.Add(10*time.Second), base.Add(290*time.Second)
 	x0 := spikeX(from, to)
-	pixel := to.Sub(from) / time.Duration(chart.plotW-1)
+	pixel := to.Sub(from) / time.Duration(chart.lastPlotW)
 	for k := 1; k <= 8; k++ {
 		shift := pixel * time.Duration(k) / 4
 		x := spikeX(from.Add(shift), to.Add(shift))

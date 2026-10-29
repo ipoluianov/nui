@@ -9,6 +9,7 @@ import (
 
 	"github.com/fogleman/gg"
 	"github.com/ipoluianov/nui/examples/calculator"
+	"github.com/ipoluianov/nui/examples/chartgallery"
 	"github.com/ipoluianov/nui/examples/contacts"
 	"github.com/ipoluianov/nui/examples/converter"
 	"github.com/ipoluianov/nui/examples/files"
@@ -61,6 +62,9 @@ var Apps = []App{
 	{"plotter", "Function Plotter",
 		"Formula input, sliders, chart, animation",
 		appIcon("#F4511E", markWave), plotter.NewForm},
+	{"chartgallery", "Chart Gallery",
+		"Every kind of chart, the gestures, export to PNG, SVG and CSV",
+		appIcon("#6D4C41", markWave), chartgallery.NewForm},
 }
 
 // FindApp returns the application with the name, or nil.

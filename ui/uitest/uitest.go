@@ -366,6 +366,33 @@ func (w *Window) Key(key ui.Key, mods ui.KeyModifiers) {
 	w.Settle()
 }
 
+// Hold presses the modifier keys and keeps them down: the clicks, drags
+// and wheel turns that follow come with them (Shift+drag, Ctrl+click)
+// until Release is called with no modifiers
+//
+//	w.Hold(ui.KeyModifiers{Shift: true})
+//	w.Drag(from, to)
+//	w.Hold(ui.KeyModifiers{})
+func (w *Window) Hold(mods ui.KeyModifiers) {
+	w.frame()
+	keys := []struct {
+		on  bool
+		key ui.Key
+	}{{mods.Shift, ui.KeyShift}, {mods.Ctrl, ui.KeyCtrl}, {mods.Alt, ui.KeyAlt}, {mods.Cmd, ui.KeyCommand}}
+	held := false
+	for _, k := range keys {
+		if k.on {
+			w.wnd.KeyDown(k.key, mods)
+			held = true
+		}
+	}
+	if !held {
+		// Every modifier let go
+		w.wnd.KeyUp(ui.KeyShift, mods)
+	}
+	w.Settle()
+}
+
 // Shortcut presses the keys of the shortcut, e.g. "Ctrl+S", "Shift+F3",
 // "Mod+Z" (Cmd on macOS, Ctrl elsewhere): see ui.ParseShortcut
 func (w *Window) Shortcut(shortcut string) {

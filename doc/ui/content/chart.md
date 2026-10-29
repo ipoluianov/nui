@@ -1,6 +1,7 @@
 # Chart
 
-Simple line chart for `[]ui.ChartPoint`.
+Simple line chart for `[]ui.ChartPoint`: a `ChartView` with one line. For
+more lines, bars, pies and the rest see [Charts](charts.md).
 
 ## Create
 
@@ -16,7 +17,9 @@ ch.SetData([]ui.ChartPoint{
 
 ## Useful props
 
-- `tickcount` (int): number of ticks (default `5`)
-- `xlabel`, `ylabel` (string)
+- `xlabel`, `ylabel` (string): the titles of the axes
 - `padding` (int)
 
+The ticks are picked for the size of the chart so their labels never
+overlap. Being a `ChartView`, the chart zooms with the mouse, shows a
+tooltip and exports to PNG, SVG and CSV.
