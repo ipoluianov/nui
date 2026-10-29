@@ -392,6 +392,7 @@ func (c *Form) Close() {
 // with all its widgets. (Every dialog and message box used to stay in memory.)
 // A later Show registers the widgets again (see createWindow).
 func (c *Form) markClosed() {
+	c.releaseNativeMenuBar()
 	c.closed = true
 	unregisterOpenForm(c)
 	unregisterFormWidgets(c)

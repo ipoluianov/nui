@@ -16,6 +16,9 @@ import (
 
 var nativeMenuBars bool
 
+// nativeMenuOwner is the form whose menus are in the system menu bar now
+var nativeMenuOwner *Form
+
 // UseNativeMenuBar puts the menu bars of the forms in the system's menu
 // bar where there is one (macOS); elsewhere the forms keep their own
 func UseNativeMenuBar(use bool) {
@@ -23,9 +26,16 @@ func UseNativeMenuBar(use bool) {
 }
 
 // installNativeMenuBar gives the form's menu bar to the system, if wanted
-// and possible: the bar takes no room in the form then
+// and possible: the bar takes no room in the form then. A form without a
+// menu bar leaves the application menu alone there: the menus of the form
+// active before mustn't stay, they would act on it.
 func (c *Form) installNativeMenuBar() {
-	if !nativeMenuBars || c.menuBar == nil || c.wnd == nil {
+	if !nativeMenuBars || c.wnd == nil {
+		return
+	}
+	nativeMenuOwner = c
+	if c.menuBar == nil {
+		platforms.SetNativeMenuBar(applicationName(), nil)
 		return
 	}
 	var menus []*platforms.NativeMenu
@@ -40,6 +50,17 @@ func (c *Form) installNativeMenuBar() {
 		c.menuBar.SetVisible(false)
 		c.UpdateLayout()
 	}
+}
+
+// releaseNativeMenuBar takes the menus of the closing form out of the
+// system menu bar, if they are there: the application menu stays until the
+// form active next puts its own
+func (c *Form) releaseNativeMenuBar() {
+	if nativeMenuOwner != c {
+		return
+	}
+	nativeMenuOwner = nil
+	platforms.SetNativeMenuBar(applicationName(), nil)
 }
 
 // nativeMenuOf is the menu for the system: its items are taken anew every
