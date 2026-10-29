@@ -306,3 +306,36 @@ func TestTextInputRect(t *testing.T) {
 		t.Errorf("caret x %d; the box at %d, %d px of text before it", x, bx, sixChars)
 	}
 }
+
+// A day chosen in the calendar of a date picker closes it on the press: the
+// release goes to the closed popup. A click on a text box after it used to
+// give its release to the calendar - the text box stayed "pressed" and
+// selected the text as the mouse moved, with no button held.
+func TestTextBoxAfterDatePickerPopup(t *testing.T) {
+	form := ui.NewForm()
+	form.SetSize(400, 300)
+	picker := ui.NewDatePicker()
+	notes := ui.NewTextBox()
+	notes.SetText("some notes here")
+	form.Panel().AddWidget(0, 0, picker)
+	form.Panel().AddWidget(1, 0, notes)
+	form.Panel().AddVSpacer(2, 0)
+	w := uitest.Show(t, form)
+
+	w.Click(picker)
+	popup := w.Popup()
+	if popup == nil {
+		t.Fatal("the calendar didn't open")
+	}
+	// A day of the month's grid, in the middle of the calendar
+	w.Click(uitest.At(popup, popup.Width()/2, popup.Height()/2))
+	if w.Popup() != nil {
+		t.Fatal("choosing a day didn't close the calendar")
+	}
+
+	w.Click(uitest.At(notes, 10, notes.Height()/2))
+	w.Move(uitest.At(notes, notes.Width()-10, notes.Height()/2))
+	if notes.HasSelection() {
+		t.Errorf("moving the mouse with no button held selected %q", notes.SelectedText())
+	}
+}

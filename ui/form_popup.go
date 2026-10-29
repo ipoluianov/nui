@@ -135,11 +135,15 @@ func (c *Form) bindPopupWindow(h *popupHost) {
 		c.popupUnderMouse = h
 		c.processMouseDown(btn, x+h.widget.X(), y+h.widget.Y())
 		if !c.isPopupHostOpen(h) {
-			// The click closed the popup (e.g. chose a menu item): its
-			// window is hidden, so the button release may never come
+			// The click closed the popup (e.g. chose a menu item, a day of
+			// a date picker): its window is hidden, so the button release
+			// may never come. Without forgetting the widget the release was
+			// for, the release of the next click would go to it and not to
+			// the widget clicked then (a text box would stay pressed)
 			c.mouseLeftButtonPressed = false
 			c.mouseLeftButtonPressedWidget = nil
 			c.mouseDownPopup = nil
+			c.mousePressedWidget = nil
 		}
 	})
 	h.wnd.OnMouseButtonUp(func(btn MouseButton, x, y int) {

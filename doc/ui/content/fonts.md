@@ -4,7 +4,9 @@
 
 By default the interface is drawn with **Noto Sans** (`ui.FontFamilySans`), built into the
 application, so it looks the same everywhere. **JetBrains Mono** (`ui.FontFamilyMono`) is built in
-for code and logs. Chinese, Japanese and Korean text falls back to a system CJK font.
+for code and logs. Characters Noto Sans lacks come from the fallback fonts: JetBrains Mono for
+symbols such as the keys of the shortcuts on macOS (⌘ ⇧ ⌃ ⌥) and arrows, a system CJK font for
+Chinese, Japanese and Korean text (see [Limitations](#limitations)).
 
 ```go
 logView.SetFontFamily(ui.FontFamilyMono)
@@ -55,3 +57,14 @@ ui.UseBuiltinFont() // back to Noto Sans
 
 Subpixel antialiasing blends each color channel with what is under the text, so system fonts
 are meant for text on opaque backgrounds, which all the controls have.
+
+## Limitations
+
+- **Emoji are drawn as boxes.** The emoji fonts are color fonts (Apple Color Emoji keeps images,
+  `sbix`; Noto Color Emoji keeps `CBDT` bitmaps or `COLR` layers), and nui's rasterizer draws outline
+  fonts only, in one color. An emoji is typed, copied, stored and measured as one character: only
+  its picture is a box (the `.notdef` glyph of the font), and the cursor stays right around it.
+- **No fallback for other symbols.** Beyond the built-in fonts and the CJK font, nui doesn't look
+  for a font that has a character (`⌫`, `★`, `✓`, rare scripts): it is drawn as a box too. Register a
+  font with it and add it to the chain: `ui.RegisterFont(name, data)`, then
+  `ui.AddFallbackFont(name)`.
