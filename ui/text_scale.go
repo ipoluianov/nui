@@ -20,9 +20,8 @@ import (
 var textScaleBits atomic.Uint64
 
 // textScale returns the scale of the screen the text is measured for: of
-// the last window created or painted. One for all the forms: with screens
-// of different scales the text of a window on the other one may be off by
-// a little again.
+// the form the UI thread works on now (see Form.useTextScale). Measured
+// from another goroutine, the text is measured for whichever that is.
 func textScale() float64 {
 	if b := textScaleBits.Load(); b != 0 {
 		return math.Float64frombits(b)
@@ -30,19 +29,29 @@ func textScale() float64 {
 	return 1
 }
 
-// setTextScale sets the scale of the screen the text is measured for, and
-// lays the open forms out again when it changed: their texts have other
-// sizes now
-func setTextScale(scale float64) {
-	if scale <= 0 || scale == textScale() {
+// useTextScale makes the text measured for the screen of the form's window,
+// before the form lays out, paints or handles an event. Each form has its
+// own scale: with windows on screens of different scales, a scale for all
+// of them made each paint lay the others out again, for ever, and their
+// texts jumped. Only the form whose window moved to a screen of another
+// scale is laid out again.
+func (c *Form) useTextScale() {
+	if c == nil || c.wnd == nil {
+		return
+	}
+	scale := c.wnd.Scale()
+	if scale <= 0 {
 		return
 	}
 	textScaleBits.Store(math.Float64bits(scale))
-	lineHeightMu.Lock()
-	lineHeightValue = 0
-	lineHeightMu.Unlock()
-	for _, form := range openForms() {
-		form.applyFontSize()
+	if c.textScale == scale {
+		return
+	}
+	laidOut := c.textScale != 0
+	c.textScale = scale
+	if laidOut {
+		// Its texts have other sizes now
+		c.applyFontSize()
 	}
 }
 

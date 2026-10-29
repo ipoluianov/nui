@@ -134,6 +134,18 @@ func (w *Window) Resize(width, height int) {
 	w.Settle()
 }
 
+// MoveToScreen moves the window to a screen of the scale, as the user
+// dragging it to another monitor
+func (w *Window) MoveToScreen(scale float64) {
+	w.wnd.MoveToScreen(scale)
+	w.Settle()
+}
+
+// Updates returns how many times the form asked its window to repaint
+func (w *Window) Updates() int {
+	return w.wnd.Updates()
+}
+
 // Size returns the size of the window's client area
 func (w *Window) Size() (int, int) {
 	return w.wnd.Size()

@@ -157,6 +157,7 @@ func (c *Form) tooltipShowPopup() bool {
 }
 
 func (c *Form) tooltipPopupPaint(rgba *image.RGBA) {
+	c.useTextScale()
 	p := CurrentPalette()
 	cnv := NewCanvasScaled(rgba, c.tooltip.popup.Scale())
 	cnv.SetDirectTranslateAndClip(0, 0, c.tooltip.popupW, c.tooltip.popupH)

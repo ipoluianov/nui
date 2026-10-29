@@ -560,8 +560,9 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 					return 0
 				}
 				r = utf16.DecodeRune(win.platform.highSurrogate, r)
-				win.platform.highSurrogate = 0
 			}
+			// A high half not followed by its low one is dropped
+			win.platform.highSurrogate = 0
 			if win.onChar != nil && r >= 32 && r != utf8.RuneError {
 				win.onChar(r)
 			}

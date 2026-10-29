@@ -1195,7 +1195,7 @@ func (c *TextBox) FontSize() float64 {
 }*/
 
 // applyThemeMetrics measures the lines again: the font size or the scale
-// of the screen (see setTextScale) changed their widths
+// of the screen (see Form.useTextScale) changed their widths
 func (c *TextBox) applyThemeMetrics() {
 	c.Widget.applyThemeMetrics()
 	c.remeasure()

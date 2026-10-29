@@ -14,30 +14,36 @@ const (
 	indicatorTextGap = 8
 )
 
+// lineHeightKey is what the height of a line depends on: the font, the
+// scale of the screen (see textScale) and NativeFontRendering (on Windows
+// GDI measures the built-in fonts taller than nui's rasterizer), which may
+// change after the first measure, e.g. in the init of uitest
+type lineHeightKey struct {
+	face   faceKey
+	scale  float64
+	native bool
+}
+
 var (
 	lineHeightMu     sync.Mutex
-	lineHeightKey    faceKey
-	lineHeightNative bool
-	lineHeightValue  int
+	lineHeightValues = map[lineHeightKey]int{}
 )
 
 // ThemeLineHeight returns the height of a line of text in the theme font.
-// The height depends on NativeFontRendering too (on Windows GDI measures the
-// built-in fonts taller than nui's rasterizer), and that may change after
-// the first measure, e.g. in the init of uitest.
 func ThemeLineHeight() int {
-	key := faceKey{ThemeFontFamily(), ThemeFontSize()}
-	native := NativeFontRendering
+	key := lineHeightKey{faceKey{ThemeFontFamily(), ThemeFontSize()}, textScale(), NativeFontRendering}
 	lineHeightMu.Lock()
 	defer lineHeightMu.Unlock()
-	if key != lineHeightKey || native != lineHeightNative || lineHeightValue == 0 {
-		_, height, err := MeasureText(key.family, key.size, "Ag")
+	height, ok := lineHeightValues[key]
+	if !ok {
+		var err error
+		_, height, err = MeasureText(key.face.family, key.face.size, "Ag")
 		if err != nil {
-			height = int(key.size * 1.4)
+			height = int(key.face.size * 1.4)
 		}
-		lineHeightKey, lineHeightNative, lineHeightValue = key, native, height
+		lineHeightValues[key] = height
 	}
-	return lineHeightValue
+	return height
 }
 
 // ThemeControlHeight returns the height of buttons, input fields, combo

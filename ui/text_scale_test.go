@@ -3,6 +3,7 @@ package ui
 import (
 	"image"
 	"image/color"
+	"math"
 	"testing"
 )
 
@@ -10,11 +11,11 @@ import (
 // text ends: the advances rounded at the size in pixels used to add up to
 // half a pixel a character more than the measured ones
 func TestTextMeasuredAtScreenScale(t *testing.T) {
-	defer setTextScale(1)
+	defer setTestTextScale(1)
 	line := "авпвпвпвыааууцуеуекуеукеуеуеуеекуеуеу11111111111111111 abc"
 	for _, family := range []string{FontFamilyMono, FontFamilySans} {
 		for _, scale := range []float64{1, 1.25, 1.5, 2} {
-			setTextScale(scale)
+			setTestTextScale(scale)
 			img := image.NewRGBA(image.Rect(0, 0, 1600, 80))
 			cnv := NewCanvasScaled(img, scale)
 			cnv.SetDirectTranslateAndClip(0, 0, 800, 40)
@@ -58,15 +59,21 @@ func inkRightEdge(img *image.RGBA) int {
 // lines again for the scale of the screen: drawn clipped to the old width,
 // the end of the line was cut off
 func TestTextBoxRemeasuredForScale(t *testing.T) {
-	defer setTextScale(1)
-	setTextScale(1)
+	defer setTestTextScale(1)
+	setTestTextScale(1)
 	tb := NewTextBox()
 	tb.SetFontFamily("jetbrainsmono:bold:italic")
 	tb.SetText("Text box in JetBrains Mono Bold Italic: click between letters")
-	setTextScale(2)
+	setTestTextScale(2)
 	tb.applyThemeMetrics() // as the form does when the scale changes
 	want, _, _ := MeasureText(tb.FontFamily(), tb.FontSize(), tb.Text())
 	if tb.lineWidths[0] != want {
 		t.Errorf("line width %d, measured at the scale %d", tb.lineWidths[0], want)
 	}
+}
+
+// setTestTextScale makes the text measured for a screen of the scale, as
+// Form.useTextScale does for the screen of a form
+func setTestTextScale(scale float64) {
+	textScaleBits.Store(math.Float64bits(scale))
 }

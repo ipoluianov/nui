@@ -117,6 +117,7 @@ type HeadlessWindow struct {
 	modalChildren   int
 	mods            KeyModifiers
 	cursor          MouseCursor
+	updates         atomic.Int64
 
 	// The window or popup that got the button press: it gets the moves and
 	// the release (the system's mouse grab); and the one under the mouse
@@ -451,7 +452,15 @@ func (w *HeadlessWindow) activate() {
 	}
 }
 
-func (w *HeadlessWindow) Update() {}
+// Update counts the repaints the form asked for (see Updates)
+func (w *HeadlessWindow) Update() { w.updates.Add(1) }
+
+// Updates returns how many times the form asked the window to repaint
+func (w *HeadlessWindow) Updates() int { return int(w.updates.Load()) }
+
+// MoveToScreen moves the window to a screen of the scale, as the user
+// dragging it to another monitor; the form sees it at its next paint
+func (w *HeadlessWindow) MoveToScreen(scale float64) { w.scale = max(scale, 1) }
 
 func (w *HeadlessWindow) Close() bool {
 	if w.closed {

@@ -117,6 +117,7 @@ func (c *Form) takePopupWindow() platforms.PopupWindow {
 
 func (c *Form) bindPopupWindow(h *popupHost) {
 	h.wnd.OnPaint(func(rgba *image.RGBA) {
+		c.useTextScale() // laid out by the form, for its screen
 		cnv := NewCanvasScaled(rgba, h.wnd.Scale())
 		cnv.SetDirectTranslateAndClip(0, 0, h.widget.Width(), h.widget.Height())
 		h.widget.ProcessPaint(cnv)

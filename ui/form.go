@@ -30,6 +30,9 @@ type Form struct {
 	normal         FormState
 	maximizeOnShow bool
 	clampOnShow    bool
+	// textScale is the scale of the screen the form is laid out for (see
+	// useTextScale); 0 before its window is created
+	textScale float64
 	// closing runs before the window closes (see onClosing)
 	closing     map[int]func()
 	closingNext int
@@ -271,6 +274,9 @@ func (c *Form) UpdateLayout() {
 // layoutNow lays the widgets out if asked for and not blocked (see
 // LayoutingBlockPush)
 func (c *Form) layoutNow() {
+	// The handlers of the window's events start here: the text is measured
+	// for the screen of this form from now on
+	c.useTextScale()
 	if c == nil || !c.layoutPending || c.inLayout || c.layoutingBlockStack > 0 || c.topWidget == nil {
 		return
 	}
@@ -661,7 +667,8 @@ func (c *Form) createWindow(maximized bool) {
 	c.growToMinSize()
 	c.appliedMinWidth, c.appliedMinHeight = 0, 0
 	c.wnd = platforms.CreateWindow(c.title, c.posX, c.posY, c.width, c.height, centerOnScreen, maximized)
-	setTextScale(c.wnd.Scale())
+	c.textScale = 0 // laid out anew for the screen of the new window
+	c.useTextScale()
 	// A new window knows neither the caret nor the text box of the focus
 	c.textInputRect, c.textInputActive = [4]int{}, false
 	c.wnd.OnPaint(c.processPaint)
@@ -906,8 +913,7 @@ func (c *Form) processPaint(rgba *image.RGBA) {
 	if c.wnd == nil {
 		return // closed: the native window goes away with the next turn of the loop
 	}
-	setTextScale(c.wnd.Scale()) // the window may have moved to another screen
-	c.layoutNow()
+	c.layoutNow() // the window may have moved to another screen: see useTextScale
 	c.paintScaled(rgba, c.wnd.Scale())
 	c.updateTextInputRect()
 	c.accessibilityFocusChanged()
@@ -1545,6 +1551,7 @@ func (c *Form) Invoke(f func()) {
 		return
 	}
 	platforms.Post(func() {
+		c.useTextScale()
 		f()
 		c.Update()
 	})
@@ -1556,6 +1563,7 @@ func (c *Form) ParentForm() *Form {
 }
 
 func (c *Form) processTimer() {
+	c.useTextScale()
 	freeOSMemory()
 	updateDynamicActions()
 
