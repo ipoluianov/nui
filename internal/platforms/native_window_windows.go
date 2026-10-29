@@ -356,7 +356,7 @@ func (c *nativeWindow) frame() rect {
 }
 
 func (c *nativeWindow) Move(x, y int) {
-	flags := c_SWP_NOSIZE | c_SWP_NOZORDER
+	flags := c_SWP_NOSIZE | c_SWP_NOZORDER | c_SWP_NOACTIVATE
 
 	f := c.frame()
 	procSetWindowPos.Call(
@@ -376,11 +376,11 @@ func (c *nativeWindow) MoveToCenterOfScreen() {
 	windowHeight := c.toPhysical(c.windowHeight) + int(f.bottom-f.top)
 	x := (screenWidth - windowWidth) / 2
 	y := (screenHeight - windowHeight) / 2
-	procSetWindowPos.Call(uintptr(c.hwnd), 0, uintptr(x), uintptr(y), 0, 0, c_SWP_NOSIZE|c_SWP_NOZORDER)
+	procSetWindowPos.Call(uintptr(c.hwnd), 0, uintptr(x), uintptr(y), 0, 0, c_SWP_NOSIZE|c_SWP_NOZORDER|c_SWP_NOACTIVATE)
 }
 
 func (c *nativeWindow) Resize(width, height int) {
-	flags := c_SWP_NOMOVE | c_SWP_NOZORDER
+	flags := c_SWP_NOMOVE | c_SWP_NOZORDER | c_SWP_NOACTIVATE
 
 	f := c.frame()
 	procSetWindowPos.Call(

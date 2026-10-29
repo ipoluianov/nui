@@ -39,7 +39,6 @@ func (p *planner) taskList() ui.Widgeter {
 	}
 	p.table.SetStretchLastColumn(true)
 	p.table.SetSelectingRows(true)
-	p.table.SetHotTracking(true)
 
 	p.table.SetOnSelectionChanged(func(int, int) {
 		if !p.refreshing {

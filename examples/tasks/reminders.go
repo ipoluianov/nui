@@ -54,10 +54,17 @@ func (p *planner) checkReminders() {
 			continue
 		}
 		t.reminded = true
-		p.form.ShowToastFor("Reminder: "+t.Title+" ("+t.Due.Format("15:04")+")", ui.ToastWarning, 8*time.Second)
-		if p.tray != nil {
-			// Not every desktop shows notifications: the toast is enough then
-			_ = p.tray.ShowNotification("Task due", t.Title)
+		// The user looking at the window sees a toast; one in another
+		// window, or with the window minimized or in the tray, a
+		// notification of the system, which stays in its notification
+		// center. Not both: that told the same twice.
+		notified := false
+		if p.tray != nil && !p.form.IsActive() {
+			notified = p.tray.ShowNotification("Task due", t.Title) == nil
+		}
+		if !notified {
+			// Not every desktop shows notifications: the toast then
+			p.form.ShowToastFor("Reminder: "+t.Title+" ("+t.Due.Format("15:04")+")", ui.ToastWarning, 8*time.Second)
 		}
 		// The due times shown as overdue change color
 		p.updateRow(t)

@@ -52,9 +52,11 @@ func (c *Form) ShowToast(text string, kind ToastKind) {
 	c.ShowToastFor(text, kind, ToastDefaultDuration)
 }
 
-// ShowToastFor is ShowToast with the time the toast stays on the screen
+// ShowToastFor is ShowToast with the time the toast stays on the screen.
+// A hidden form (see Hide) shows no toasts: its window is not on the
+// screen, but the toast's own would be, over the other applications.
 func (c *Form) ShowToastFor(text string, kind ToastKind, duration time.Duration) {
-	if c == nil {
+	if c == nil || c.hidden {
 		return
 	}
 	t := &toast{kind: kind, expires: time.Now().Add(duration)}

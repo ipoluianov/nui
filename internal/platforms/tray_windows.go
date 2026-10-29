@@ -35,6 +35,7 @@ const (
 	c_NIF_TIP     = 0x04
 	c_NIF_INFO    = 0x10
 	c_NIIF_INFO   = 0x01
+	c_NIIF_USER   = 0x04 // the icon of the tray
 
 	c_MF_STRING    = 0x0000
 	c_MF_GRAYED    = 0x0001
@@ -191,7 +192,17 @@ func (t *trayIcon) ShowNotification(title, text string) error {
 	copyUTF16(d.szInfoTitle[:], title)
 	copyUTF16(d.szInfo[:], text)
 	d.dwInfoFlags = c_NIIF_INFO
+	if t.hIcon != 0 {
+		// The notification shows the icon of the tray (hIcon), not "i".
+		// Not hBalloonIcon: of another size than SM_CXSMICON, or of that
+		// size with NIIF_LARGE_ICON, it fails the whole notification.
+		d.dwInfoFlags = c_NIIF_USER
+	}
 	ret, _, _ := procShellNotifyIconW.Call(c_NIM_MODIFY, uintptr(unsafe.Pointer(&d)))
+	if ret == 0 && d.dwInfoFlags != c_NIIF_INFO {
+		d.dwInfoFlags = c_NIIF_INFO
+		ret, _, _ = procShellNotifyIconW.Call(c_NIM_MODIFY, uintptr(unsafe.Pointer(&d)))
+	}
 	if ret == 0 {
 		return ErrNotificationsNotSupported
 	}
