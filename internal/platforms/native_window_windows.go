@@ -107,16 +107,17 @@ func createWindow(title string, posX int, posY int, width int, height int, cente
 
 	hInstance, className := registerWindowClass()
 
+	// Not WS_MAXIMIZE: the window is created normal, so that it gets the
+	// place and the size it returns to when restored, and is maximized when
+	// shown (see Show)
 	windowFlags := uint32(c_WS_OVERLAPPEDWINDOW)
-	if c.showMaximized {
-		windowFlags |= c_WS_MAXIMIZE
-	}
 
 	// The size is logical: in pixels of the screen it opens on (the
 	// primary one), corrected below if it opens on another
 	c.scale = systemScale()
 
-	// Create the window
+	// Create the window; the size is of the client area
+	f := frameInsets(windowFlags, 0, c.scale)
 	hwnd, _, _ := procCreateWindowExW.Call(
 		0,
 		uintptr(unsafe.Pointer(className)),
@@ -124,8 +125,8 @@ func createWindow(title string, posX int, posY int, width int, height int, cente
 		uintptr(windowFlags),
 		c_CW_USEDEFAULT,
 		c_CW_USEDEFAULT,
-		uintptr(c.toPhysical(width)),
-		uintptr(c.toPhysical(height)),
+		uintptr(c.toPhysical(width)+int(f.right-f.left)),
+		uintptr(c.toPhysical(height)+int(f.bottom-f.top)),
 		0,
 		0,
 		hInstance,
@@ -139,9 +140,7 @@ func createWindow(title string, posX int, posY int, width int, height int, cente
 	c.hwnd = windowId(syscall.Handle(hwnd))
 	if s := hwndScale(hwnd); s != c.scale {
 		c.scale = s
-		if !maximized {
-			c.Resize(width, height)
-		}
+		c.Resize(width, height)
 	}
 	appWindowsMu.Lock()
 	app.windows[c.hwnd] = &c
@@ -332,13 +331,38 @@ func (c *nativeWindow) SetMouseCursor(cursor MouseCursor) {
 /////////////////////////////////////////////////////
 // Window position and size
 
+// The place and the size are of the client area, as on the other platforms
+// and as WM_MOVE and WM_SIZE report them; SetWindowPos takes the window's
+// frame, so they are converted with frameInsets.
+
+// frameInsets returns how far the frame of a window of the style reaches
+// out of its client area, in physical pixels: left and top as negative
+// offsets, the way AdjustWindowRectEx gives them
+func frameInsets(style, exStyle uint32, scale float64) rect {
+	var r rect
+	if procAdjustWindowRectExForDpi.Find() == nil {
+		procAdjustWindowRectExForDpi.Call(uintptr(unsafe.Pointer(&r)), uintptr(style), 0, uintptr(exStyle), uintptr(scale*96))
+	} else {
+		procAdjustWindowRectEx.Call(uintptr(unsafe.Pointer(&r)), uintptr(style), 0, uintptr(exStyle))
+	}
+	return r
+}
+
+// frame returns the frame insets of the window as it is now
+func (c *nativeWindow) frame() rect {
+	style, _, _ := procGetWindowLongPtrW.Call(uintptr(c.hwnd), gwlStyleIndex())
+	exStyle, _, _ := procGetWindowLongPtrW.Call(uintptr(c.hwnd), gwlIndexToUintptr(-20)) // GWL_EXSTYLE
+	return frameInsets(uint32(style), uint32(exStyle), c.scale)
+}
+
 func (c *nativeWindow) Move(x, y int) {
 	flags := c_SWP_NOSIZE | c_SWP_NOZORDER
 
+	f := c.frame()
 	procSetWindowPos.Call(
 		uintptr(c.hwnd),
 		0,
-		uintptr(c.toPhysical(x)), uintptr(c.toPhysical(y)),
+		uintptr(c.toPhysical(x)+int(f.left)), uintptr(c.toPhysical(y)+int(f.top)),
 		0, 0,
 		uintptr(flags),
 	)
@@ -347,7 +371,9 @@ func (c *nativeWindow) Move(x, y int) {
 func (c *nativeWindow) MoveToCenterOfScreen() {
 	// In physical pixels, as the screen's size
 	screenWidth, screenHeight := getScreenSize()
-	windowWidth, windowHeight := c.toPhysical(c.windowWidth), c.toPhysical(c.windowHeight)
+	f := c.frame()
+	windowWidth := c.toPhysical(c.windowWidth) + int(f.right-f.left)
+	windowHeight := c.toPhysical(c.windowHeight) + int(f.bottom-f.top)
 	x := (screenWidth - windowWidth) / 2
 	y := (screenHeight - windowHeight) / 2
 	procSetWindowPos.Call(uintptr(c.hwnd), 0, uintptr(x), uintptr(y), 0, 0, c_SWP_NOSIZE|c_SWP_NOZORDER)
@@ -356,12 +382,13 @@ func (c *nativeWindow) MoveToCenterOfScreen() {
 func (c *nativeWindow) Resize(width, height int) {
 	flags := c_SWP_NOMOVE | c_SWP_NOZORDER
 
+	f := c.frame()
 	procSetWindowPos.Call(
 		uintptr(c.hwnd),
 		0,
 		0, 0,
-		uintptr(c.toPhysical(width)),
-		uintptr(c.toPhysical(height)),
+		uintptr(c.toPhysical(width)+int(f.right-f.left)),
+		uintptr(c.toPhysical(height)+int(f.bottom-f.top)),
 		uintptr(flags),
 	)
 }
@@ -499,8 +526,27 @@ func (c *nativeWindow) Height() int {
 
 func (c *nativeWindow) IsMaximized() bool {
 	ret, _, _ := procIsZoomed.Call(uintptr(c.hwnd))
-	return ret != 0
+	if ret != 0 {
+		return true
+	}
+	// A maximized window minimized is not zoomed, but is maximized again
+	// when restored
+	if iconic, _, _ := procIsIconic.Call(uintptr(c.hwnd)); iconic != 0 {
+		wp := windowPlacement{length: uint32(unsafe.Sizeof(windowPlacement{}))}
+		procGetWindowPlacement.Call(uintptr(c.hwnd), uintptr(unsafe.Pointer(&wp)))
+		return wp.flags&c_WPF_RESTORETOMAXIMIZED != 0
+	}
+	return false
 }
+
+// windowPlacement mirrors WINDOWPLACEMENT
+type windowPlacement struct {
+	length, flags, showCmd   uint32
+	minPosition, maxPosition point
+	normalPosition           rect
+}
+
+const c_WPF_RESTORETOMAXIMIZED = 0x0002
 
 func (c *nativeWindow) KeyModifiers() KeyModifiers {
 	// GetAsyncKeyState reports the keys held in any application

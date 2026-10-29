@@ -64,10 +64,15 @@ var (
 
 	procGetSystemMetrics = user32.NewProc("GetSystemMetrics")
 
-	procIsZoomed            = user32.NewProc("IsZoomed")
-	procGetKeyState         = user32.NewProc("GetKeyState")
-	procGetAsyncKeyState    = user32.NewProc("GetAsyncKeyState")
-	procGetForegroundWindow = user32.NewProc("GetForegroundWindow")
+	procIsZoomed           = user32.NewProc("IsZoomed")
+	procIsIconic           = user32.NewProc("IsIconic")
+	procGetWindowPlacement = user32.NewProc("GetWindowPlacement")
+
+	procAdjustWindowRectEx       = user32.NewProc("AdjustWindowRectEx")
+	procAdjustWindowRectExForDpi = user32.NewProc("AdjustWindowRectExForDpi") // Windows 10 1607+
+	procGetKeyState              = user32.NewProc("GetKeyState")
+	procGetAsyncKeyState         = user32.NewProc("GetAsyncKeyState")
+	procGetForegroundWindow      = user32.NewProc("GetForegroundWindow")
 
 	procEnableWindow        = user32.NewProc("EnableWindow")
 	procGetWindowLongPtrW   = user32.NewProc("GetWindowLongPtrW")
@@ -121,6 +126,8 @@ const (
 
 	c_WM_MOVE = 0x0003
 	c_WM_SIZE = 0x0005
+
+	c_SIZE_MINIMIZED = 1 // wParam of WM_SIZE
 
 	c_WM_CLOSE   = 0x0010
 	c_WM_DESTROY = 0x0002
@@ -734,7 +741,9 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 		return 0
 
 	case c_WM_SIZE:
-		if win != nil {
+		// A minimized window reports a client area of 0x0: it keeps its
+		// size, as on the other platforms, where it isn't resized
+		if win != nil && wParam != c_SIZE_MINIMIZED {
 			// The client area in logical pixels
 			width := win.toLogicalSize(int(uint16(lParam & 0xFFFF)))
 			height := win.toLogicalSize(int(uint16((lParam >> 16) & 0xFFFF)))
@@ -748,7 +757,8 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 		return 0
 
 	case c_WM_MOVE:
-		if win != nil {
+		// A minimized window is moved to -32000, -32000: it keeps its place
+		if iconic, _, _ := procIsIconic.Call(uintptr(hwnd)); win != nil && iconic == 0 {
 			x := win.toLogicalScreen(int(int16(lParam & 0xFFFF)))
 			y := win.toLogicalScreen(int(int16((lParam >> 16) & 0xFFFF)))
 			win.windowPosX = x

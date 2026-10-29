@@ -36,6 +36,8 @@ import (
 func init() {
 	platforms.SetHeadless()
 	ui.NativeFontRendering = false
+	// The sizes measured in the init of ui were for the native rendering
+	ui.ApplyBaseFontSize(ui.ThemeFontSize())
 	ui.ApplyLightTheme()
 }
 

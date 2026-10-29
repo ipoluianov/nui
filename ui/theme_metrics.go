@@ -15,22 +15,27 @@ const (
 )
 
 var (
-	lineHeightMu    sync.Mutex
-	lineHeightKey   faceKey
-	lineHeightValue int
+	lineHeightMu     sync.Mutex
+	lineHeightKey    faceKey
+	lineHeightNative bool
+	lineHeightValue  int
 )
 
 // ThemeLineHeight returns the height of a line of text in the theme font.
+// The height depends on NativeFontRendering too (on Windows GDI measures the
+// built-in fonts taller than nui's rasterizer), and that may change after
+// the first measure, e.g. in the init of uitest.
 func ThemeLineHeight() int {
 	key := faceKey{ThemeFontFamily(), ThemeFontSize()}
+	native := NativeFontRendering
 	lineHeightMu.Lock()
 	defer lineHeightMu.Unlock()
-	if key != lineHeightKey || lineHeightValue == 0 {
+	if key != lineHeightKey || native != lineHeightNative || lineHeightValue == 0 {
 		_, height, err := MeasureText(key.family, key.size, "Ag")
 		if err != nil {
 			height = int(key.size * 1.4)
 		}
-		lineHeightKey, lineHeightValue = key, height
+		lineHeightKey, lineHeightNative, lineHeightValue = key, native, height
 	}
 	return lineHeightValue
 }

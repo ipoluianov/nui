@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"image/color"
 	"runtime"
+	"strings"
 	"unicode/utf8"
 
 	"golang.org/x/image/font/gofont/goregular"
@@ -50,24 +51,10 @@ func main() {
 	// Widths with the system's text engine (GDI on Windows) and with nui's
 	// rasterizer: a real face is about as wide in both. A synthesized bold
 	// is wider than the regular face by a pixel a character at 15 px.
-	fmt.Printf("sample: %d characters, 15 px\n", utf8.RuneCountInString(sample))
-	fmt.Printf("%-36s %8s %8s %12s\n", "face", "native", "nui", "native-regular")
-	for _, family := range families {
-		if family == "" {
-			family = ui.ThemeFontFamily()
-		}
-		regular := 0
-		for _, s := range styles {
-			f := ui.StyledFont(family, s.style)
-			ui.NativeFontRendering = true
-			native, _, _ := ui.MeasureText(f, 15, sample)
-			ui.NativeFontRendering = false
-			own, _, _ := ui.MeasureText(f, 15, sample)
-			if s.style == ui.FontRegular {
-				regular = native
-			}
-			fmt.Printf("%-36s %8d %8d %12d\n", f, native, own, native-regular)
-		}
+	// A text with a character the font lacks is all drawn by nui's
+	// rasterizer, so the built-in fonts get to GDI only without 中文.
+	for _, text := range []string{sample, strings.TrimSuffix(sample, " 中文")} {
+		printWidths(families, text)
 	}
 	ui.NativeFontRendering = true
 
@@ -112,4 +99,28 @@ func main() {
 	p.AddVSpacer(max(rows[0], rows[1]), 0)
 	form.Show()
 	form.Exec()
+}
+
+// printWidths prints the widths of the text at 15 px in each face of the
+// families, with the system's text engine and with nui's rasterizer
+func printWidths(families []string, text string) {
+	fmt.Printf("\nsample: %d characters, 15 px\n", utf8.RuneCountInString(text))
+	fmt.Printf("%-36s %8s %8s %12s\n", "face", "native", "nui", "native-regular")
+	for _, family := range families {
+		if family == "" {
+			family = ui.ThemeFontFamily()
+		}
+		regular := 0
+		for _, s := range styles {
+			f := ui.StyledFont(family, s.style)
+			ui.NativeFontRendering = true
+			native, _, _ := ui.MeasureText(f, 15, text)
+			ui.NativeFontRendering = false
+			own, _, _ := ui.MeasureText(f, 15, text)
+			if s.style == ui.FontRegular {
+				regular = native
+			}
+			fmt.Printf("%-36s %8d %8d %12d\n", f, native, own, native-regular)
+		}
+	}
 }
