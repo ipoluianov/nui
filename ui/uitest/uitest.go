@@ -170,6 +170,12 @@ func (w *Window) TextInputRect() (x, y, width, height int) {
 	return w.wnd.TextInputRect()
 }
 
+// TextInputActive tells whether the window was told the focus is in a text
+// box: the input method of macOS takes the keys only then
+func (w *Window) TextInputActive() bool {
+	return w.wnd.TextInputActive()
+}
+
 // RequestClose clicks the close button of the window; it returns whether
 // the window closed (OnClose may keep it open)
 func (w *Window) RequestClose() bool {

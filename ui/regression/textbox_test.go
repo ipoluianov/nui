@@ -339,3 +339,32 @@ func TestTextBoxAfterDatePickerPopup(t *testing.T) {
 		t.Errorf("moving the mouse with no button held selected %q", notes.SelectedText())
 	}
 }
+
+// The input method takes the keys only while the focus is in a text box:
+// on a button or a list a held key repeats, no composition starts
+func TestTextInputActiveInTextBoxOnly(t *testing.T) {
+	form := ui.NewForm()
+	form.SetSize(300, 200)
+	button := ui.NewButton("OK")
+	text := ui.NewTextBox()
+	form.Panel().AddWidget(0, 0, button)
+	form.Panel().AddWidget(1, 0, text)
+	w := uitest.Show(t, form)
+
+	w.Click(text)
+	if !w.TextInputActive() {
+		t.Error("the text box has the focus: the input method must be on")
+	}
+	w.Click(button)
+	if w.TextInputActive() {
+		t.Error("a button has the focus: the input method must be off")
+	}
+	text.Focus()
+	if !w.TextInputActive() {
+		t.Error("focused by the code: on at once, before a frame")
+	}
+	text.ClearFocus()
+	if w.TextInputActive() {
+		t.Error("no focus: off")
+	}
+}

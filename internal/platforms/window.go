@@ -118,6 +118,11 @@ type Window interface {
 	// client area: the window of a composition (Chinese, Japanese, Korean)
 	// and its candidates are shown next to it
 	SetTextInputRect(x, y, width, height int)
+	// SetTextInputActive tells whether the focus is in a field that takes
+	// text (a text box): only then do the keys go to the input method of
+	// macOS (UseMacInputMethod); elsewhere they come to the form as they
+	// are - a held key repeats, no composition starts on a button
+	SetTextInputActive(active bool)
 
 	// ClientToScreen converts a point in the window's client area to screen coordinates
 	ClientToScreen(x, y int) (screenX, screenY int)

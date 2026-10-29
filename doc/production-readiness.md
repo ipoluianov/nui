@@ -616,7 +616,7 @@ API: `AddPage`, `SetPageNameFunc`, `SetItems`. Нет:
     - **Свой файловый диалог** там, где нет zenity и kdialog; `UseBuiltinFileDialogs` включает его везде.
     - **IME на Windows.** Окно набора и кандидатов открывается у курсора (`SetTextInputRect`, `ImmSetCompositionWindow`). Эмодзи, приходящие двумя `WM_CHAR`, склеиваются.
     - **Перетаскивание файлов из окна.** На Linux это источник XDND, проверено между процессами. На macOS — сессия AppKit; результат приходит позже, поэтому `StartFileDrag` теперь асинхронный.
-    - **Системное меню macOS** (`UseNativeMenuBar`) и **IME на macOS** (`UseMacInputMethod`, через скрытый `NSTextView`). У обратных вызовов purego не может быть структур в результате, поэтому самому написать `NSTextInputClient` нельзя. Обе опции выключены по умолчанию до проверки на Mac.
+    - **Системное меню macOS** (`UseNativeMenuBar`) и **IME на macOS** (`UseMacInputMethod`, через скрытый `NSTextView`). У обратных вызовов purego не может быть структур в результате, поэтому самому написать `NSTextInputClient` нельзя. Обе опции были выключены по умолчанию до проверки на Mac; после проверки (2026-10-29) IME включён по умолчанию и работает только при фокусе в поле ввода, системное меню по-прежнему выключено.
     - **Попутно исправлено:** `AfterFunc(0, f)` никогда не срабатывал.
 21. Accessibility (UIA, AT-SPI, NSAccessibility), хотя бы для базовых контролов.
 

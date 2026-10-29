@@ -11,17 +11,17 @@ import (
 // Without arguments: the launcher of the example applications. With the
 // name of one (go run . notepad): only that application.
 //
-// The platform features that are off by default are switched on for the
-// checks of doc/platform-checks.md by the environment:
+// The platform features are switched for the checks of
+// doc/platform-checks.md by the environment:
 //
 //	NUI_NATIVE_MENU=1  the menu bars in the menu at the top of the screen (macOS)
-//	NUI_MAC_IME=1      the input method of macOS (accents, Chinese, emoji)
+//	NUI_MAC_IME=0      no input method of macOS (it is on by default)
 func main() {
 	if os.Getenv("NUI_NATIVE_MENU") == "1" {
 		ui.UseNativeMenuBar(true)
 	}
-	if os.Getenv("NUI_MAC_IME") == "1" {
-		ui.UseMacInputMethod(true)
+	if os.Getenv("NUI_MAC_IME") == "0" {
+		ui.UseMacInputMethod(false)
 	}
 	if len(os.Args) < 2 {
 		examples.Run()

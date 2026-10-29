@@ -48,6 +48,10 @@ type candidateForm struct {
 
 // SetTextInputRect keeps the caret and moves the input method's windows
 // there, if a composition is going on
+// SetTextInputActive: the input method of Windows is the system's own, on
+// in every window
+func (c *nativeWindow) SetTextInputActive(active bool) {}
+
 func (c *nativeWindow) SetTextInputRect(x, y, width, height int) {
 	c.platform.textInputRect = [4]int{x, y, width, height}
 	c.applyTextInputRect()

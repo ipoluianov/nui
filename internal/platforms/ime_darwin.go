@@ -10,10 +10,12 @@ import (
 )
 
 // The input method of macOS (Chinese, Japanese, Korean; also the accents
-// held on a key) with SetInputMethodEnabled(true): each window gets a
+// held on a key), on unless SetInputMethodEnabled(false): each window gets a
 // hidden NSTextView, which implements NSTextInputClient itself (its methods
 // return NSRange and NSRect structs, which callbacks of purego can't).
-// The text view is the first responder, at the caret (SetTextInputRect):
+// While the focus is in a text box (SetTextInputActive) the text view is
+// the first responder, at the caret (SetTextInputRect); elsewhere the view
+// of the window is, and the keys come to nui as without the input method:
 //
 //   - a key goes to nui first, as without the input method (shortcuts, the
 //     arrows, Backspace); the keys nui leaves, and all the keys while a
@@ -28,6 +30,8 @@ import (
 //     moved: a key nui took, a click.
 
 var (
+	selInputContext           = objc.RegisterName("inputContext")
+	selDiscardMarkedText      = objc.RegisterName("discardMarkedText")
 	selSetTextColor           = objc.RegisterName("setTextColor:")
 	selSetInsertionPointColor = objc.RegisterName("setInsertionPointColor:")
 	selClearColor             = objc.RegisterName("clearColor")
@@ -45,7 +49,7 @@ var (
 )
 
 var (
-	inputMethodEnabled bool
+	inputMethodEnabled = true
 
 	textInputClassOnce sync.Once
 	textInputClass     objc.Class
@@ -54,6 +58,8 @@ var (
 	textInputViews = map[int]objc.ID{}
 	// textInputKept is the text left in each text view (see above)
 	textInputKept = map[objc.ID][]rune{}
+	// textInputActive are the windows whose text view takes the keys now
+	textInputActive = map[int]bool{}
 )
 
 func setInputMethodEnabled(enabled bool) {
@@ -105,8 +111,38 @@ func installTextInput(win, view objc.ID) {
 	tv.Send(selSetDelegate, textInputDelegate)
 	view.Send(selAddSubview, tv)
 	tv.Send(selRelease) // the view keeps it
-	win.Send(selMakeFirstResponder, tv)
 	textInputViews[int(objc.Send[int](win, selWindowNumber))] = tv
+}
+
+// textInputIsActive tells whether the text view of the window takes the
+// keys (the view of the window doesn't take the first responder then)
+func textInputIsActive(id int) bool {
+	return inputMethodEnabled && textInputActive[id]
+}
+
+// SetTextInputActive makes the text view the first responder while the
+// focus is in a text box, the view of the window otherwise. A composition
+// going on is dropped: the text box it was for lost the focus.
+func (c *nativeWindow) SetTextInputActive(active bool) {
+	id := int(c.hwnd)
+	tv, ok := textInputViews[id]
+	if !ok || textInputActive[id] == active {
+		return
+	}
+	textInputActive[id] = active
+	win, ok := cocoaWindows[id]
+	if !ok {
+		return
+	}
+	if active {
+		win.Send(selMakeFirstResponder, tv)
+		return
+	}
+	if objc.Send[bool](tv, selHasMarkedText) {
+		objc.Send[objc.ID](tv, selInputContext).Send(selDiscardMarkedText)
+	}
+	emptyTextInput(tv)
+	win.Send(selMakeFirstResponder, objc.Send[objc.ID](tv, selSuperview))
 }
 
 // nuiTextInputKeyDown: nui first, then the input method
@@ -222,4 +258,5 @@ func (c *nativeWindow) moveTextInput() {
 func forgetTextInput(id int) {
 	delete(textInputKept, textInputViews[id])
 	delete(textInputViews, id)
+	delete(textInputActive, id)
 }

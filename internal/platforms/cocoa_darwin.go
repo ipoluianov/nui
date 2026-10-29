@@ -654,11 +654,13 @@ func nuiWindowDidBecomeKey(self objc.ID, _ objc.SEL, notification objc.ID) {
 // NUIPaintView: full-window content NSView hosting the software framebuffer
 // and input.
 
-// With the input method, the hidden text view stays the first responder
-// (see ime_darwin.go): a click on the view must not take it
-func nuiViewAcceptsFirstResponder(self objc.ID, _ objc.SEL) bool { return !inputMethodEnabled }
-func nuiViewBecomeFirstResponder(self objc.ID, _ objc.SEL) bool  { return true }
-func nuiViewIsFlipped(self objc.ID, _ objc.SEL) bool             { return false }
+// While the hidden text view takes the keys (the focus in a text box, see
+// ime_darwin.go), a click on the view must not take the first responder
+func nuiViewAcceptsFirstResponder(self objc.ID, _ objc.SEL) bool {
+	return !textInputIsActive(int(wndID(objc.Send[objc.ID](self, selWindow))))
+}
+func nuiViewBecomeFirstResponder(self objc.ID, _ objc.SEL) bool { return true }
+func nuiViewIsFlipped(self objc.ID, _ objc.SEL) bool            { return false }
 
 // Window chrome can change without our Resize call; always resync client
 // size to Go.

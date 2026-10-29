@@ -1426,6 +1426,7 @@ func (c *Widget) Focus() {
 		}
 
 		c.form.focusedWidget = widgetToFocus
+		c.form.syncTextInput()
 		c.form.Update()
 
 		widgetToFocus.ProcessFocused()
@@ -2204,6 +2205,7 @@ func (c *Widget) ClearFocus() {
 	if c.form != nil && c.form.focusedWidget != nil {
 		c.form.focusedWidget.ProcessFocusLost()
 		c.form.focusedWidget = nil
+		c.form.syncTextInput()
 		c.form.Update()
 	}
 }

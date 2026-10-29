@@ -103,19 +103,20 @@ func postHeadless(f func()) {
 // HeadlessWindow is a window of the headless mode. Its methods besides the
 // Window ones drive it as the system would: they call its handlers.
 type HeadlessWindow struct {
-	title         string
-	x, y          int
-	width, height int
-	minW, minH    int
-	scale         float64
-	textInputRect [4]int
-	visible       bool
-	closed        bool
-	maximized     bool
-	modalParent   *HeadlessWindow
-	modalChildren int
-	mods          KeyModifiers
-	cursor        MouseCursor
+	title           string
+	x, y            int
+	width, height   int
+	minW, minH      int
+	scale           float64
+	textInputRect   [4]int
+	textInputActive bool
+	visible         bool
+	closed          bool
+	maximized       bool
+	modalParent     *HeadlessWindow
+	modalChildren   int
+	mods            KeyModifiers
+	cursor          MouseCursor
 
 	// The window or popup that got the button press: it gets the moves and
 	// the release (the system's mouse grab); and the one under the mouse
@@ -551,6 +552,15 @@ func (w *HeadlessWindow) Scale() float64              { return w.scale }
 // SetTextInputRect keeps the rect, see TextInputRect
 func (w *HeadlessWindow) SetTextInputRect(x, y, width, height int) {
 	w.textInputRect = [4]int{x, y, width, height}
+}
+
+func (w *HeadlessWindow) SetTextInputActive(active bool) {
+	w.textInputActive = active
+}
+
+// TextInputActive returns what the form gave to SetTextInputActive last
+func (w *HeadlessWindow) TextInputActive() bool {
+	return w.textInputActive
 }
 
 // TextInputRect returns what the form gave to SetTextInputRect last

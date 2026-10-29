@@ -67,6 +67,9 @@ type Form struct {
 	focusedWidget Widgeter
 	// textInputRect is the caret given to the input method last
 	textInputRect [4]int
+	// textInputActive is what the window was told last: the focus is in a
+	// text box (see syncTextInput)
+	textInputActive bool
 
 	// menuBar is the main menu above topWidget, nil if none (see SetMenuBar)
 	menuBar *MenuBar
@@ -658,6 +661,8 @@ func (c *Form) createWindow(maximized bool) {
 	c.appliedMinWidth, c.appliedMinHeight = 0, 0
 	c.wnd = platforms.CreateWindow(c.title, c.posX, c.posY, c.width, c.height, centerOnScreen, maximized)
 	setTextScale(c.wnd.Scale())
+	// A new window knows neither the caret nor the text box of the focus
+	c.textInputRect, c.textInputActive = [4]int{}, false
 	c.wnd.OnPaint(c.processPaint)
 	c.wnd.OnResize(c.processResize)
 	c.wnd.OnMouseButtonDown(func(button MouseButton, x, y int) {
@@ -912,12 +917,12 @@ type textInputClient interface {
 	caretRect() (x, y, width, height int)
 }
 
-// updateTextInputRect tells the input method where the caret of the
-// focused text box is, after each frame, when it moved
-func (c *Form) updateTextInputRect() {
+// focusedTextInput returns the focused widget if it takes text from an
+// input method
+func (c *Form) focusedTextInput() (Widgeter, textInputClient) {
 	w := c.FocusedWidget()
 	if w == nil {
-		return
+		return nil, nil
 	}
 	// The registered value: the focused one may be the embedded *Widget
 	if registered, ok := lookupWidget(w.Id()); ok {
@@ -925,6 +930,31 @@ func (c *Form) updateTextInputRect() {
 	}
 	client, ok := w.(textInputClient)
 	if !ok {
+		return nil, nil
+	}
+	return w, client
+}
+
+// syncTextInput tells the window whether the focus is in a text box: the
+// input method of macOS takes the keys there only. Called when the focus
+// changes, and after each frame.
+func (c *Form) syncTextInput() {
+	if c == nil || c.wnd == nil {
+		return
+	}
+	_, client := c.focusedTextInput()
+	if active := client != nil; active != c.textInputActive {
+		c.textInputActive = active
+		c.wnd.SetTextInputActive(active)
+	}
+}
+
+// updateTextInputRect tells the input method where the caret of the
+// focused text box is, after each frame, when it moved
+func (c *Form) updateTextInputRect() {
+	c.syncTextInput()
+	w, client := c.focusedTextInput()
+	if client == nil {
 		return
 	}
 	x, y, width, height := client.caretRect()
@@ -1256,6 +1286,7 @@ func (c *Form) forgetWidgets(w Widgeter) {
 	}
 	if isRemoved(c.focusedWidget) {
 		c.focusedWidget = nil
+		c.syncTextInput()
 	}
 	if isRemoved(c.hoverWidget) {
 		c.hoverWidget = nil
