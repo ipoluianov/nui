@@ -2,6 +2,11 @@ package ui
 
 import ()
 
+// checkMarkWidth is the logical width of the strokes of the check marks
+// and of the dash of a check box: 3 pixels on an ordinary screen, 5 on a
+// Retina one
+const checkMarkWidth = 2.5
+
 type Checkbox struct {
 	// OnCheckedChanged: the state changed, by the user or by SetChecked and
 	// SetIndeterminate; the argument is Checked()
@@ -164,19 +169,18 @@ func (c *Checkbox) draw(cnv *Canvas) {
 
 	if indeterminate {
 		// A dash: neither on nor off
-		cnv.DrawLine(padding+boxSize/4, padding+boxSize/2, padding+boxSize-boxSize/4, padding+boxSize/2, 2, mark)
+		cnv.drawMark(padding+boxSize/4, padding+boxSize/2, padding+boxSize-boxSize/4, padding+boxSize/2, checkMarkWidth, mark)
 	}
 	if c.Checked() {
 		tickColor := mark
-		tickWidth := 2
 		// A short stroke down to the tick's low point, then a longer stroke
 		// up to its top-right end - the usual checkmark shape, sized as
 		// fractions of boxSize so it stays right if padding/boxSize change.
 		x1, y1 := padding+boxSize*3/20, padding+boxSize*11/20
 		x2, y2 := padding+boxSize*8/20, padding+boxSize*16/20
 		x3, y3 := padding+boxSize*17/20, padding+boxSize*4/20
-		cnv.DrawLine(x1, y1, x2, y2, tickWidth, tickColor)
-		cnv.DrawLine(x2, y2, x3, y3, tickWidth, tickColor)
+		cnv.drawMark(x1, y1, x2, y2, checkMarkWidth, tickColor)
+		cnv.drawMark(x2, y2, x3, y3, checkMarkWidth, tickColor)
 	}
 }
 

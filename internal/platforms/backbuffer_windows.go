@@ -137,17 +137,3 @@ func (b *backBuffer) present(img *image.RGBA, hdc uintptr, width, height int32) 
 	// No DIB section (out of GDI resources): straight from memory instead
 	return drawRGBAToHDC(img, hdc, width, height)
 }
-
-// copyRGBAToBGRA copies the top-left width x height pixels of img to dst,
-// whose rows are dstStride pixels long, swapping red and blue. A pixel at a
-// time as a little-endian uint32, as all the Windows targets are.
-func copyRGBAToBGRA(dst []uint32, dstStride int, img *image.RGBA, width, height int) {
-	for y := 0; y < height; y++ {
-		row := img.Pix[y*img.Stride : y*img.Stride+width*4]
-		src := unsafe.Slice((*uint32)(unsafe.Pointer(&row[0])), width)
-		out := dst[y*dstStride : y*dstStride+width]
-		for i, v := range src {
-			out[i] = v&0xFF00FF00 | (v&0xFF)<<16 | (v>>16)&0xFF
-		}
-	}
-}

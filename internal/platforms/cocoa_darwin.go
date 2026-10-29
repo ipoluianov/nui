@@ -851,12 +851,9 @@ func nuiViewUpdateTrackingAreas(self objc.ID, cmd objc.SEL) {
 
 // drawRect: composites the Go-painted RGBA buffer via CoreGraphics. Buffer
 // size/dest rect = drawable inside content view (not always full bounds).
-// The buffer is an ordinary Go []byte, not C malloc'd: unlike window.m
-// (which had to free() it from the same allocator XDestroyImage-style code
-// on Linux uses) nothing outside this function call needs to free it, so a
-// NULL release callback is passed to CGDataProviderCreateWithData and Go's
-// GC reclaims it once unreferenced - the local `buf` keeps it alive for the
-// duration of this synchronous call.
+// The buffer is an ordinary Go []byte, the window's own (paintBuffer),
+// kept from frame to frame: newCGImageRGBA gives CoreGraphics a copy of it
+// (CFDataCreate), so CoreGraphics never reads the buffer after this call.
 // drawRect:'s real signature takes one NSRect struct arg; flattened to four
 // float64s (unused) for the same purego.NewCallback struct-arg limitation
 // noted on nuiViewSetFrameSize above - the actual drawable rect is
@@ -880,7 +877,14 @@ func nuiViewDrawRect(self objc.ID, _ objc.SEL, _, _, _, _ float64) {
 	stride := pixelW * 4
 	dataSize := stride * pixelH
 
-	buf := make([]byte, dataSize)
+	// The window's own buffer, not a new one of tens of megabytes per frame;
+	// windowPaint clears all of it first
+	var buf []byte
+	if w, ok := hwnds[id]; ok {
+		buf = growBuffer(&w.platform.paintBuffer, dataSize)
+	} else {
+		buf = make([]byte, dataSize)
+	}
 	go_on_paint(id, unsafe.Pointer(&buf[0]), pixelW, pixelH, scale)
 
 	ctx := objc.Send[uintptr](objc.ID(clsNSGraphicsContext).Send(selCurrentContext), selCGContext)

@@ -341,8 +341,8 @@ func (c *ContextMenuItem) drawCheckMark(ctx *Canvas, col color.Color) {
 	x := contextMenuItemPadding + (ContextMenuItemIconSize-size)/2
 	y := (c.Height() - size) / 2
 	// A tick: down from the left, then up to the right
-	ctx.DrawLine(x, y+size/2, x+size/3, y+size-2, 2, col)
-	ctx.DrawLine(x+size/3, y+size-2, x+size, y+1, 2, col)
+	ctx.drawMark(x, y+size/2, x+size/3, y+size-2, checkMarkWidth, col)
+	ctx.drawMark(x+size/3, y+size-2, x+size, y+1, checkMarkWidth, col)
 }
 
 func (c *ContextMenuItem) MouseEnter() {

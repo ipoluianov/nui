@@ -48,25 +48,11 @@ func (c *Label) onPaint(cnv *Canvas) {
 	cnv.SetFontFamily(c.FontFamily())
 	cnv.SetFontSize(c.FontSize())
 	cnv.SetColor(c.ForegroundColor())
+	// Under each line of the text, wherever the text is (not at the height
+	// of a control: a taller label has it lower)
+	cnv.SetUnderline(c.GetPropBool("underline", false))
 	cnv.DrawText(0, 0, c.Width(), c.Height(), c.GetPropString("text", ""))
-
-	// Draw underline if needed
-	if c.GetPropBool("underline", false) {
-		textWidth, _, err := MeasureText(c.FontFamily(), c.FontSize(), c.Text())
-		if err == nil {
-			cnv.SetColor(c.ForegroundColor())
-
-			x := 0
-			if c.TextAlign() == HAlignCenter {
-				x = (c.Width() - textWidth) / 2
-			} else if c.TextAlign() == HAlignRight {
-				x = c.Width() - textWidth
-			}
-
-			textHeight := c.innerHeight
-			cnv.DrawLine(x, textHeight-2, x+textWidth, textHeight-2, 1, c.ForegroundColor())
-		}
-	}
+	cnv.SetUnderline(false)
 }
 
 // ///////////////////////////////////////////////////////////////////////////////

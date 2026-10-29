@@ -170,6 +170,23 @@ func BenchmarkTablePaint(b *testing.B) {
 	}
 }
 
+// BenchmarkTablePaintLarge: a frame of a table of 10 columns over a whole
+// 2560x1440 window: a large frame full of text, lines and fills
+func BenchmarkTablePaintLarge(b *testing.B) {
+	uitest.SetScreen(3000, 2000, 1)
+	defer uitest.SetScreen(1920, 1080, 1)
+	form := ui.NewForm()
+	form.SetSize(2560, 1440)
+	t := ui.NewTable()
+	form.Panel().AddWidget(0, 0, t)
+	w := uitest.Show(b, form)
+	fillTable(t, 10_000, 10)
+	w.Settle()
+	for b.Loop() {
+		w.Screenshot()
+	}
+}
+
 // BenchmarkEmptyFormPaint: a frame of an empty form of 2560x1440, the floor
 // of every repaint
 func BenchmarkEmptyFormPaint(b *testing.B) {

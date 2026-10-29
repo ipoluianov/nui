@@ -1,3 +1,5 @@
+//go:build linux || windows
+
 package platforms
 
 import (
@@ -5,10 +7,10 @@ import (
 	"testing"
 )
 
-// TestCopyRGBAToXImage: the conversion gives what converting a pixel at a
+// TestCopyRGBAToBGRA: the conversion gives what converting a pixel at a
 // time gives, for even and odd widths, rows not 8-byte aligned in the
 // source or in the destination, and frames large enough to go in bands
-func TestCopyRGBAToXImage(t *testing.T) {
+func TestCopyRGBAToBGRA(t *testing.T) {
 	cases := []struct {
 		name                    string
 		imgWidth, width, height int
@@ -36,7 +38,7 @@ func TestCopyRGBAToXImage(t *testing.T) {
 			for i := range dst {
 				dst[i] = untouched
 			}
-			copyRGBAToXImage(dst, tc.dstStride, img, tc.width, tc.height)
+			copyRGBAToBGRA(dst, tc.dstStride, img, tc.width, tc.height)
 
 			for y := 0; y < tc.height; y++ {
 				for x := 0; x < tc.dstStride; x++ {

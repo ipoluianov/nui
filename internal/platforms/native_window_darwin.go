@@ -24,6 +24,11 @@ type nativeWindowPlatform struct {
 	// bgColor clears the frame before onPaint
 	bgColor color.RGBA
 
+	// paintBuffer is the frame painted in drawRect:, kept from frame to
+	// frame. CGImage gets a copy of it (see newCGImageRGBA), so it is free
+	// again once drawRect: returns.
+	paintBuffer []byte
+
 	// maximizing is set while zoom: animates the window to the maximized
 	// frame: AppKit reports isZoomed only at the end, and the frames on the
 	// way must not count as the normal size (Form.State, RememberState)

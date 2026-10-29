@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"image"
 	"image/color"
-	"image/draw"
 	"io"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -190,7 +190,7 @@ func DrawText(rgba *image.RGBA, text string, textColor color.Color, fontFamily s
 	}
 
 	var textImage *image.RGBA
-	key := fontFamily + "_" + fmt.Sprint(fontSize) + "_" + fmt.Sprintf("%v", textColor) + "_" + text
+	key := renderedTextKey(fontFamily, fontSize, textColor, text)
 
 	renderedTextsMu.Lock()
 	img, ok := renderedTexts[key]
@@ -244,7 +244,70 @@ func DrawText(rgba *image.RGBA, text string, textColor color.Color, fontFamily s
 	}
 
 	srcStart := dstRect.Min.Sub(image.Pt(x, y))
-	draw.Draw(rgba, dstRect, textImage, srcStart, draw.Over)
+	drawOver(rgba, dstRect, textImage, srcStart)
+}
+
+// renderedTextKey is the key of the text's image in renderedTexts
+func renderedTextKey(fontFamily string, fontSize float64, textColor color.Color, text string) string {
+	b := make([]byte, 0, len(fontFamily)+len(text)+32)
+	b = append(b, fontFamily...)
+	b = append(b, '_')
+	b = strconv.AppendFloat(b, fontSize, 'g', -1, 64)
+	b = append(b, '_')
+	if c, ok := textColor.(color.RGBA); ok {
+		b = append(b, c.R, c.G, c.B, c.A)
+	} else {
+		// Another type with the same components is another color
+		b = fmt.Appendf(b, "%T%v", textColor, textColor)
+	}
+	b = append(b, '_')
+	b = append(b, text...)
+	return string(b)
+}
+
+// drawOver draws src over dst in r, from sp of src: the same as draw.Draw
+// with draw.Over, to the bit, but faster for the image of a text, most of
+// whose pixels are transparent or opaque. src is premultiplied, as
+// image.RGBA is.
+func drawOver(dst *image.RGBA, r image.Rectangle, src *image.RGBA, sp image.Point) {
+	// Clipped to both images, as draw.Draw does
+	orig := r.Min
+	r = r.Intersect(dst.Rect).Intersect(src.Rect.Add(orig.Sub(sp)))
+	if r.Empty() {
+		return
+	}
+	sp = sp.Add(r.Min.Sub(orig))
+
+	const m = 1<<16 - 1
+	width := r.Dx() * 4
+	for y := 0; y < r.Dy(); y++ {
+		d0 := dst.PixOffset(r.Min.X, r.Min.Y+y)
+		s0 := src.PixOffset(sp.X, sp.Y+y)
+		dpix := dst.Pix[d0 : d0+width : d0+width]
+		spix := src.Pix[s0 : s0+width : s0+width]
+		for i := 0; i < width; i += 4 {
+			s := spix[i : i+4 : i+4]
+			switch {
+			case s[3] == 0 && s[0]|s[1]|s[2] == 0:
+				// Transparent: draw.Over leaves the pixel as it is
+			case s[3] == 255:
+				// Opaque: draw.Over gives the source pixel
+				copy(dpix[i:i+4], s)
+			default:
+				// image/draw's drawCopyOver
+				sr := uint32(s[0]) * 0x101
+				sg := uint32(s[1]) * 0x101
+				sb := uint32(s[2]) * 0x101
+				sa := uint32(s[3]) * 0x101
+				a := (m - sa) * 0x101
+				d := dpix[i : i+4 : i+4]
+				d[0] = uint8((uint32(d[0])*a/m + sr) >> 8)
+				d[1] = uint8((uint32(d[1])*a/m + sg) >> 8)
+				d[2] = uint8((uint32(d[2])*a/m + sb) >> 8)
+				d[3] = uint8((uint32(d[3])*a/m + sa) >> 8)
+			}
+		}
+	}
 }
 
 // GetCharPositions returns the x of each character of text and, last, the
@@ -361,9 +424,15 @@ func renderText(text string, textColor color.Color, fontFamily string, fontSize 
 
 		rgba = image.NewRGBA(image.Rect(minX, 0, maxX, textHeight))
 
+		// The canvas takes color.RGBA as straight alpha (see
+		// straightRGBA8); image/draw would read it as premultiplied
+		src := textColor
+		if c, ok := textColor.(color.RGBA); ok {
+			src = color.NRGBA(c)
+		}
 		d := &font.Drawer{
 			Dst:  rgba,
-			Src:  image.NewUniform(textColor),
+			Src:  image.NewUniform(src),
 			Face: face,
 			Dot:  fixed.P(0, textHeight-metrics.Descent.Ceil()),
 		}

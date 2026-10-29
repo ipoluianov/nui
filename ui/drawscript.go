@@ -6,6 +6,10 @@ import (
 	"slices"
 )
 
+// DrawScriptHorLine is a run of pixels of a DrawScript.
+//
+// Deprecated: an internal of Canvas.DrawLine, exported by accident; it
+// will be unexported.
 type DrawScriptHorLine struct {
 	X1 int
 	X2 int
@@ -13,6 +17,10 @@ type DrawScriptHorLine struct {
 	C  float64
 }
 
+// DrawScriptPoint is a pixel of a DrawScript.
+//
+// Deprecated: an internal of Canvas.DrawLine, exported by accident; it
+// will be unexported.
 type DrawScriptPoint struct {
 	X int
 	Y int
@@ -30,6 +38,11 @@ type drawScriptOp struct {
 	add bool
 }
 
+// DrawScript is the pixels of a line and their intensities, made by the
+// MakeScriptLine methods of the canvas and drawn by DrawToRGBA.
+//
+// Deprecated: an internal of Canvas.DrawLine, exported by accident; it
+// will be unexported.
 type DrawScript struct {
 	horLines []DrawScriptHorLine
 	ops      []drawScriptOp
@@ -40,6 +53,10 @@ type DrawScript struct {
 	Bounds image.Rectangle
 }
 
+// NewDrawScript makes an empty DrawScript.
+//
+// Deprecated: an internal of Canvas.DrawLine, exported by accident; it
+// will be unexported.
 func NewDrawScript() *DrawScript {
 	return &DrawScript{merged: true}
 }
@@ -126,7 +143,7 @@ func (c *DrawScript) hasPixel(x int, y int) bool {
 }
 
 func (c *DrawScript) DrawToRGBA(img *image.RGBA, col color.Color) {
-	rgb := rgb8(col)
+	rgb := rgba8Straight(col)
 
 	for _, line := range c.horLines {
 		for x := line.X1; x <= line.X2; x++ {
@@ -150,17 +167,19 @@ func (c *DrawScript) DrawToRGBA(img *image.RGBA, col color.Color) {
 }
 
 func (c *DrawScript) MixPixel(img *image.RGBA, x int, y int, rgba color.Color, intensity uint32) {
-	c.mixPixel(img, x, y, rgb8(rgba), intensity)
+	c.mixPixel(img, x, y, rgba8Straight(rgba), intensity)
 }
 
-// rgb8 returns the 8-bit components of the color
-func rgb8(col color.Color) [3]uint32 {
-	r, g, b, _ := col.RGBA()
-	return [3]uint32{r >> 8, g >> 8, b >> 8}
+// rgba8Straight returns the components of the color as the canvas blends
+// them (see straightRGBA8)
+func rgba8Straight(col color.Color) [4]uint32 {
+	r, g, b, a := straightRGBA8(col)
+	return [4]uint32{r, g, b, a}
 }
 
-// mixPixel blends the color over the pixel with the intensity 0..255
-func (c *DrawScript) mixPixel(img *image.RGBA, x int, y int, rgb [3]uint32, intensity uint32) {
+// mixPixel blends the color over the pixel with the intensity 0..255, which
+// the alpha of the color scales, as the canvas blends (see blend8)
+func (c *DrawScript) mixPixel(img *image.RGBA, x int, y int, rgba [4]uint32, intensity uint32) {
 	if x < c.Bounds.Min.X || x > c.Bounds.Max.X {
 		return
 	}
@@ -175,12 +194,16 @@ func (c *DrawScript) mixPixel(img *image.RGBA, x int, y int, rgb [3]uint32, inte
 		return
 	}
 
-	alpha := intensity
-	antialpha := 255 - alpha
-
+	alpha := min(intensity, 255)
+	if rgba[3] != 255 {
+		alpha = (alpha*rgba[3] + 127) / 255
+	}
+	if alpha == 0 {
+		return
+	}
 	pix := img.Pix[img.PixOffset(x, y):]
 	for i := range 3 {
-		pix[i] = uint8(((uint32(pix[i]) * antialpha) >> 8) + ((rgb[i] * alpha) >> 8))
+		pix[i] = blend8(uint32(pix[i]), rgba[i], alpha)
 	}
 	pix[3] = 255
 }

@@ -6,9 +6,7 @@ import (
 	"image/draw"
 	"math"
 
-	"github.com/fogleman/gg"
 	xdraw "golang.org/x/image/draw"
-	"golang.org/x/image/vector"
 )
 
 // canvasState keeps the translation and the clip in pixels of the image;
@@ -39,7 +37,9 @@ type canvasState struct {
 type Canvas struct {
 	rgba  *image.RGBA
 	state *canvasState
-	stack []*canvasState
+	// The states saved by Save, as values: Save and Restore, called around
+	// every widget, allocate nothing once the stack is deep enough
+	stack []canvasState
 	// scale is how many pixels of the image a logical pixel takes, e.g. 2
 	// on a Retina screen
 	scale float64
@@ -92,8 +92,9 @@ func NewCanvas(rgba *image.RGBA) *Canvas {
 func NewCanvasScaled(rgba *image.RGBA, scale float64) *Canvas {
 	var c Canvas
 	c.rgba = rgba
-	c.state = &canvasState{}
-	c.stack = make([]*canvasState, 0)
+	// Black until SetColor: the color is never nil
+	c.state = &canvasState{col: color.RGBA{0, 0, 0, 255}}
+	c.stack = make([]canvasState, 0, 16)
 	c.scale = 1
 	if scale > 0 {
 		c.scale = scale
@@ -163,16 +164,14 @@ func (c *Canvas) RGBA() *image.RGBA {
 }
 
 func (c *Canvas) Save() {
-	oldState := *c.state
-	c.stack = append(c.stack, c.state)
-	c.state = &oldState
+	c.stack = append(c.stack, *c.state)
 }
 
 func (c *Canvas) Restore() {
 	if len(c.stack) == 0 {
 		return
 	}
-	c.state = c.stack[len(c.stack)-1]
+	*c.state = c.stack[len(c.stack)-1]
 	c.stack = c.stack[:len(c.stack)-1]
 }
 
@@ -267,100 +266,74 @@ func (c *Canvas) translateBy(dx, dy int) {
 	c.state.translateY += c.scaled(dy)
 }
 
+// SetPixel draws the logical pixel (x, y) in the current color: as many
+// pixels of the image as it takes, blended as FillRect blends
 func (c *Canvas) SetPixel(x, y int) {
-	if c.scale != 1 {
-		c.FillRect(x, y, 1, 1, c.state.col)
-		return
-	}
-	x += c.state.translateX
-	y += c.state.translateY
-	if c.state.clipX != 0 || c.state.clipY != 0 || c.state.clipW != 0 || c.state.clipH != 0 {
-		if x < c.state.clipX || y < c.state.clipY || x >= c.state.clipX+c.state.clipW || y >= c.state.clipY+c.state.clipH {
-			return
-		}
-	}
-	c.rgba.Set(x, y, c.state.col)
+	c.FillRect(x, y, 1, 1, c.state.col)
 }
 
 // MixPixel blends the color over the pixel (x, y) of the image: in pixels,
 // with no translation, unlike the other methods
 func (c *Canvas) MixPixel(x int, y int, rgba color.Color) {
 
-	if x < c.state.clipX || x > c.state.clipX+c.state.clipW {
+	if x < c.state.clipX || x >= c.state.clipX+c.state.clipW {
 		return
 	}
-	if y < c.state.clipY || y > c.state.clipY+c.state.clipH {
+	if y < c.state.clipY || y >= c.state.clipY+c.state.clipH {
 		return
 	}
-
-	cOld := c.rgba.At(x, y)
-	oR, oG, oB, _ := cOld.RGBA()
-	cR, cG, cB, cA := rgba.RGBA()
-	cR = cR >> 8
-	cG = cG >> 8
-	cB = cB >> 8
-	cA = cA >> 8
-
-	oR = oR >> 8
-	oG = oG >> 8
-	oB = oB >> 8
-
-	alpha := uint32(cA)
-	antialpha := 255 - alpha
-
-	if cA > 0 && cA < 255 {
-		cA += 1
+	if !(image.Point{x, y}).In(c.rgba.Rect) {
+		return
 	}
-
-	//alpha, antialpha = antialpha, alpha
-	nR := uint8(((uint32(oR) * antialpha) >> 8) + ((cR * alpha) >> 8))
-	nG := uint8(((uint32(oG) * antialpha) >> 8) + ((cG * alpha) >> 8))
-	nB := uint8(((uint32(oB) * antialpha) >> 8) + ((cB * alpha) >> 8))
-
-	c.rgba.SetRGBA(x, y, color.RGBA{nR, nG, nB, 255})
+	r, g, b, a := straightRGBA8(rgba)
+	c.mixPixelAt(c.rgba.PixOffset(x, y), r, g, b, a)
 }
 
-func (c *Canvas) DrawLine(x1 int, y1 int, x2 int, y2 int, width int, color color.Color) {
-	if c.scale != 1 {
-		c.drawLineScaled(x1, y1, x2, y2, width, color)
-		return
+// straightRGBA8 returns the 8-bit components of the color with its alpha
+// not applied to them. A color.RGBA is taken so, as it is given throughout
+// nui (color.RGBA{255, 0, 0, 128} is a half transparent red); the other
+// types of colors are converted.
+func straightRGBA8(col color.Color) (r, g, b, a uint32) {
+	if c, ok := col.(color.RGBA); ok {
+		return uint32(c.R), uint32(c.G), uint32(c.B), uint32(c.A)
 	}
-	x1 = x1 + c.state.translateX
-	y1 = y1 + c.state.translateY
-	x2 = x2 + c.state.translateX
-	y2 = y2 + c.state.translateY
-
-	x1, y1, x2, y2, visible := CohenSutherland(x1, y1, x2, y2, c.state.clipX, c.state.clipY, c.state.clipX+c.state.clipW, c.state.clipY+c.state.clipH)
-	if visible {
-		if (x1 == x2 || y1 == y2) && width == 1 {
-			if x1 == x2 {
-				if y1 > y2 {
-					y1, y2 = y2, y1
-				}
-				for y := y1; y < y2; y++ {
-					c.MixPixel(x1, y, color)
-				}
-			}
-			if y1 == y2 {
-				if x1 > x2 {
-					x1, x2 = x2, x1
-				}
-				for x := x1; x < x2; x++ {
-					c.MixPixel(x, y1, color)
-				}
-			}
-		} else {
-			script := c.MakeScriptLine(float64(x1), float64(y1), float64(x2), float64(y2), float64(width))
-			script.Bounds = image.Rectangle{Min: image.Point{X: c.state.clipX, Y: c.state.clipY}, Max: image.Point{X: c.state.clipX + c.state.clipW, Y: c.state.clipY + c.state.clipH}}
-			script.DrawToRGBA(c.rgba, color)
-		}
-	}
+	c := color.NRGBAModel.Convert(col).(color.NRGBA)
+	return uint32(c.R), uint32(c.G), uint32(c.B), uint32(c.A)
 }
 
-// drawLineScaled is DrawLine with a scale other than 1: a horizontal or a
-// vertical line covers the same pixels as the FillRect of its row/column,
-// any other one is drawn between the centers of its end pixels
-func (c *Canvas) drawLineScaled(x1, y1, x2, y2, width int, col color.Color) {
+// blend8 blends the 8-bit component src with the alpha over dst, rounded
+// to the nearest: alpha 255 gives src, 0 gives dst
+func blend8(dst, src, alpha uint32) uint8 {
+	v := src*alpha + dst*(255-alpha) + 128
+	return uint8((v + v>>8) >> 8) // v / 255, rounded
+}
+
+// mixPixelAt blends the straight 8-bit color (see straightRGBA8) over the
+// pixel at the offset i of the image's Pix; the pixel becomes opaque. Every
+// blending of the canvas but of the text and of the images goes here.
+func (c *Canvas) mixPixelAt(i int, r, g, b, alpha uint32) {
+	if alpha == 0 {
+		return
+	}
+	pix := c.rgba.Pix[i : i+4 : i+4]
+	if alpha == 255 {
+		pix[0], pix[1], pix[2], pix[3] = uint8(r), uint8(g), uint8(b), 255
+		return
+	}
+	pix[0] = blend8(uint32(pix[0]), r, alpha)
+	pix[1] = blend8(uint32(pix[1]), g, alpha)
+	pix[2] = blend8(uint32(pix[2]), b, alpha)
+	pix[3] = 255
+}
+
+// DrawLine draws the line of the logical width from (x1, y1) to (x2, y2). A
+// horizontal or a vertical line one wide covers the pixels of the FillRect
+// of its row or column, the last point left out; any other one is drawn
+// between the centers of its end pixels.
+func (c *Canvas) DrawLine(x1 int, y1 int, x2 int, y2 int, width int, col color.Color) {
+	if c.clipEmpty() {
+		return
+	}
 	if (x1 == x2 || y1 == y2) && width == 1 {
 		if x1 == x2 {
 			c.FillRect(x1, min(y1, y2), 1, max(y1, y2)-min(y1, y2), col)
@@ -371,13 +344,36 @@ func (c *Canvas) drawLineScaled(x1, y1, x2, y2, width int, col color.Color) {
 	}
 	fx1, fy1 := c.pixelCenter(float64(x1), float64(y1))
 	fx2, fy2 := c.pixelCenter(float64(x2), float64(y2))
+	if w := c.lineWidth(width); w > 1 {
+		c.drawWideLine(math.Round(fx1), math.Round(fy1), math.Round(fx2), math.Round(fy2), float64(w), col)
+		return
+	}
+	// Clipped to a pixel past the clip: what is past it is left out by the
+	// script's bounds
 	px1, py1, px2, py2, visible := CohenSutherland(int(math.Round(fx1)), int(math.Round(fy1)), int(math.Round(fx2)), int(math.Round(fy2)), c.state.clipX, c.state.clipY, c.state.clipX+c.state.clipW, c.state.clipY+c.state.clipH)
 	if !visible {
 		return
 	}
 	script := c.MakeScriptLine(float64(px1), float64(py1), float64(px2), float64(py2), float64(c.lineWidth(width)))
-	script.Bounds = image.Rectangle{Min: image.Point{X: c.state.clipX, Y: c.state.clipY}, Max: image.Point{X: c.state.clipX + c.state.clipW, Y: c.state.clipY + c.state.clipH}}
+	script.Bounds = c.scriptBounds()
 	script.DrawToRGBA(c.rgba, col)
+}
+
+// clipEmpty reports whether the clip has no pixels: nothing is drawn
+func (c *Canvas) clipEmpty() bool {
+	return c.state.clipW <= 0 || c.state.clipH <= 0
+}
+
+// clipLast returns the last column and row of the clip, in pixels
+func (c *Canvas) clipLast() image.Point {
+	return image.Point{X: c.state.clipX + c.state.clipW - 1, Y: c.state.clipY + c.state.clipH - 1}
+}
+
+// scriptBounds returns the clip as DrawScript.Bounds take it, the last
+// column and row included. Not made with image.Rect, which would swap the
+// edges of an empty clip into a pixel wide one.
+func (c *Canvas) scriptBounds() image.Rectangle {
+	return image.Rectangle{Min: image.Point{X: c.state.clipX, Y: c.state.clipY}, Max: c.clipLast()}
 }
 
 // DrawLineF draws an antialiased line one pixel wide between points with
@@ -386,6 +382,9 @@ func (c *Canvas) drawLineScaled(x1, y1, x2, y2, width int, col color.Color) {
 // a line between fractional ones is spread over the neighbor pixels, e.g.
 // for a chart that scrolls smoothly.
 func (c *Canvas) DrawLineF(x1, y1, x2, y2 float64, col color.Color) {
+	if c.clipEmpty() {
+		return
+	}
 	x1, y1 = c.pixelCenter(x1, y1)
 	x2, y2 = c.pixelCenter(x2, y2)
 
@@ -403,7 +402,7 @@ func (c *Canvas) DrawLineF(x1, y1, x2, y2 float64, col color.Color) {
 	for i := 0; i < n; i++ {
 		plotLineWuF(script, x1, y1, x2, y2, float64(i)-float64(n-1)/2)
 	}
-	script.Bounds = image.Rect(c.state.clipX, c.state.clipY, c.state.clipX+c.state.clipW-1, c.state.clipY+c.state.clipH-1)
+	script.Bounds = c.scriptBounds()
 	script.DrawToRGBA(c.rgba, col)
 }
 
@@ -474,6 +473,11 @@ func plotLineWuF(script *DrawScript, x1, y1, x2, y2, shift float64) {
 	}
 }
 
+// MakeScriptLine makes the pixels of a line of the width between the pixels
+// (x1, y1) and (x2, y2) of the image.
+//
+// Deprecated: the former way DrawLine drew wide lines, exported by
+// accident; it will be removed. Draw lines with DrawLine and DrawLineF.
 func (c *Canvas) MakeScriptLine(x1, y1, x2, y2, width float64) *DrawScript {
 	x1 = math.Round(x1)
 	y1 = math.Round(y1)
@@ -482,6 +486,12 @@ func (c *Canvas) MakeScriptLine(x1, y1, x2, y2, width float64) *DrawScript {
 	width = math.Round(width)
 
 	result := NewDrawScript()
+
+	// A line of no length has no direction: nothing is drawn, as by
+	// MakeScriptLineWu (a wide one would go on with NaN corners)
+	if x1 == x2 && y1 == y2 {
+		return result
+	}
 
 	{
 		minX := math.Min(x1, x2)
@@ -558,6 +568,10 @@ func (c *Canvas) MakeScriptLine(x1, y1, x2, y2, width float64) *DrawScript {
 	return result
 }
 
+// MakeScriptLineBresenham makes the pixels of a line without antialiasing.
+//
+// Deprecated: a part of MakeScriptLine, exported by accident; it will be
+// removed. Draw lines with DrawLine and DrawLineF.
 func (c *Canvas) MakeScriptLineBresenham(x1 float64, y1 float64, x2 float64, y2 float64) *DrawScript {
 	x1 = math.Round(x1)
 	y1 = math.Round(y1)
@@ -723,6 +737,10 @@ func fpart(x float64) float64 {
 	return x - float64(ipart(x))
 }
 
+// MakeScriptLineWu makes the pixels of an antialiased line one pixel wide.
+//
+// Deprecated: an internal of DrawLine, exported by accident; it will be
+// unexported. Draw lines with DrawLine and DrawLineF.
 func (c *Canvas) MakeScriptLineWu(x1, y1, x2, y2 float64) *DrawScript {
 
 	result := NewDrawScript()
@@ -834,6 +852,11 @@ func (c *Canvas) MakeScriptLineWu(x1, y1, x2, y2 float64) *DrawScript {
 	return result
 }
 
+// CohenSutherland clips the line to the rectangle, its edges included, and
+// reports whether any of it is left.
+//
+// Deprecated: an internal of DrawLine, exported by accident; it will be
+// unexported. Draw lines with DrawLine and DrawLineF.
 func CohenSutherland(x1, y1, x2, y2, left, top, right, bottom int) (int, int, int, int, bool) {
 
 	invalid := false
@@ -978,77 +1001,60 @@ func (c *Canvas) fillRectPixels(x int, y int, width int, height int, colr color.
 	}
 
 	if _, _, _, a := colr.RGBA(); a == 65535 {
-		line := make([]uint8, width*4)
 		cc := color.RGBAModel.Convert(colr).(color.RGBA)
-		for xx := 0; xx < width*4; xx += 4 {
-			line[xx] = cc.R
-			line[xx+1] = cc.G
-			line[xx+2] = cc.B
-			line[xx+3] = cc.A
+		// The first row filled by doubling its filled part, the others
+		// copied from it: no pixel loop, nothing allocated
+		first := y*c.rgba.Stride + x*4
+		line := c.rgba.Pix[first : first+width*4]
+		line[0], line[1], line[2], line[3] = cc.R, cc.G, cc.B, cc.A
+		for filled := 4; filled < len(line); filled *= 2 {
+			copy(line[filled:], line[:filled])
 		}
-
-		for yy := y; yy < y+height; yy++ {
+		for yy := y + 1; yy < y+height; yy++ {
 			offset := yy*c.rgba.Stride + x*4
-			copy(c.rgba.Pix[offset:offset+width*4], line[:])
+			copy(c.rgba.Pix[offset:offset+width*4], line)
 		}
 	} else {
+		// Blended as by MixPixel, pixel by pixel; the rectangle is within
+		// the clip and the image already
+		r, g, b, alpha := straightRGBA8(colr)
 		for yy := y; yy < y+height; yy++ {
-			for xx := x; xx < x+width; xx++ {
-				c.MixPixel(xx, yy, colr)
+			offset := c.rgba.PixOffset(x, yy)
+			for xx := 0; xx < width; xx++ {
+				c.mixPixelAt(offset+xx*4, r, g, b, alpha)
 			}
 		}
 	}
 }
 
 func (c *Canvas) DrawRect(x int, y int, width int, height int) {
-	if c.scale != 1 {
-		// The sides, a logical pixel wide, without overlapping in the corners
-		px, py, pw, ph := c.pixelRect(x, y, width, height)
-		lw := min(c.lineWidth(1), pw)
-		lh := min(c.lineWidth(1), ph)
-		c.fillRectPixels(px, py, pw, lh, c.state.col)
-		if ph > lh {
-			c.fillRectPixels(px, py+ph-lh, pw, lh, c.state.col)
-		}
-		c.fillRectPixels(px, py+lh, lw, ph-lh*2, c.state.col)
-		if pw > lw {
-			c.fillRectPixels(px+pw-lw, py+lh, lw, ph-lh*2, c.state.col)
-		}
-		return
+	// The sides, a logical pixel wide, without overlapping in the corners: a
+	// translucent color is blended once on each pixel
+	px, py, pw, ph := c.pixelRect(x, y, width, height)
+	lw := min(c.lineWidth(1), pw)
+	lh := min(c.lineWidth(1), ph)
+	c.fillRectPixels(px, py, pw, lh, c.state.col)
+	if ph > lh {
+		c.fillRectPixels(px, py+ph-lh, pw, lh, c.state.col)
 	}
-	x = x + c.state.translateX
-	y = y + c.state.translateY
-
-	for xx := x; xx < x+width; xx++ {
-		c.MixPixel(xx, y, c.state.col)
-		c.MixPixel(xx, y+height-1, c.state.col)
-	}
-
-	for yy := y; yy < y+height; yy++ {
-		c.MixPixel(x, yy, c.state.col)
-		c.MixPixel(x+width-1, yy, c.state.col)
+	c.fillRectPixels(px, py+lh, lw, ph-lh*2, c.state.col)
+	if pw > lw {
+		c.fillRectPixels(px+pw-lw, py+lh, lw, ph-lh*2, c.state.col)
 	}
 }
 
+// DrawRoundedRect draws the outline of a rounded rectangle in the current
+// color, a logical pixel wide, anti-aliased, within the clip
 func (c *Canvas) DrawRoundedRect(x int, y int, width int, height int, radius int) {
-	dc := gg.NewContextForRGBA(c.rgba)
-	dc.Translate(float64(c.state.translateX), float64(c.state.translateY))
-	dc.Scale(c.scale, c.scale)
-	dc.SetColor(c.state.col)
-	dc.DrawRoundedRectangle(float64(x), float64(y), float64(width), float64(height), float64(radius))
-	dc.Stroke()
+	px, py, pw, ph := c.pixelRect(x, y, width, height)
+	c.fillRoundedPixels(px, py, pw, ph, float64(radius)*c.scale, c.lineWidth(1), c.state.col, c.clipRect())
 }
 
+// FillRoundedRect fills a rounded rectangle in the current color,
+// anti-aliased, within the clip
 func (c *Canvas) FillRoundedRect(x int, y int, width int, height int, radius int) {
-	dc := gg.NewContextForRGBA(c.rgba)
-	dc.DrawRectangle(float64(c.state.clipX), float64(c.state.clipY), float64(c.state.clipW), float64(c.state.clipH))
-	dc.Clip()
-	dc.Translate(float64(c.state.translateX), float64(c.state.translateY))
-	dc.Scale(c.scale, c.scale)
-
-	dc.SetColor(c.state.col)
-	dc.DrawRoundedRectangle(float64(x), float64(y), float64(width), float64(height), float64(radius))
-	dc.Fill()
+	px, py, pw, ph := c.pixelRect(x, y, width, height)
+	c.fillRoundedPixels(px, py, pw, ph, float64(radius)*c.scale, 0, c.state.col, c.clipRect())
 }
 
 // FillTriangle fills the triangle with corners (x1,y1), (x2,y2), (x3,y3).
@@ -1061,40 +1067,11 @@ func (c *Canvas) FillTriangle(x1, y1, x2, y2, x3, y3 int, colr color.Color) {
 // not of the whole image: the arrows of the combo boxes and the num boxes
 // are drawn on every frame.
 func (c *Canvas) fillPolygon(pts [][2]float64, colr color.Color) {
-	if len(pts) < 3 {
-		return
-	}
 	px := make([][2]float64, len(pts))
-	minX, minY := math.Inf(1), math.Inf(1)
-	maxX, maxY := math.Inf(-1), math.Inf(-1)
 	for i, p := range pts {
-		x := float64(c.state.translateX) + p[0]*c.scale
-		y := float64(c.state.translateY) + p[1]*c.scale
-		px[i] = [2]float64{x, y}
-		minX, minY = math.Min(minX, x), math.Min(minY, y)
-		maxX, maxY = math.Max(maxX, x), math.Max(maxY, y)
+		px[i] = [2]float64{float64(c.state.translateX) + p[0]*c.scale, float64(c.state.translateY) + p[1]*c.scale}
 	}
-	clip := image.Rect(c.state.clipX, c.state.clipY, c.state.clipX+c.state.clipW, c.state.clipY+c.state.clipH)
-	b := image.Rect(int(math.Floor(minX)), int(math.Floor(minY)), int(math.Ceil(maxX)), int(math.Ceil(maxY))).
-		Intersect(clip).Intersect(c.rgba.Rect)
-	if b.Empty() {
-		return
-	}
-	z := vector.NewRasterizer(b.Dx(), b.Dy())
-	ox, oy := float32(b.Min.X), float32(b.Min.Y)
-	z.MoveTo(float32(px[0][0])-ox, float32(px[0][1])-oy)
-	for _, p := range px[1:] {
-		z.LineTo(float32(p[0])-ox, float32(p[1])-oy)
-	}
-	z.ClosePath()
-	mask := image.NewAlpha(image.Rect(0, 0, b.Dx(), b.Dy()))
-	z.Draw(mask, mask.Rect, image.Opaque, image.Point{})
-	// The canvas takes color.RGBA as straight alpha, as FillRect does;
-	// image/draw would read it as premultiplied
-	if rgba, ok := colr.(color.RGBA); ok {
-		colr = color.NRGBA{R: rgba.R, G: rgba.G, B: rgba.B, A: rgba.A}
-	}
-	draw.DrawMask(c.rgba, b, image.NewUniform(colr), image.Point{}, mask, image.Point{}, draw.Over)
+	c.fillPolygonPixels(px, colr)
 }
 
 func (c *Canvas) DrawImage(x int, y int, img image.Image) {
@@ -1225,9 +1202,14 @@ func (c *Canvas) DrawText(x int, y int, width int, height int, text string) {
 
 	for _, str := range lines {
 		xx := 0
-		textWidth, _, err := MeasureText(fontFamily, fontSize, str)
-		if err != nil {
-			return
+		// The width only aligns and underlines the line
+		textWidth := 0
+		if hAlign != HAlignLeft || underline {
+			w, _, err := MeasureText(fontFamily, fontSize, str)
+			if err != nil {
+				break // restored below
+			}
+			textWidth = w
 		}
 
 		if hAlign != HAlignLeft {
@@ -1251,12 +1233,10 @@ func (c *Canvas) DrawText(x int, y int, width int, height int, text string) {
 
 		DrawText(c.rgba, str, colr, fontFamily, fontSize*c.scale, textX, textY, c.state.clipX, c.state.clipY, c.state.clipW, c.state.clipH)
 
-		if underline {
-			underLineWidth := fontSize / 20
-			if underLineWidth < 1 {
-				underLineWidth = 1
-			}
-			//c.DrawLine(xx, yOffset+y+textHeight-1, xx+textWidth, yOffset+y+textHeight-1, int(underLineWidth), colr)
+		// Where and as thick as drawMnemonicUnderline underlines a letter
+		if underline && textWidth > 0 {
+			lineY := yOffset + textHeight - max(textHeight/6, 2)
+			c.FillRect(xx, lineY, textWidth, max(int(fontSize/14), 1), colr)
 		}
 
 		yOffset += textHeight
