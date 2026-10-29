@@ -57,7 +57,9 @@ type nativeWindowPlatform struct {
 
 	// Per-window paint surface, sized to the window's current dimensions.
 	canvasBuffer []byte
-	bgColor      color.RGBA
+	// Gets the painted frames to the X server
+	presenter presenter
+	bgColor   color.RGBA
 
 	// setWindowDecorations() sets the minimize/maximize _MOTIF_WM_HINTS bits
 	// together as one property, so SetAllowMinimize/SetAllowMaximize each
@@ -877,7 +879,7 @@ func (c *nativeWindow) paint() {
 		c.onPaint(img)
 	}
 
-	putImageRGBA(c.platform.display, c.platform.window, img, hdcWidth, hdcHeight)
+	c.platform.presenter.present(c.platform.display, c.platform.window, img, hdcWidth, hdcHeight)
 
 	c.drawTimes[c.drawTimesIndex] = time.Since(dtBeginPaint).Microseconds()
 	c.drawTimesIndex++
@@ -941,6 +943,7 @@ func (c *nativeWindow) doClose() {
 	}
 	c.destroyInputContext()
 	closePopupsOf(c)
+	c.platform.presenter.release(c.platform.display)
 	xDestroyWindow(c.platform.display, c.platform.window)
 	xFlush(c.platform.display)
 	c.platform.closed = true

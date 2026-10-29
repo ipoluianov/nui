@@ -26,6 +26,7 @@ package platforms
 import (
 	"fmt"
 	"log"
+	"sync/atomic"
 	"unsafe"
 
 	"github.com/ebitengine/purego"
@@ -365,6 +366,7 @@ var (
 	xCreateImage            func(display, visual uintptr, depth uint32, format, offset int32, data unsafe.Pointer, width, height uint32, bitmapPad, bytesPerLine int32) uintptr
 	xPutImage               func(display, drawable, gc, image uintptr, srcX, srcY, destX, destY int32, width, height uint32) int32
 	xDestroyImage           func(image uintptr) int32
+	xSync                   func(display uintptr, discard int32) int32
 	xDefaultVisual          func(display uintptr, screen int32) uintptr
 	xSendEvent              func(display, window uintptr, propagate int32, eventMask int64, event unsafe.Pointer) int32
 	xSetTransientForHint    func(display, window, propWindow uintptr) int32
@@ -395,6 +397,14 @@ var (
 	// the mouse (see createPopupWindow).
 	xShapeAvailable         bool
 	xShapeCombineRectangles func(display, window uintptr, destKind, xOff, yOff int32, rectangles unsafe.Pointer, nRects, op, ordering int32)
+
+	// MIT-SHM of libXext, for the images shared with the X server (see presenter)
+	xShmLoaded         bool
+	xShmQueryExtension func(display uintptr) int32
+	xShmCreateImage    func(display, visual uintptr, depth uint32, format int32, data uintptr, shminfo unsafe.Pointer, width, height uint32) unsafe.Pointer
+	xShmAttach         func(display uintptr, shminfo unsafe.Pointer) int32
+	xShmDetach         func(display uintptr, shminfo unsafe.Pointer) int32
+	xShmPutImage       func(display, drawable, gc, image uintptr, srcX, srcY, destX, destY int32, width, height uint32, sendEvent int32) int32
 )
 
 // XErrorEvent, field order per Xlib.h.
@@ -414,11 +424,34 @@ type xErrorEvent struct {
 // source window of a drag that vanished, ...), so they are only logged.
 // Xlib calls it with the display locked: it must not call Xlib itself.
 func xErrorHandler(display uintptr, ev *xErrorEvent) int32 {
+	if xErrorsTrapping.Load() {
+		xErrorsTrapped.Add(1)
+		return 0
+	}
 	if ev != nil {
 		log.Printf("nui: X error %d (request %d.%d) on resource 0x%x",
 			ev.ErrorCode, ev.RequestCode, ev.MinorCode, ev.ResourceID)
 	}
 	return 0
+}
+
+// While xErrorsTrapping is set, the X errors are counted in xErrorsTrapped
+// instead of logged (see trapXErrors)
+var (
+	xErrorsTrapping atomic.Bool
+	xErrorsTrapped  atomic.Int32
+)
+
+// trapXErrors runs f, which makes requests to the X server, and reports
+// whether the server answered any of them with an error. UI thread only.
+func trapXErrors(display uintptr, f func()) bool {
+	xSync(display, xFalse) // the errors of the earlier requests are not f's
+	xErrorsTrapped.Store(0)
+	xErrorsTrapping.Store(true)
+	f()
+	xSync(display, xFalse)
+	xErrorsTrapping.Store(false)
+	return xErrorsTrapped.Load() == 0
 }
 
 // XineramaScreenInfo, field order per X11/extensions/Xinerama.h.
@@ -504,6 +537,7 @@ func init() {
 	purego.RegisterLibFunc(&xCreateImage, libX11, "XCreateImage")
 	purego.RegisterLibFunc(&xPutImage, libX11, "XPutImage")
 	purego.RegisterLibFunc(&xDestroyImage, libX11, "XDestroyImage")
+	purego.RegisterLibFunc(&xSync, libX11, "XSync")
 	purego.RegisterLibFunc(&xDefaultVisual, libX11, "XDefaultVisual")
 	purego.RegisterLibFunc(&xSendEvent, libX11, "XSendEvent")
 	purego.RegisterLibFunc(&xSetTransientForHint, libX11, "XSetTransientForHint")
@@ -546,6 +580,12 @@ func init() {
 	if h, err := dlopenFirst("libXext.so.6", "libXext.so"); err == nil {
 		purego.RegisterLibFunc(&xShapeCombineRectangles, h, "XShapeCombineRectangles")
 		xShapeAvailable = true
+		purego.RegisterLibFunc(&xShmQueryExtension, h, "XShmQueryExtension")
+		purego.RegisterLibFunc(&xShmCreateImage, h, "XShmCreateImage")
+		purego.RegisterLibFunc(&xShmAttach, h, "XShmAttach")
+		purego.RegisterLibFunc(&xShmDetach, h, "XShmDetach")
+		purego.RegisterLibFunc(&xShmPutImage, h, "XShmPutImage")
+		xShmLoaded = true
 	}
 }
 
