@@ -103,6 +103,11 @@ func (c *Canvas) AdjustPixels(x, y, w, h int, f func(color.RGBA) color.RGBA) {
 // Gaussian blur of the radius in logical pixels (its standard deviation
 // radius/2): the frosted glass behind a dialog, a background out of focus.
 // Three box blurs make it, so the cost does not grow with the radius.
+//
+// It reads what is drawn: when a frame repaints only a part of the window
+// across the rectangle, the pixels at the edge of the part are blurred
+// with fewer neighbours than in the whole frame. A widget that blurs its
+// own picture repaints all of itself (Update), and so does not see it.
 func (c *Canvas) Blur(x, y, w, h int, radius float64) {
 	b := c.pixelBox(x, y, w, h)
 	if b.Empty() || radius <= 0 {

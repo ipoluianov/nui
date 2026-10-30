@@ -706,7 +706,8 @@ func (c *Canvas) fillPathWith(p *Path, blend coverRow) {
 	}
 	fp := flatPaths.Get().(*flatPath)
 	defer flatPaths.Put(fp)
-	clip := c.clipRect().Intersect(c.rgba.Rect)
+	// Culled by the clip of the whole frame, see shapeClip
+	clip := c.shapeClip().Intersect(c.rgba.Rect)
 	fp.culling = true
 	fp.cull = [4]float64{float64(clip.Min.X) - 2, float64(clip.Min.Y) - 2, float64(clip.Max.X) + 2, float64(clip.Max.Y) + 2}
 	p.flatten(fp, float64(c.state.translateX), float64(c.state.translateY), c.scale)
@@ -806,7 +807,8 @@ func (c *Canvas) stroke(p *Path, style StrokeStyle, in pathInk, col color.Color,
 	}
 	hw := width * c.scale / 2
 	margin := hw*max(style.MiterLimit, 4) + 2
-	clip := c.clipRect().Intersect(c.rgba.Rect)
+	// Culled by the clip of the whole frame, see shapeClip
+	clip := c.shapeClip().Intersect(c.rgba.Rect)
 	cull := [4]float64{float64(clip.Min.X) - margin, float64(clip.Min.Y) - margin, float64(clip.Max.X) + margin, float64(clip.Max.Y) + margin}
 
 	fp := flatPaths.Get().(*flatPath)
@@ -983,15 +985,19 @@ func (c *Canvas) rasterizePolys(pb *polyBuilder, blend coverRow) {
 		all[0], all[1] = math.Min(all[0], box[0]), math.Min(all[1], box[1])
 		all[2], all[3] = math.Max(all[2], box[2]), math.Max(all[3], box[3])
 	}
-	b := boxPixels(all).Intersect(c.clipRect()).Intersect(c.rgba.Rect)
-	if b.Empty() {
+	// The pieces rasterized are cut in the clip of the whole frame (where a
+	// piece starts changes the rounding), the pixels blended in clip: see
+	// shapeClip
+	b := boxPixels(all).Intersect(c.shapeClip()).Intersect(c.rgba.Rect)
+	clip := b.Intersect(c.clipRect())
+	if clip.Empty() {
 		return
 	}
 	// The rasterizer's work is the area it covers: a thin line across a
 	// wide chart is rasterized in bands, each as tall as the line is there
 	const band = 64
 	if b.Dx() <= band*2 || b.Dx()*b.Dy() <= 256*256 {
-		c.rasterizeRect(pb, b, nil, blend)
+		c.rasterizeRect(pb, b, nil, clip, blend)
 		return
 	}
 	// The polygons of every band, by their bounds (a polygon on the edge of
@@ -1021,8 +1027,8 @@ func (c *Canvas) rasterizePolys(pb *polyBuilder, blend coverRow) {
 		x := b.Min.X + k*band
 		strip := image.Rect(x, b.Min.Y, min(x+band, b.Max.X), b.Max.Y)
 		r := boxPixels([4]float64{float64(strip.Min.X), ys[k][0], float64(strip.Max.X), ys[k][1]}).Intersect(strip)
-		if !r.Empty() {
-			c.rasterizeRect(pb, r, pb.bands[k], blend)
+		if r.Overlaps(clip) {
+			c.rasterizeRect(pb, r, pb.bands[k], clip, blend)
 		}
 	}
 }
@@ -1039,8 +1045,8 @@ func boxPixels(box [4]float64) image.Rectangle {
 
 // rasterizeRect rasterizes the polygons of pb that reach into b (of those
 // numbered in only, if given), clipped to it, and blends the pixels of b
-// they cover
-func (c *Canvas) rasterizeRect(pb *polyBuilder, b image.Rectangle, only []int, blend coverRow) {
+// they cover within clip
+func (c *Canvas) rasterizeRect(pb *polyBuilder, b image.Rectangle, only []int, clip image.Rectangle, blend coverRow) {
 	ras := rasterizers.Get().(*rasterizer)
 	defer rasterizers.Put(ras)
 	var z pathSink = ras.reset(b.Dx(), b.Dy())
@@ -1091,10 +1097,12 @@ func (c *Canvas) rasterizeRect(pb *polyBuilder, b image.Rectangle, only []int, b
 		ras.z.DrawOp = draw.Src
 		ras.z.Draw(mask, mask.Rect, image.Opaque, image.Point{})
 	}
-	for yy := 0; yy < b.Dy(); yy++ {
+	// The rows and the columns of b within the clip
+	clip = clip.Intersect(b)
+	for yy := clip.Min.Y - b.Min.Y; yy < clip.Max.Y-b.Min.Y; yy++ {
 		row := mask.Pix[yy*mask.Stride : yy*mask.Stride+b.Dx()]
 		// The row from its first covered pixel to its last
-		first, last := 0, len(row)
+		first, last := clip.Min.X-b.Min.X, clip.Max.X-b.Min.X
 		for first < last && row[first] == 0 {
 			first++
 		}

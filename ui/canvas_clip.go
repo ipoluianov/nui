@@ -51,7 +51,9 @@ func (c *Canvas) ClipPath(p *Path) {
 		r = image.Rect(int(math.Floor(minX*s+ox))-1, int(math.Floor(minY*s+oy))-1,
 			int(math.Ceil(maxX*s+ox))+1, int(math.Ceil(maxY*s+oy))+1)
 	}
-	r = r.Intersect(c.clipRect()).Intersect(c.rgba.Rect)
+	// The clip of the whole frame (see shapeClip): drawn within a part of
+	// it, the mask is set within the part, and the pixels outside are left
+	r = r.Intersect(c.shapeClip()).Intersect(c.rgba.Rect)
 	if c.rec != nil {
 		c.rec.clipPath(c, p)
 	}

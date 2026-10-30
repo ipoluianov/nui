@@ -169,7 +169,8 @@ func (c *Canvas) strokePathXf(p *Path, style StrokeStyle, in pathInk, col color.
 	// the reach of the line around it
 	cull, culled := [4]float64{}, false
 	if inv, ok := pm.Invert(); ok {
-		clip := c.clipRect().Intersect(c.rgba.Rect)
+		// The clip of the whole frame, see shapeClip
+		clip := c.shapeClip().Intersect(c.rgba.Rect)
 		cull = [4]float64{math.Inf(1), math.Inf(1), math.Inf(-1), math.Inf(-1)}
 		for _, q := range [4]PointF{{float64(clip.Min.X), float64(clip.Min.Y)}, {float64(clip.Max.X), float64(clip.Min.Y)},
 			{float64(clip.Min.X), float64(clip.Max.Y)}, {float64(clip.Max.X), float64(clip.Max.Y)}} {

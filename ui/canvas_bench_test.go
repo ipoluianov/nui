@@ -112,5 +112,5 @@ func fillRoundedWhole(c *Canvas, x, y, w, h int, radius float64, thickness int, 
 	} else {
 		addPoints(z, roundedRectPoints(nil, float64(x), float64(y), float64(w), float64(h), radius), float64(b.Min.X), float64(b.Min.Y))
 	}
-	c.fillRasterized(ras, b, col)
+	c.fillRasterized(ras, b, b, col)
 }

@@ -317,14 +317,14 @@ func (c *Table) SetRowHeight(height int) {
 	c.rowHeight1 = max(height, 1)
 	c.updateInnerSize()
 	c.form.UpdateLayout()
-	c.form.Update()
+	c.Update()
 }
 
 // SetCellPadding sets the space between the text of the cells (and of the
 // header) and their edges
 func (c *Table) SetCellPadding(padding int) {
 	c.cellPadding = padding
-	c.form.Update()
+	c.Update()
 }
 
 func (c *Table) CellPadding() int {
@@ -334,7 +334,7 @@ func (c *Table) CellPadding() int {
 func (c *Table) SetCellOnDraw(row int, col int, onDraw func(cnv *Canvas)) {
 	cellObj := c.getCellObj(row, col)
 	cellObj.onDraw = onDraw
-	c.form.Update()
+	c.Update()
 }
 
 func (c *Table) SetCellBorderColor(col color.RGBA) {
@@ -359,7 +359,7 @@ func (c *Table) CellBorderWidth() int {
 func (c *Table) SetModeLoading(loading bool, text string) {
 	c.modeLoading = loading
 	c.modeLoadingText = text
-	c.form.Update()
+	c.Update()
 }
 
 func (c *Table) SetOnColumnResize(callback func(col int, newWidth int)) {
@@ -574,7 +574,7 @@ func (c *Table) ClearRows() {
 	c.updateInnerSize()
 	c.updateInnerWidgetsLayout()
 
-	c.form.Update()
+	c.Update()
 	if hadSelection {
 		c.selectionChanged(c.CurrentRow(), c.CurrentColumn())
 	}
@@ -615,7 +615,7 @@ func (c *Table) SetColumnImage(col int, img image.Image, imgWidth int) {
 	}
 	colHeader := c.headerCell2(0, col)
 	colHeader.setImage(img, imgWidth)
-	c.form.Update()
+	c.Update()
 }
 
 func (c *Table) ColumnWidth(col int) int {
@@ -662,7 +662,7 @@ func (c *Table) SetColumnHAlign(col int, align HAlign) {
 		return
 	}
 	c.headerCell2(0, col).hAlign = align
-	c.form.Update()
+	c.Update()
 }
 
 // SetStretchLastColumn makes the last column fill the table up to its right
@@ -670,7 +670,7 @@ func (c *Table) SetColumnHAlign(col int, align HAlign) {
 // SetColumnWidth stays the minimum; the table doesn't scroll to show the rest.
 func (c *Table) SetStretchLastColumn(stretch bool) {
 	c.stretchLastColumn = stretch
-	c.form.Update()
+	c.Update()
 }
 
 func (c *Table) ColumnName(col int) string {
@@ -712,7 +712,7 @@ func (c *Table) SetCellText2(row int, col int, text string) {
 		if ok && c.model.Text(row, col) != text && editor.SetText(row, col, text) {
 			c.OnCellChanged.Emit(TableCell{Row: row, Col: col, Text: c.model.Text(row, col)})
 		}
-		c.form.Update()
+		c.Update()
 		return
 	}
 	cellObj := c.getCellObj(row, col)
@@ -731,7 +731,7 @@ func (c *Table) SetCellText2(row int, col int, text string) {
 		c.OnCellChanged.Emit(TableCell{Row: row, Col: col, Text: cellObj.text})
 	}
 
-	c.form.Update()
+	c.Update()
 }
 
 func (c *Table) SetCellDisplayText(row int, col int, text string) {
@@ -740,74 +740,74 @@ func (c *Table) SetCellDisplayText(row int, col int, text string) {
 	cellObj.displayText = text
 	cellObj.displayTextExists = true
 
-	c.form.Update()
+	c.Update()
 }
 
 func (c *Table) SetCellImage(row int, col int, img image.Image, imgWidth int) {
 	cellObj := c.getCellObj(row, col)
 	cellObj.image = img
 	cellObj.imageWidth = imgWidth
-	c.form.Update()
+	c.Update()
 }
 
 func (c *Table) SetCellContraction(row int, col int, contraction bool) {
 	cellObj := c.getCellObj(row, col)
 	cellObj.contraction = contraction
-	c.form.Update()
+	c.Update()
 }
 
 func (c *Table) SetCellData2(row int, col int, data interface{}) {
 	cellObj := c.getCellObj(row, col)
 	cellObj.data = data
-	c.form.Update()
+	c.Update()
 }
 
 func (c *Table) SetCellColor(row int, col int, color color.Color) {
 	cellObj := c.getCellObj(row, col)
 	cellObj.color = color
-	c.form.Update()
+	c.Update()
 }
 
 func (c *Table) SetCellHAlign(row int, col int, align HAlign) {
 	cellObj := c.getCellObj(row, col)
 	cellObj.hAlign = align
-	c.form.Update()
+	c.Update()
 }
 
 func (c *Table) SetCellVAlign(row int, col int, align VAlign) {
 	cellObj := c.getCellObj(row, col)
 	cellObj.vAlign = align
-	c.form.Update()
+	c.Update()
 }
 
 func (c *Table) SetCellEditTriggerDoubleClick(row int, col int, enabled bool) {
 	cellObj := c.getCellObj(row, col)
 	cellObj.editTriggerDoubleClick = enabled
-	c.form.Update()
+	c.Update()
 }
 
 func (c *Table) SetCellEditTriggerEnter(row int, col int, enabled bool) {
 	cellObj := c.getCellObj(row, col)
 	cellObj.editTriggerEnter = enabled
-	c.form.Update()
+	c.Update()
 }
 
 func (c *Table) SetCellEditTriggerF2(row int, col int, enabled bool) {
 	cellObj := c.getCellObj(row, col)
 	cellObj.editTriggerF2 = enabled
-	c.form.Update()
+	c.Update()
 }
 
 func (c *Table) SetCellEditTriggerKeyDown(row int, col int, enabled bool) {
 	cellObj := c.getCellObj(row, col)
 	cellObj.editTriggerKeyDown = enabled
-	c.form.Update()
+	c.Update()
 }
 
 func (c *Table) SetCellSelectionDisabled(row int, col int, disabled bool) {
 	cellObj := c.getCellObj(row, col)
 	cellObj.selectionDisabled = disabled
-	c.form.Update()
+	c.Update()
 }
 
 func (c *Table) SetCurrentCell2(row int, col int) {
@@ -836,7 +836,7 @@ func (c *Table) SetCurrentCell2(row int, col int) {
 
 	c.ScrollToCell2(c.currentCellY, c.currentCellX)
 
-	c.form.Update()
+	c.Update()
 	c.selectionChanged(c.currentCellY, c.currentCellX)
 }
 
@@ -857,7 +857,7 @@ func (c *Table) moveCurrentCellForSelection(row int, col int) {
 
 	c.ScrollToCell2(row, col)
 
-	c.form.Update()
+	c.Update()
 	c.selectionChanged(row, col)
 }
 
@@ -1043,7 +1043,7 @@ func (c *Table) ClearSelection() {
 	c.selectionDragging = false
 	c.clearSelectionSets()
 
-	c.form.Update()
+	c.Update()
 	c.selectionChanged(c.CurrentRow(), c.CurrentColumn())
 }
 
@@ -1072,7 +1072,7 @@ func (c *Table) SelectAll() {
 	}
 	c.selectedRows = rows
 	c.selectedCells = cells
-	c.form.Update()
+	c.Update()
 	c.selectionChanged(c.currentCellY, c.currentCellX)
 }
 
@@ -1101,7 +1101,7 @@ func (c *Table) SetSelectedRows(rows []int) {
 		selected[r] = true
 	}
 	c.selectedRows = selected
-	c.form.Update()
+	c.Update()
 	c.selectionChanged(c.currentCellY, c.currentCellX)
 }
 
@@ -1231,7 +1231,7 @@ func (c *Table) ScrollToCell2(row, col int) {
 	rightBottomX := leftTopX + c.columnWidth(col)
 	rightBottomY := leftTopY + c.rowHeight1
 	c.ScrollEnsureVisible(rightBottomX, rightBottomY)
-	c.form.Update()
+	c.Update()
 }
 
 func (c *Table) onMouseDown(button MouseButton, x int, y int, mods KeyModifiers) bool {
@@ -1418,14 +1418,14 @@ func (c *Table) ProcessKeyDown(key Key, mods KeyModifiers) bool {
 
 	if key == KeyA && (mods.Ctrl || mods.Cmd) && c.multiselect {
 		c.SelectAll()
-		c.form.Update()
+		c.Update()
 		return true
 	}
 
 	if key == KeyArrowLeft {
 		if c.currentCellX > 0 {
 			c.navigateTo(c.currentCellY, c.currentCellX-1, mods.Shift)
-			c.form.Update()
+			c.Update()
 		}
 		processed = true
 	}
@@ -1433,7 +1433,7 @@ func (c *Table) ProcessKeyDown(key Key, mods KeyModifiers) bool {
 	if key == KeyArrowRight {
 		if c.currentCellX < c.columnCount-1 {
 			c.navigateTo(c.currentCellY, c.currentCellX+1, mods.Shift)
-			c.form.Update()
+			c.Update()
 		}
 		processed = true
 	}
@@ -1445,7 +1445,7 @@ func (c *Table) ProcessKeyDown(key Key, mods KeyModifiers) bool {
 				selectRowIndex = c.rowCount - 1
 			}
 			c.navigateTo(selectRowIndex, c.currentCellX, mods.Shift)
-			c.form.Update()
+			c.Update()
 		}
 		processed = true
 	}
@@ -1457,26 +1457,26 @@ func (c *Table) ProcessKeyDown(key Key, mods KeyModifiers) bool {
 				selectRowIndex = c.rowCount - 1
 			}
 			c.navigateTo(selectRowIndex, c.currentCellX, mods.Shift)
-			c.form.Update()
+			c.Update()
 		}
 		processed = true
 	}
 
 	if key == KeyHome {
 		c.navigateTo(0, c.currentCellX, mods.Shift)
-		c.form.Update()
+		c.Update()
 		processed = true
 	}
 
 	if key == KeyEnd {
 		c.navigateTo(c.rowCount-1, c.currentCellX, mods.Shift)
-		c.form.Update()
+		c.Update()
 		processed = true
 	}
 
 	if (key == KeyEnter || key == KeyF2) && c.editKey(key) {
 		c.EditCurrentCell("")
-		c.form.Update()
+		c.Update()
 		processed = true
 	}
 
@@ -1488,7 +1488,7 @@ func (c *Table) ProcessKeyDown(key Key, mods KeyModifiers) bool {
 		}
 		if targetRow != c.currentCellY {
 			c.navigateTo(targetRow, c.currentCellX, mods.Shift)
-			c.form.Update()
+			c.Update()
 		}
 		processed = true
 	}
@@ -1501,7 +1501,7 @@ func (c *Table) ProcessKeyDown(key Key, mods KeyModifiers) bool {
 		}
 		if targetRow != c.currentCellY {
 			c.navigateTo(targetRow, c.currentCellX, mods.Shift)
-			c.form.Update()
+			c.Update()
 		}
 		processed = true
 	}
@@ -1536,7 +1536,7 @@ func (c *Table) onMouseMoveHeader(x int, y int, _ KeyModifiers) MouseCursor {
 			c.updateInnerWidgetsLayout()*/
 			c.SetColumnWidth(c.columnResizingIndex, newWidth)
 			c.SetMouseCursor(MouseCursorResizeHor)
-			c.form.Update()
+			c.Update()
 		}
 		return MouseCursorResizeHor
 	}
@@ -1608,7 +1608,7 @@ func (c *Table) SetMultiselect(enabled bool) {
 	if !enabled {
 		c.selectionDragging = false
 		c.syncSelectionToCurrent()
-		c.form.Update()
+		c.Update()
 	}
 }
 
@@ -1635,7 +1635,7 @@ func (c *Table) SetSelectingRows(selectingRows bool) {
 	c.selectingRows = selectingRows
 	c.selectionDragging = false
 	c.syncSelectionToCurrent()
-	c.form.Update()
+	c.Update()
 }
 
 func (c *Table) SelectingRows() bool {
@@ -2182,7 +2182,7 @@ func (c *Table) EditCurrentCell(enteredText string) {
 				commit(c.editorTextBox.Text())
 				c.removeInnerWidget(c.editorTextBox)
 				c.editorTextBox = nil
-				c.form.Update()
+				c.Update()
 				c.Focus()
 			}
 			ev.Handled = true
@@ -2192,7 +2192,7 @@ func (c *Table) EditCurrentCell(enteredText string) {
 			if c.editorTextBox != nil {
 				c.removeInnerWidget(c.editorTextBox)
 				c.editorTextBox = nil
-				c.form.Update()
+				c.Update()
 				c.Focus()
 			}
 			ev.Handled = true
@@ -2204,7 +2204,7 @@ func (c *Table) EditCurrentCell(enteredText string) {
 			commit(c.editorTextBox.Text())
 			c.removeInnerWidget(c.editorTextBox)
 			c.editorTextBox = nil
-			c.form.Update()
+			c.Update()
 			c.Focus()
 		}
 	})
@@ -2239,7 +2239,7 @@ func (c *Table) EditCell(row, col, colSpan int, text string, onDone func(text st
 		if c.cellEditor == editor {
 			c.cellEditor = nil
 		}
-		c.form.Update()
+		c.Update()
 		if refocus {
 			c.Focus()
 		}
@@ -2459,7 +2459,7 @@ func (c *Table) RefreshModel() {
 			c.SetCurrentCell2(max(0, rows-1), max(0, c.currentCellX))
 		}
 	}
-	c.form.Update()
+	c.Update()
 }
 
 // modelCell is the cell of the model to draw: the text and the style of the

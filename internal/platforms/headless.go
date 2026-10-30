@@ -118,6 +118,9 @@ type HeadlessWindow struct {
 	mods            KeyModifiers
 	cursor          MouseCursor
 	updates         atomic.Int64
+	// frame is the window's buffer: it keeps the last frame, as a real
+	// window's does, and the form paints over it what changed
+	frame *image.RGBA
 
 	// The window or popup that got the button press: it gets the moves and
 	// the release (the system's mouse grab); and the one under the mouse
@@ -181,10 +184,15 @@ func (w *HeadlessWindow) Cursor() MouseCursor { return w.cursor }
 // Render paints the window, with its popups on top, as the screen shows it:
 // Scale pixels a logical pixel
 func (w *HeadlessWindow) Render() *image.RGBA {
-	img := image.NewRGBA(image.Rect(0, 0, w.px(w.width), w.px(w.height)))
-	if w.onPaint != nil {
-		w.onPaint(img)
+	r := image.Rect(0, 0, w.px(w.width), w.px(w.height))
+	if w.frame == nil || w.frame.Rect != r {
+		w.frame = image.NewRGBA(r)
 	}
+	if w.onPaint != nil {
+		w.onPaint(w.frame)
+	}
+	img := image.NewRGBA(r)
+	copy(img.Pix, w.frame.Pix)
 	for _, p := range w.popups() {
 		pimg := image.NewRGBA(image.Rect(0, 0, w.px(p.width), w.px(p.height)))
 		if p.onPaint != nil {

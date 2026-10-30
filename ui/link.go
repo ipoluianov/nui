@@ -3,6 +3,8 @@ package ui
 import (
 	"os/exec"
 	"runtime"
+
+	"github.com/ipoluianov/nui/internal/platforms"
 )
 
 // Link is a clickable text, like a hyperlink: underlined under the mouse,
@@ -144,8 +146,12 @@ func (c *Link) applyThemeMetrics() {
 }
 
 // OpenURL opens the address (a web page, a file, "mailto:...") with the
-// system's default application.
+// system's default application. Without a screen (the tests of uitest)
+// nothing is opened.
 func OpenURL(url string) error {
+	if platforms.IsHeadless() {
+		return nil
+	}
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "windows":

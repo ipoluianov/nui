@@ -512,15 +512,13 @@ func fillRGBA(img *image.RGBA, col color.RGBA) {
 	}
 }
 
+// windowPaint paints the frame. The buffer keeps the last frame: the form
+// paints over it what changed, its background too.
 func (c *nativeWindow) windowPaint(rgba *image.RGBA) {
-
-	// Cleared to the window's own background color. (A process-wide 200 MB
-	// buffer of the color, written as BGR into the RGBA frame, used to be
-	// copied here.)
-	fillRGBA(rgba, c.platform.bgColor)
-
 	if c.onPaint != nil {
 		c.onPaint(rgba)
+	} else {
+		fillRGBA(rgba, c.platform.bgColor)
 	}
 }
 

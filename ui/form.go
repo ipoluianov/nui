@@ -113,6 +113,8 @@ type Form struct {
 	onDeactivated func()
 
 	needUpdate bool
+	// repaint is what the next frame paints, see formRepaint
+	repaint formRepaint
 
 	// layoutPending is set when the widgets need to be laid out again (see
 	// UpdateLayout); inLayout while they are
@@ -262,6 +264,16 @@ func (c *Form) Beep() {
 // knows of (adding, removing, showing and hiding widgets, their minimum and
 // maximum sizes, the texts of labels) ask for it themselves.
 func (c *Form) UpdateLayout() {
+	if c == nil || c.Panel() == nil {
+		return
+	}
+	c.requestLayout()
+	// What asked for it is not known: all is repainted
+	c.repaint.all = true
+}
+
+// requestLayout lays the widgets out with the next frame
+func (c *Form) requestLayout() {
 	if c == nil || c.Panel() == nil {
 		return
 	}
@@ -719,7 +731,7 @@ func (c *Form) createWindow(maximized bool) {
 	}
 	c.clampOnShow = false
 	c.wnd.SetDarkMode(IsDarkTheme)
-	c.wnd.SetBackgroundColor(currentPalette.Window)
+	c.setWindowBackground()
 	c.applyMinSize()
 	registerOpenForm(c)
 	startAccessibility()
@@ -856,13 +868,19 @@ func (c *Form) realUpdate() {
 // frame of a 60 Hz screen, so drawing with the mouse follows it closely.
 const minUpdateInterval = 16 * time.Millisecond
 
+// Update repaints the whole form with the next frame; Widget.Update repaints
+// only the widget
 func (c *Form) Update() {
-	if c == nil {
+	if c == nil || c.wnd == nil {
 		return
 	}
-	if c.wnd == nil {
-		return
-	}
+	c.repaint.all = true
+	c.requestFrame()
+}
+
+// requestFrame asks the window for a frame: at once, or by the timer when the
+// last one was less than minUpdateInterval ago
+func (c *Form) requestFrame() {
 	if c.updateBlockStack > 0 {
 		c.needUpdate = true
 		return
@@ -874,6 +892,7 @@ func (c *Form) Update() {
 }
 
 func (c *Form) forceUpdate() {
+	c.repaint.all = true
 	c.needUpdate = true
 	c.realUpdate()
 }
@@ -905,7 +924,7 @@ func (c *Form) applyTheme() {
 		return
 	}
 	c.wnd.SetDarkMode(IsDarkTheme)
-	c.wnd.SetBackgroundColor(currentPalette.Window)
+	c.setWindowBackground()
 	c.forceUpdate()
 }
 
@@ -914,7 +933,7 @@ func (c *Form) processPaint(rgba *image.RGBA) {
 		return // closed: the native window goes away with the next turn of the loop
 	}
 	c.layoutNow() // the window may have moved to another screen: see useTextScale
-	c.paintScaled(rgba, c.wnd.Scale())
+	c.paintFrame(rgba, c.wnd.Scale())
 	c.updateTextInputRect()
 	c.accessibilityFocusChanged()
 }
@@ -975,10 +994,17 @@ func (c *Form) updateTextInputRect() {
 
 // paintScaled paints the form on rgba, scale pixels of it per logical pixel
 func (c *Form) paintScaled(rgba *image.RGBA, scale float64) {
+	c.paintClipped(rgba, scale, rgba.Rect)
+}
+
+// paintClipped paints the form as paintScaled, only within clip, the
+// rectangle of the pixels of rgba
+func (c *Form) paintClipped(rgba *image.RGBA, scale float64, clip image.Rectangle) {
 	cnv := NewCanvasScaled(rgba, scale)
 	// The text in the stripes of the screen, as the system draws its own
 	cnv.lcd = lcdOf(platforms.SubpixelOrder())
 	cnv.SetDirectTranslateAndClip(0, 0, c.width, c.height)
+	cnv.setPart(clip)
 	if c.menuBar != nil {
 		cnv.Save()
 		cnv.TranslateAndClip(c.menuBar.X(), c.menuBar.Y(), c.menuBar.Width(), c.menuBar.Height())
@@ -1188,9 +1214,12 @@ func (c *Form) processMouseMove(x int, y int) {
 	if signalTarget == nil {
 		signalTarget = c.widgetUnderMouse(x, y)
 	}
+	// A move repaints only the widgets that ask for it: those whose
+	// handlers get it (see Widget.ProcessMouseMove), those the mouse
+	// enters and leaves, and the one the application handles it of
 	if c.emitMouse(signalTarget, mouseMoveSignal, 0, x, y) {
 		c.lastMouseX, c.lastMouseY = x, y
-		c.Update()
+		signalTarget.widgetBase().Update()
 		return
 	}
 	if c.mouseLeftButtonPressedWidget != nil {
@@ -1199,7 +1228,7 @@ func (c *Form) processMouseMove(x int, y int) {
 		if c.mouseDownPopup != nil {
 			c.followMouseInPopups(x, y)
 		}
-		c.Update()
+		c.mouseLeftButtonPressedWidget.widgetBase().Update()
 		return
 	}
 
@@ -1209,8 +1238,6 @@ func (c *Form) processMouseMove(x int, y int) {
 	c.lastMouseX = x
 	c.lastMouseY = y
 	c.updateHover()
-
-	c.Update()
 }
 
 // updateHover finds the widget under the mouse and sets its cursor.
@@ -1529,7 +1556,7 @@ func (c *Form) processMouseWheel(deltaX int, deltaY int) {
 			e := &WheelEvent{DX: deltaX, DY: deltaY, X: lx, Y: ly, Mods: c.lastKeyboardModifiers}
 			b.OnWheel.Emit(e)
 			if e.Handled {
-				c.Update()
+				w.widgetBase().Update()
 				return
 			}
 		}
@@ -1538,10 +1565,11 @@ func (c *Form) processMouseWheel(deltaX int, deltaY int) {
 		deltaX, deltaY = deltaY, deltaX // Swap for horizontal scrolling
 	}
 	target, _, _ := c.mouseTarget(c.popupUnderMouse, c.lastMouseX, c.lastMouseY)
+	// The widgets that scroll or handle it ask for their repaint, as after a
+	// move (see Widget.ProcessMouseWheel)
 	target.ProcessMouseWheel(deltaX, deltaY)
 	// The content under the mouse may have scrolled
 	c.updateHover()
-	c.Update()
 }
 
 // Invoke runs f on the UI thread, then updates the form, and returns at once.

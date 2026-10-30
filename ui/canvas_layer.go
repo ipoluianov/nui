@@ -95,6 +95,15 @@ type canvasLayer struct {
 	rec *SVGRecorder
 }
 
+// written returns the pixels of the layer put on the canvas: those of the
+// part of the frame repainted (see Canvas.part)
+func (l *canvasLayer) written(c *Canvas) image.Rectangle {
+	if c.partial {
+		return l.rect.Intersect(c.part)
+	}
+	return l.rect
+}
+
 // BeginLayer starts a group of drawings that EndLayer puts on the canvas
 // at the opacity 0..1 as one: where shapes of the group overlap, they are
 // not seen through each other, only the group is seen through. Layers
@@ -124,7 +133,9 @@ func (c *Canvas) BeginLayer(opacity float64) {
 // transparent picture of its own: what reads the canvas inside it (Blur,
 // PixelAt) reads the layer alone.
 func (c *Canvas) BeginLayerStyle(st LayerStyle) {
-	b := c.clipRect().Intersect(c.rgba.Rect)
+	// The clip of the whole frame (see shapeClip); only the pixels of the
+	// part of the frame repainted are put on the canvas at EndLayer
+	b := c.shapeClip().Intersect(c.rgba.Rect)
 	opacity := st.Opacity
 	if opacity <= 0 {
 		opacity = 1
@@ -192,11 +203,11 @@ func (c *Canvas) EndLayer() {
 	// The group drawn over what was under it, mixed with what was under
 	// it: the group at the opacity over it, as the pixels are blended over
 	k := uint32(math.Round(l.opacity * 256))
-	b := l.rect
+	b := l.written(c)
 	for y := b.Min.Y; y < b.Max.Y; y++ {
 		off := c.rgba.PixOffset(b.Min.X, y)
 		cur := c.rgba.Pix[off : off+b.Dx()*4]
-		old := l.pix[(y-b.Min.Y)*b.Dx()*4:]
+		old := l.pix[((y-l.rect.Min.Y)*l.rect.Dx()+b.Min.X-l.rect.Min.X)*4:]
 		if l.mask == nil {
 			for i, v := range cur {
 				o := uint32(old[i])
@@ -216,13 +227,14 @@ func (c *Canvas) EndLayer() {
 
 // compositeLayer puts the picture of the layer l on the canvas by its blend
 func (c *Canvas) compositeLayer(l canvasLayer) {
-	b := l.rect
+	b := l.written(c)
 	w := b.Dx()
 	k := uint32(math.Round(l.opacity * 255))
 	for y := b.Min.Y; y < b.Max.Y; y++ {
 		off := c.rgba.PixOffset(b.Min.X, y)
 		dst := c.rgba.Pix[off : off+w*4 : off+w*4]
-		src := l.pix[(y-b.Min.Y)*w*4 : (y-b.Min.Y+1)*w*4]
+		from := ((y-l.rect.Min.Y)*l.rect.Dx() + b.Min.X - l.rect.Min.X) * 4
+		src := l.pix[from : from+w*4]
 		if k == 255 && l.mask == nil && blendRow(l.blend, src, dst) {
 			continue
 		}

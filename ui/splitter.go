@@ -163,6 +163,9 @@ func (c *Splitter) minSize(vertical bool) int {
 }
 
 func (c *Splitter) SetSize(w, h int) {
+	if w != c.w || h != c.h {
+		c.geometryChanged()
+	}
 	c.w = w
 	c.h = h
 	c.layoutPanes()

@@ -61,7 +61,7 @@ func NewCalendar() *Calendar {
 	c.SetOnMouseMove(c.mouseMove)
 	c.SetOnMouseLeave(func() {
 		c.hoverPart = calendarPartNone
-		c.form.Update()
+		c.Update()
 	})
 	c.SetOnMouseWheel(func(deltaX, deltaY int) bool {
 		c.ShowMonth(c.month.Year(), c.month.Month()-time.Month(deltaY))
@@ -87,7 +87,7 @@ func (c *Calendar) Date() time.Time {
 func (c *Calendar) SetDate(date time.Time) {
 	c.date = c.clamp(DateOnly(date))
 	c.month = firstOfMonth(c.date)
-	c.form.Update()
+	c.Update()
 }
 
 // SetMinDate and SetMaxDate limit the dates that can be chosen; a zero
@@ -113,7 +113,7 @@ func zeroOrDate(t time.Time) time.Time {
 // be out of 1..12 (it's normalized, as by time.Date).
 func (c *Calendar) ShowMonth(year int, month time.Month) {
 	c.month = time.Date(year, month, 1, 0, 0, 0, 0, time.Local)
-	c.form.Update()
+	c.Update()
 }
 
 // ShownMonth returns the first day of the month shown.
@@ -124,7 +124,7 @@ func (c *Calendar) ShownMonth() time.Time {
 // SetFirstDayOfWeek overrides the language's first day of the week.
 func (c *Calendar) SetFirstDayOfWeek(day time.Weekday) {
 	c.firstDay, c.firstDaySet = day, true
-	c.form.Update()
+	c.Update()
 }
 
 func (c *Calendar) firstDayOfWeek() time.Weekday {
@@ -164,7 +164,7 @@ func (c *Calendar) clamp(d time.Time) time.Time {
 func (c *Calendar) selectDate(d time.Time) {
 	d = c.clamp(DateOnly(d))
 	c.month = firstOfMonth(d)
-	c.form.Update()
+	c.Update()
 	if d.Equal(c.date) {
 		return
 	}
@@ -302,7 +302,7 @@ func (c *Calendar) mouseMove(x, y int, mods KeyModifiers) bool {
 	part, day := c.partAt(x, y)
 	if part != c.hoverPart || !day.Equal(c.hoverDay) {
 		c.hoverPart, c.hoverDay = part, day
-		c.form.Update()
+		c.Update()
 	}
 	cursor := MouseCursorArrow
 	if part != calendarPartNone && (part != calendarPartDay || c.inRange(day)) {

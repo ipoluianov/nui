@@ -324,7 +324,7 @@ func (c *tabWidgetHeader) onMouseMove(x int, y int, mods KeyModifiers) bool {
 	} else {
 		c.SetMouseCursor(MouseCursorNotDefined)
 	}
-	c.form.Update()
+	c.Update()
 	return true
 }
 

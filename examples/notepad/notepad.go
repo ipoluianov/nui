@@ -80,8 +80,7 @@ func newNotepad() *notepad {
 	panel.SetPanelPadding(4)
 	panel.SetCellPadding(4)
 
-	panel.AddWidget(0, 0, n.buildToolbar())
-
+	// Before the toolbar, whose buttons are bound to its methods
 	n.text = ui.NewTextBox()
 	n.text.SetMultiline(true)
 	n.text.SetFontFamily(ui.FontFamilyMono)
@@ -92,6 +91,7 @@ func newNotepad() *notepad {
 		}
 		n.updateStatus()
 	})
+	panel.AddWidget(0, 0, n.buildToolbar())
 	panel.AddWidget(1, 0, n.text)
 
 	panel.AddWidget(2, 0, n.buildStatusBar())

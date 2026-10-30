@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"image"
 	"image/color"
 	"math"
 	"reflect"
@@ -757,16 +758,69 @@ func (c *Widget) Height() int {
 	return c.h
 }
 
-// Update repaints the widget with the next frame; it is the form that is
-// repainted. On the UI thread only, see RequestRepaint.
+// Update repaints the widget with the next frame: its rectangle of the
+// window, with what is under and over it there. On the UI thread only, see
+// RequestRepaint.
 func (c *Widget) Update() {
-	c.form.Update()
+	f := c.form
+	if f == nil || f.wnd == nil {
+		return
+	}
+	// Where the widget is now: a layout that moves it repaints its parent
+	// (see geometryChanged)
+	f.updateRect(c.windowRect())
+}
+
+// windowRect returns the rectangle of the widget in the form's client
+// area, as RectClientAreaOnWindow, without laying the form out first
+func (c *Widget) windowRect() image.Rectangle {
+	x, y := c.x, c.y
+	for w := c; !w.isOpenPopupWidget(); {
+		parent := w.ParentWidget()
+		if parent == nil {
+			break
+		}
+		w = parent.widgetBase()
+		x += w.x - w.scrollX
+		y += w.y - w.scrollY
+	}
+	return image.Rect(x, y, x+c.w, y+c.h)
+}
+
+// geometryChanged repaints what a widget moved or resized changes: its
+// parent, where it was and is, and what the parent draws around it; all
+// for a widget of no parent
+func (c *Widget) geometryChanged() {
+	f := c.form
+	if f == nil || f.wnd == nil {
+		return
+	}
+	parent := c.ParentWidget()
+	if parent == nil || c.isOpenPopupWidget() {
+		f.Update()
+		return
+	}
+	if b := parent.widgetBase(); !slices.Contains(f.repaint.moved, b) {
+		f.repaint.moved = append(f.repaint.moved, b)
+	}
+	// Many (a window not painted for long, a big layout): all
+	if len(f.repaint.moved) > 32 {
+		f.repaint.moved = f.repaint.moved[:0]
+		f.repaint.all = true
+	}
+	f.requestFrame()
 }
 
 // UpdateLayout lays the widgets of the form out again with the next frame,
-// e.g. after the widget's own minimum size changed (see Form.UpdateLayout)
+// e.g. after the widget's own minimum size changed, and repaints the
+// widget; the widgets the layout moves are repainted too (see
+// Form.UpdateLayout)
 func (c *Widget) UpdateLayout() {
-	c.form.UpdateLayout()
+	if c.form == nil {
+		return
+	}
+	c.form.requestLayout()
+	c.Update()
 }
 
 // RequestRepaint repaints the widget with the next frame, from any
@@ -778,15 +832,26 @@ func (c *Widget) RequestRepaint() {
 		return
 	}
 	if platforms.IsUIThread() {
-		f.Update()
+		c.Update()
 		return
 	}
+	f.repaint.mu.Lock()
+	if !slices.Contains(f.repaint.posted, c) {
+		f.repaint.posted = append(f.repaint.posted, c)
+	}
+	f.repaint.mu.Unlock()
 	if f.repaintPosted.Swap(true) {
 		return
 	}
 	platforms.Post(func() {
 		f.repaintPosted.Store(false)
-		f.Update()
+		f.repaint.mu.Lock()
+		posted := f.repaint.posted
+		f.repaint.posted = nil
+		f.repaint.mu.Unlock()
+		for _, w := range posted {
+			w.Update()
+		}
 	})
 }
 
@@ -1066,6 +1131,18 @@ func (c *Widget) drawScrollBars(cnv *Canvas) {
 	if bx.visible && by.visible {
 		drawScrollBarTrack(cnv, by.crossPos, bx.crossPos, by.crossLen, bx.crossLen)
 	}
+}
+
+// scrollBarHover returns the parts of the scroll bars at the point of the
+// widget, as drawScrollBar highlights them
+func (c *Widget) scrollBarHover(x, y int) [2]int {
+	parts := [2]int{scrollPartNone, scrollPartNone}
+	for i, b := range []scrollBar{c.scrollBarX(), c.scrollBarY()} {
+		if b.visible {
+			parts[i] = b.partAt(x, y)
+		}
+	}
+	return parts
 }
 
 func (c *Widget) drawScrollBar(cnv *Canvas, b scrollBar) {
@@ -1475,6 +1552,9 @@ func (c *Widget) Name() string {
 // next layout.
 func (c *Widget) SetPosition(x, y int) {
 	c.layoutIfNeeded() // the changes made before are laid out first
+	if x != c.x || y != c.y {
+		c.geometryChanged()
+	}
 	c.x = x
 	c.y = y
 }
@@ -1483,6 +1563,9 @@ func (c *Widget) SetSize(w, h int) {
 	c.layoutIfNeeded() // the changes made before are laid out first
 	oldW := c.w
 	oldH := c.h
+	if w != oldW || h != oldH {
+		c.geometryChanged()
+	}
 	c.w = w
 	c.h = h
 	c.updateLayout(oldW, oldH, w, h)
@@ -1513,7 +1596,7 @@ func (c *Widget) setSizeLimit(limit *int, value int) {
 		return
 	}
 	*limit = value
-	c.form.UpdateLayout()
+	c.UpdateLayout()
 }
 
 // SetAnchors sets the edges of the parent the widget keeps its distance to
@@ -1584,6 +1667,7 @@ func (c *Widget) SetOnMouseWheel(f func(deltaX, deltaY int) bool) {
 
 func (c *Widget) setScrollX(scrollX int) {
 	if c.scrollX != scrollX {
+		c.Update()
 		c.scrollX = scrollX
 		if c.onScrollChanged != nil {
 			c.onScrollChanged(c.scrollX, c.scrollY)
@@ -1593,6 +1677,7 @@ func (c *Widget) setScrollX(scrollX int) {
 
 func (c *Widget) setScrollY(scrollY int) {
 	if c.scrollY != scrollY {
+		c.Update()
 		c.scrollY = scrollY
 		if c.onScrollChanged != nil {
 			c.onScrollChanged(c.scrollX, c.scrollY)
@@ -1699,12 +1784,15 @@ func (c *Widget) ProcessPaint(cnv *Canvas) {
 		c.onCustomPaint(cnv)
 	}
 
-	// Draw all child widgets
+	// Draw all child widgets; those outside the part of the frame repainted
+	// are left as they are
 	for _, w := range c.widgets {
 
 		cnv.Save()
 		cnv.TranslateAndClip(w.X(), w.Y(), w.Width(), w.Height())
-		w.ProcessPaint(cnv)
+		if !cnv.partial || !cnv.clipEmpty() {
+			w.ProcessPaint(cnv)
+		}
 		cnv.Restore()
 	}
 
@@ -1848,6 +1936,10 @@ func (c *Widget) ProcessMouseMove(x int, y int, mods KeyModifiers) bool {
 		return true
 	}
 
+	// The part of the scroll bars under the mouse is highlighted
+	if c.scrollBarHover(c.lastMouseAbsPosX, c.lastMouseAbsPosY) != c.scrollBarHover(x, y) {
+		c.Update()
+	}
 	c.lastMouseAbsPosX = x
 	c.lastMouseAbsPosY = y
 
@@ -1897,6 +1989,9 @@ func (c *Widget) ProcessMouseMove(x int, y int, mods KeyModifiers) bool {
 
 	if !processed && c.onMouseMove != nil {
 		processed = c.onMouseMove(x, y, mods)
+		// What the handler changed is in the widget: the form repaints
+		// only the widgets that asked for it after a move
+		c.Update()
 		return processed
 	}
 
@@ -1907,7 +2002,7 @@ func (c *Widget) ProcessMouseLeave() bool {
 	if c.onMouseLeave != nil {
 		c.onMouseLeave()
 	}
-	c.form.Update()
+	c.Update()
 	return true
 }
 
@@ -1915,7 +2010,7 @@ func (c *Widget) ProcessMouseEnter() bool {
 	if c.onMouseEnter != nil {
 		c.onMouseEnter()
 	}
-	c.form.Update()
+	c.Update()
 	return true
 }
 
@@ -2005,6 +2100,8 @@ func (c *Widget) ProcessMouseWheel(deltaX, deltaY int) bool {
 
 	if c.onMouseWheel != nil {
 		c.onMouseWheel(deltaX, deltaY)
+		// As after a move: the form repaints the widgets that ask for it
+		c.Update()
 		return true
 	}
 

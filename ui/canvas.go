@@ -71,6 +71,12 @@ type Canvas struct {
 	// on, which text is drawn with: 0 none (gray), 1 RGB, 2 BGR. Only the
 	// canvas of a window has it.
 	lcd int
+	// part, when partial, is the part of the image a frame repaints (see
+	// formRepaint): only its pixels are written. What is drawn is worked out
+	// in the clip as the whole frame has it (shapeClip), so the pixels of
+	// the part are those of the whole frame.
+	part    image.Rectangle
+	partial bool
 }
 
 type VAlign int
@@ -323,10 +329,7 @@ func (c *Canvas) SetPixel(x, y int) {
 // with no translation, unlike the other methods
 func (c *Canvas) MixPixel(x int, y int, rgba color.Color) {
 
-	if x < c.state.clipX || x >= c.state.clipX+c.state.clipW {
-		return
-	}
-	if y < c.state.clipY || y >= c.state.clipY+c.state.clipH {
+	if !(image.Point{x, y}).In(c.clipRect()) {
 		return
 	}
 	if !(image.Point{x, y}).In(c.rgba.Rect) {
@@ -414,8 +417,10 @@ func (c *Canvas) DrawLine(x1 int, y1 int, x2 int, y2 int, width int, col color.C
 		return
 	}
 	// Clipped to a pixel past the clip: what is past it is left out by the
-	// script's bounds
-	px1, py1, px2, py2, visible := CohenSutherland(int(math.Round(fx1)), int(math.Round(fy1)), int(math.Round(fx2)), int(math.Round(fy2)), c.state.clipX, c.state.clipY, c.state.clipX+c.state.clipW, c.state.clipY+c.state.clipH)
+	// script's bounds. The clip of the whole frame: where the line starts
+	// changes its pixels.
+	sc := c.shapeClip()
+	px1, py1, px2, py2, visible := CohenSutherland(int(math.Round(fx1)), int(math.Round(fy1)), int(math.Round(fx2)), int(math.Round(fy2)), sc.Min.X, sc.Min.Y, sc.Max.X, sc.Max.Y)
 	if !visible {
 		return
 	}
@@ -426,19 +431,20 @@ func (c *Canvas) DrawLine(x1 int, y1 int, x2 int, y2 int, width int, col color.C
 
 // clipEmpty reports whether the clip has no pixels: nothing is drawn
 func (c *Canvas) clipEmpty() bool {
-	return c.state.clipW <= 0 || c.state.clipH <= 0
+	return c.state.clipW <= 0 || c.state.clipH <= 0 || c.partial && !c.shapeClip().Overlaps(c.part)
 }
 
 // clipLast returns the last column and row of the clip, in pixels
 func (c *Canvas) clipLast() image.Point {
-	return image.Point{X: c.state.clipX + c.state.clipW - 1, Y: c.state.clipY + c.state.clipH - 1}
+	r := c.clipRect()
+	return image.Point{X: r.Max.X - 1, Y: r.Max.Y - 1}
 }
 
 // scriptBounds returns the clip as DrawScript.Bounds take it, the last
 // column and row included. Not made with image.Rect, which would swap the
 // edges of an empty clip into a pixel wide one.
 func (c *Canvas) scriptBounds() image.Rectangle {
-	return image.Rectangle{Min: image.Point{X: c.state.clipX, Y: c.state.clipY}, Max: c.clipLast()}
+	return image.Rectangle{Min: c.clipRect().Min, Max: c.clipLast()}
 }
 
 // DrawLineF draws an antialiased line one pixel wide between points with
@@ -457,9 +463,12 @@ func (c *Canvas) DrawLineF(x1, y1, x2, y2 float64, col color.Color) {
 	x1, y1 = c.pixelCenter(x1, y1)
 	x2, y2 = c.pixelCenter(x2, y2)
 
-	// Clipped with a margin of a pixel: the pixels at the edge get their share
-	left, top := float64(c.state.clipX-1), float64(c.state.clipY-1)
-	right, bottom := float64(c.state.clipX+c.state.clipW), float64(c.state.clipY+c.state.clipH)
+	// Clipped with a margin of a pixel: the pixels at the edge get their
+	// share. The clip of the whole frame: where the line starts changes its
+	// pixels.
+	sc := c.shapeClip()
+	left, top := float64(sc.Min.X-1), float64(sc.Min.Y-1)
+	right, bottom := float64(sc.Max.X), float64(sc.Max.Y)
 	x1, y1, x2, y2, visible := clipLineF(x1, y1, x2, y2, left, top, right, bottom)
 	if !visible {
 		return
@@ -1050,22 +1059,23 @@ func (c *Canvas) fillRectPixels(x int, y int, width int, height int, colr color.
 		return
 	}
 
-	if x < c.state.clipX {
-		width -= c.state.clipX - x
-		x = c.state.clipX
+	clip := c.clipRect()
+	if x < clip.Min.X {
+		width -= clip.Min.X - x
+		x = clip.Min.X
 	}
 
-	if y < c.state.clipY {
-		height -= c.state.clipY - y
-		y = c.state.clipY
+	if y < clip.Min.Y {
+		height -= clip.Min.Y - y
+		y = clip.Min.Y
 	}
 
-	if x+width > c.state.clipX+c.state.clipW {
-		width = c.state.clipX + c.state.clipW - x
+	if x+width > clip.Max.X {
+		width = clip.Max.X - x
 	}
 
-	if y+height > c.state.clipY+c.state.clipH {
-		height = c.state.clipY + c.state.clipH - y
+	if y+height > clip.Max.Y {
+		height = clip.Max.Y - y
 	}
 
 	if width < 1 {
@@ -1157,7 +1167,7 @@ func (c *Canvas) DrawRoundedRect(x int, y int, width int, height int, radius int
 		return
 	}
 	px, py, pw, ph := c.pixelRect(x, y, width, height)
-	c.fillRoundedPixels(px, py, pw, ph, float64(radius)*c.scale, c.lineWidth(1), c.state.col, c.clipRect())
+	c.fillRoundedPixels(px, py, pw, ph, float64(radius)*c.scale, c.lineWidth(1), c.state.col, c.shapeClip())
 }
 
 // FillRoundedRect fills a rounded rectangle in the current color,
@@ -1168,7 +1178,7 @@ func (c *Canvas) FillRoundedRect(x int, y int, width int, height int, radius int
 		return
 	}
 	px, py, pw, ph := c.pixelRect(x, y, width, height)
-	c.fillRoundedPixels(px, py, pw, ph, float64(radius)*c.scale, 0, c.state.col, c.clipRect())
+	c.fillRoundedPixels(px, py, pw, ph, float64(radius)*c.scale, 0, c.state.col, c.shapeClip())
 }
 
 // FillTriangle fills the triangle with corners (x1,y1), (x2,y2), (x3,y3).
@@ -1219,22 +1229,23 @@ func (c *Canvas) DrawImage(x int, y int, img image.Image) {
 	xOffset := 0
 	yOffset := 0
 
-	if bInner.Min.X < c.state.clipX {
-		xOffset = c.state.clipX - bInner.Min.X
-		bInner.Min.X = c.state.clipX
+	clip := c.clipRect()
+	if bInner.Min.X < clip.Min.X {
+		xOffset = clip.Min.X - bInner.Min.X
+		bInner.Min.X = clip.Min.X
 	}
 
-	if bInner.Min.Y < c.state.clipY {
-		yOffset = c.state.clipY - bInner.Min.Y
-		bInner.Min.Y = c.state.clipY
+	if bInner.Min.Y < clip.Min.Y {
+		yOffset = clip.Min.Y - bInner.Min.Y
+		bInner.Min.Y = clip.Min.Y
 	}
 
-	if bInner.Max.X > c.state.clipX+c.state.clipW {
-		bInner.Max.X = c.state.clipX + c.state.clipW
+	if bInner.Max.X > clip.Max.X {
+		bInner.Max.X = clip.Max.X
 	}
 
-	if bInner.Max.Y > c.state.clipY+c.state.clipH {
-		bInner.Max.Y = c.state.clipY + c.state.clipH
+	if bInner.Max.Y > clip.Max.Y {
+		bInner.Max.Y = clip.Max.Y
 	}
 
 	if bInner.Min.X >= bInner.Max.X {
@@ -1289,7 +1300,7 @@ func (c *Canvas) drawImageScaled(x int, y int, img image.Image) {
 	b := img.Bounds()
 	px, py, pw, ph := c.pixelRect(x, y, b.Dx(), b.Dy())
 	dst := image.Rect(px, py, px+pw, py+ph)
-	clip := image.Rect(c.state.clipX, c.state.clipY, c.state.clipX+c.state.clipW, c.state.clipY+c.state.clipH).Intersect(c.rgba.Rect)
+	clip := c.clipRect().Intersect(c.rgba.Rect)
 	if dst.Intersect(clip).Empty() {
 		return
 	}
@@ -1315,19 +1326,19 @@ func (c *Canvas) TranslatedY() int {
 
 // ClipX, ClipY, ClipW and ClipH return the clip rectangle in pixels of the image
 func (c *Canvas) ClipX() int {
-	return c.state.clipX
+	return c.clipRect().Min.X
 }
 
 func (c *Canvas) ClipY() int {
-	return c.state.clipY
+	return c.clipRect().Min.Y
 }
 
 func (c *Canvas) ClipW() int {
-	return c.state.clipW
+	return c.clipRect().Dx()
 }
 
 func (c *Canvas) ClipH() int {
-	return c.state.clipH
+	return c.clipRect().Dy()
 }
 
 func (c *Canvas) DrawText(x int, y int, width int, height int, text string) {
@@ -1444,11 +1455,13 @@ func (c *Canvas) DrawImageRect(x, y, width, height int, img image.Image, src ima
 	}
 	px, py, pw, ph := c.pixelRect(x, y, width, height)
 	dst := image.Rect(px, py, px+pw, py+ph)
-	clip := image.Rect(c.state.clipX, c.state.clipY, c.state.clipX+c.state.clipW, c.state.clipY+c.state.clipH).Intersect(c.rgba.Rect)
-	visible := dst.Intersect(clip)
-	if visible.Empty() {
+	clip := c.clipRect().Intersect(c.rgba.Rect)
+	if dst.Intersect(clip).Empty() {
 		return
 	}
+	// The part of the source drawn is worked out in the clip of the whole
+	// frame: it decides where the source pixels land
+	visible := dst.Intersect(c.shapeClip()).Intersect(c.rgba.Rect)
 	// A MipImage drawn small: its copy of the nearest size
 	img, src, _ = sourceImage(img, src, min(float64(dst.Dx())/float64(src.Dx()), float64(dst.Dy())/float64(src.Dy())), smooth)
 	if src.Empty() {

@@ -199,9 +199,7 @@ func NewView2D() *View2D {
 // Update repaints the view, the picture of the drawing kept: after a change
 // of the overlay
 func (v *View2D) Update() {
-	if v.form != nil {
-		v.form.Update()
-	}
+	v.Widget.Update()
 }
 
 // Invalidate paints the drawing again: after a change of what the painter
@@ -504,13 +502,19 @@ func (v *View2D) paint(cnv *Canvas) {
 	px, py, pw, ph := cnv.pixelRect(0, 0, w, h)
 	rect := image.Rect(px, py, px+pw, py+ph)
 	key := view2DCacheKey{cx: v.cx, cy: v.cy, scale: v.scale, yUp: v.yUp, rect: rect, bg: v.backgroundColor(), grid: v.grid, axes: v.axes}
-	cacheable := !rect.Empty() && !cnv.state.hasXf && cnv.rec == nil && rect.In(cnv.clipRect().Intersect(cnv.rgba.Rect)) && key.bg.A == 255
+	cacheable := !rect.Empty() && !cnv.state.hasXf && cnv.rec == nil && rect.In(cnv.shapeClip().Intersect(cnv.rgba.Rect)) && key.bg.A == 255
+	// A frame that repaints only a part of the view takes the picture from
+	// the cache, or paints the drawing, but leaves the cache as it is: the
+	// rest of the view on the canvas is the last frame, overlay and all
+	whole := rect.In(cnv.clipRect())
 	switch {
 	case cacheable && v.cache != nil && v.cacheGen == v.gen && key == v.cacheKey:
-		copyPixels(cnv.rgba, rect, v.cache)
-	case cacheable && v.cache != nil && v.cacheGen == v.gen && v.scrolled(key, cnv):
+		copyPixelsPart(cnv.rgba, rect, v.cache, cnv.clipRect())
+	case cacheable && whole && v.cache != nil && v.cacheGen == v.gen && v.scrolled(key, cnv):
 		// Moved by whole pixels: the picture moved, the strips that came
 		// into view painted
+	case cacheable && !whole:
+		v.paintContent(cnv, w, h, image.Rectangle{}, true)
 	default:
 		v.paintContent(cnv, w, h, image.Rectangle{}, true)
 		if cacheable {

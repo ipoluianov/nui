@@ -30,7 +30,7 @@ func (c *ProgressBar) Text() string {
 
 func (c *ProgressBar) SetText(text string) {
 	c.text = text
-	c.form.Update()
+	c.Update()
 }
 
 func (c *ProgressBar) SetValue(value float64) {
@@ -44,7 +44,7 @@ func (c *ProgressBar) SetValue(value float64) {
 		return
 	}
 	c.value = value
-	c.form.Update()
+	c.Update()
 }
 
 func (c *ProgressBar) Value() float64 {
@@ -53,12 +53,12 @@ func (c *ProgressBar) Value() float64 {
 
 func (c *ProgressBar) SetMinValue(minValue float64) {
 	c.minValue = minValue
-	c.form.Update()
+	c.Update()
 }
 
 func (c *ProgressBar) SetMaxValue(maxValue float64) {
 	c.maxValue = maxValue
-	c.form.Update()
+	c.Update()
 }
 
 func (c *ProgressBar) draw(cnv *Canvas) {

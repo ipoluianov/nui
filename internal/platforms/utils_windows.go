@@ -392,9 +392,12 @@ func wndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uintptr {
 			return 0
 		}
 
-		// Clear the canvas to this window's own background color.
+		// The buffer keeps the last frame: the form paints over it what
+		// changed, its background too
 		buf := win.ensureCanvasBuffer(int(width) * int(height) * 4)
-		fillCanvasBuffer(buf, win.platform.bgColor)
+		if win.onPaint == nil {
+			fillCanvasBuffer(buf, win.platform.bgColor)
+		}
 
 		img := &image.RGBA{
 			Pix:    buf,

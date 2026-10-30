@@ -30,7 +30,10 @@ type Timer struct {
 	immediate bool
 }
 
-// NewTimer makes a stopped timer of the widget; Start starts it
+// NewTimer makes a stopped timer of the widget; Start starts it. After the
+// function the widget is repainted: what the function changes elsewhere
+// asks for its own repaint (the setters do, Update for what a widget paints
+// of its own data). A timer of the form's panel repaints all of the form.
 func (c *Widget) NewTimer(interval time.Duration, f func()) *Timer {
 	return &Timer{owner: c, interval: interval, f: f}
 }
@@ -114,8 +117,7 @@ func (t *Timer) tick() {
 	if t.f != nil {
 		t.f()
 	}
-	// What the function changed is painted, as after a handler
-	if f := t.owner.form; f != nil {
-		f.needUpdate = true
-	}
+	// What the function changed is painted: the widget of the timer, all
+	// of the form for a timer of its panel (see Widget.AddTimer)
+	t.owner.Update()
 }

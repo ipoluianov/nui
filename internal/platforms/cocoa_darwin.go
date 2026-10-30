@@ -879,8 +879,8 @@ func nuiViewDrawRect(self objc.ID, _ objc.SEL, _, _, _, _ float64) {
 	stride := pixelW * 4
 	dataSize := stride * pixelH
 
-	// The window's own buffer, not a new one of tens of megabytes per frame;
-	// windowPaint clears all of it first
+	// The window's own buffer, not a new one of tens of megabytes per frame:
+	// it keeps the last frame, and the form paints over it what changed
 	var buf []byte
 	if w, ok := hwnds[id]; ok {
 		buf = growBuffer(&w.platform.paintBuffer, dataSize)

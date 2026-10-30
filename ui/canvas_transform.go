@@ -362,19 +362,26 @@ func (c *Canvas) drawImageMatrix(img image.Image, src image.Rectangle, m Matrix,
 		x, y := m.Apply(q[0], q[1])
 		minX, minY, maxX, maxY = math.Min(minX, x), math.Min(minY, y), math.Max(maxX, x), math.Max(maxY, y)
 	}
-	b = boxPixels([4]float64{minX, minY, maxX, maxY}).Intersect(c.clipRect()).Intersect(c.rgba.Rect)
-	if b.Empty() {
+	// The source points are stepped from the left of the clip of the whole
+	// frame (the sums round as there), the pixels written in clip: see
+	// shapeClip
+	b = boxPixels([4]float64{minX, minY, maxX, maxY}).Intersect(c.shapeClip()).Intersect(c.rgba.Rect)
+	clip := b.Intersect(c.clipRect())
+	if clip.Empty() {
 		return
 	}
 	sample := imageSampler(img, src, smooth)
 	opacity := float64(255-c.state.imageFade) / 255
 	sx0, sy0 := float64(src.Min.X), float64(src.Min.Y)
 	sx1, sy1 := float64(src.Max.X), float64(src.Max.Y)
-	for py := b.Min.Y; py < b.Max.Y; py++ {
+	for py := clip.Min.Y; py < clip.Max.Y; py++ {
 		off := c.rgba.PixOffset(b.Min.X, py)
 		// The source point of the pixel's center moves by (A, B) of inv per pixel
 		u, v := inv.Apply(float64(b.Min.X)+0.5, float64(py)+0.5)
-		for px := b.Min.X; px < b.Max.X; px, off, u, v = px+1, off+4, u+inv.A, v+inv.B {
+		for px := b.Min.X; px < clip.Max.X; px, off, u, v = px+1, off+4, u+inv.A, v+inv.B {
+			if px < clip.Min.X {
+				continue
+			}
 			// How much of the pixel is inside the source: the edges are
 			// soft over a pixel of the destination
 			cov := edgeCoverage(u, sx0, sx1, inv.A, inv.C) * edgeCoverage(v, sy0, sy1, inv.B, inv.D) * opacity

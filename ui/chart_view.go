@@ -88,6 +88,9 @@ type ChartView struct {
 	// The layout of the last paint
 	plotLeft, plotRight float64
 	lastPlotW           float64
+	// relaid is set when a paint asked for another, the width of its plot
+	// not the one it was laid out for
+	relaid              bool
 	laidOut             bool
 	selHeader, selClose chartRect
 	selCloseHover       bool
@@ -166,9 +169,7 @@ func (c *ChartView) initChartView(xScale ChartScale) {
 
 // Update repaints the chart
 func (c *ChartView) Update() {
-	if c.form != nil {
-		c.form.Update()
-	}
+	c.Widget.Update()
 }
 
 // Interaction returns how the chart answers the mouse and the keyboard
@@ -474,6 +475,15 @@ func (c *ChartView) paint(cnv *Canvas) {
 	}
 	c.plotLeft, c.plotRight = plotL, plotR
 	plotW := plotR - plotL
+	// The ticks and the data were for the width of the last paint: another
+	// one, of this width, draws them right. Once: a width that changes on
+	// every paint is left as it is.
+	if plotW != estW && !c.relaid {
+		c.relaid = true
+		c.Update()
+	} else {
+		c.relaid = false
+	}
 	c.lastPlotW = plotW
 	for _, ax := range c.xAxes() {
 		c.xAxisGeometry(ax, plotL, plotW)

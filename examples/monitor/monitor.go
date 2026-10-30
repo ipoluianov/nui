@@ -177,10 +177,10 @@ func (c *monitor) onTimer() {
 	if c.lastSample.Equal(before) {
 		return
 	}
+	// The widgets changed repaint themselves
 	c.charts.setRange(c.lastSample, c.window)
 	c.updateHosts()
 	c.updateStatus()
-	c.Form().Update()
 }
 
 // sampleUntil takes a sample of every host for each interval up to t.

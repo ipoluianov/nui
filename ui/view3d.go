@@ -131,9 +131,7 @@ func NewView3D(scene *Scene3D) *View3D {
 
 // Update repaints the view
 func (v *View3D) Update() {
-	if v.form != nil {
-		v.form.Update()
-	}
+	v.Widget.Update()
 }
 
 // Scene returns the scene shown
@@ -445,24 +443,27 @@ func (v *View3D) paint(cnv *Canvas) {
 	key := view3DCacheKey{cam: cam, rect: rect, aa: aa, bg: bg, fontSize: cnv.state.fontSize, fontFamily: cnv.state.fontFamily}
 	sig, cacheable := scene.signature()
 	cacheable = cacheable && !rect.Empty() && !cnv.state.hasXf && cnv.rec == nil &&
-		rect.In(cnv.clipRect().Intersect(cnv.rgba.Rect)) &&
+		rect.In(cnv.shapeClip().Intersect(cnv.rgba.Rect)) &&
 		(scene.Background.A == 255 || scene.Background.A == 0 && bg.A == 255)
 	if cacheable && v.cache != nil && key == v.cacheKey && sig == v.cacheSig {
-		copyPixels(cnv.rgba, rect, v.cache)
+		copyPixelsPart(cnv.rgba, rect, v.cache, cnv.clipRect())
 	} else {
 		if scene.Background.A == 0 {
 			cnv.FillRect(0, 0, w, h, bg)
 		}
 		v.renderer.Render(cnv, 0, 0, w, h, scene, cam)
-		if cacheable {
+		switch {
+		case !cacheable:
+			v.cache = nil
+		case rect.In(cnv.clipRect()):
 			if v.cache == nil || v.cache.Rect.Size() != rect.Size() {
 				v.cache = image.NewRGBA(image.Rect(0, 0, pw, ph))
 			}
 			copyPixelsOut(v.cache, cnv.rgba, rect)
 			v.cacheKey, v.cacheSig = key, sig
-		} else {
-			v.cache = nil
 		}
+		// A frame that repaints only a part of the view leaves the cache:
+		// the rest of the view on the canvas is the last frame
 	}
 	if v.overlay != nil {
 		cnv.Save()
@@ -471,6 +472,17 @@ func (v *View3D) paint(cnv *Canvas) {
 	}
 	if v.gizmo {
 		v.paintGizmo(cnv)
+	}
+}
+
+// copyPixelsPart copies the picture to the rectangle r of the image, only
+// its pixels within part
+func copyPixelsPart(dst *image.RGBA, r image.Rectangle, src *image.RGBA, part image.Rectangle) {
+	p := r.Intersect(part)
+	for y := p.Min.Y; y < p.Max.Y; y++ {
+		off := dst.PixOffset(p.Min.X, y)
+		from := src.PixOffset(p.Min.X-r.Min.X, y-r.Min.Y)
+		copy(dst.Pix[off:off+p.Dx()*4], src.Pix[from:from+p.Dx()*4])
 	}
 }
 

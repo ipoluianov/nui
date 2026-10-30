@@ -192,7 +192,7 @@ func (c *TreeView) ColumnCount() int {
 // SetColumnName sets the header text of the column.
 func (c *TreeView) SetColumnName(col int, name string) {
 	c.columnsNames[col] = name
-	c.form.Update()
+	c.Update()
 }
 
 // SetColumnNameFunc makes the header text come from f, now and on every
@@ -290,7 +290,7 @@ func (c *TreeView) Indent() int {
 // SetGridLines draws lines between the rows and columns.
 func (c *TreeView) SetGridLines(gridLines bool) {
 	c.gridLines = gridLines
-	c.form.Update()
+	c.Update()
 }
 
 // ---------------------------------------------------------------- Nodes
@@ -403,7 +403,7 @@ func (c *TreeView) ScrollToNode(node *TreeNode) {
 		c.setScrollY(top + c.rowHeight - viewHeight)
 	}
 	c.checkScrolls()
-	c.form.Update()
+	c.Update()
 }
 
 // ---------------------------------------------------------------- Selection
@@ -434,7 +434,7 @@ func (c *TreeView) SetCurrentNode(node *TreeNode) {
 		c.selected[node] = true
 		c.ScrollToNode(node)
 	}
-	c.form.Update()
+	c.Update()
 	c.fireSelectionChanged()
 }
 
@@ -442,7 +442,7 @@ func (c *TreeView) SetCurrentNode(node *TreeNode) {
 func (c *TreeView) SetCurrentColumn(col int) {
 	if col >= 0 && col < c.columnCount {
 		c.currentColumn = col
-		c.form.Update()
+		c.Update()
 	}
 }
 
@@ -457,7 +457,7 @@ func (c *TreeView) SetMultiselect(enabled bool) {
 	if !enabled {
 		c.selectionDragging = false
 		c.selectOnly(c.current)
-		c.form.Update()
+		c.Update()
 	}
 }
 
@@ -519,7 +519,7 @@ func (c *TreeView) SelectAll() {
 		c.current = c.rows[0].node
 		c.anchor = c.current
 	}
-	c.form.Update()
+	c.Update()
 	c.fireSelectionChanged()
 }
 
@@ -592,7 +592,7 @@ func (c *TreeView) moveTo(node *TreeNode, extend bool, keepSelection bool) {
 		c.selectOnly(node)
 	}
 	c.ScrollToNode(node)
-	c.form.Update()
+	c.Update()
 	c.fireSelectionChanged()
 }
 
@@ -703,7 +703,7 @@ func (c *TreeView) finishEdit(commit bool, refocus bool) {
 		node.SetText(col, text)
 		c.OnCellEdited.Emit(TreeCell{Node: node, Col: col, Text: text})
 	}
-	c.form.Update()
+	c.Update()
 }
 
 // ---------------------------------------------------------------- Clipboard
@@ -825,7 +825,7 @@ func (c *TreeView) updateInnerSize() {
 	} else {
 		c.ensureRows() // applies the size too
 	}
-	c.form.Update()
+	c.Update()
 }
 
 // applyContentSize sets the scrollable size from the columns and the rows.
@@ -908,7 +908,7 @@ func (c *TreeView) ensureColumnVisible(col int) {
 // a mouse event...), however many changes come before it.
 func (c *TreeView) structureChanged() {
 	c.rowsValid = false
-	c.form.Update()
+	c.Update()
 }
 
 func (c *TreeView) ensureRows() {
@@ -1103,7 +1103,7 @@ func (c *TreeView) onMouseDown(button MouseButton, x int, y int, mods KeyModifie
 		c.dragBase = nil
 	}
 	c.selectionDragging = true
-	c.form.Update()
+	c.Update()
 	return true
 }
 
@@ -1189,7 +1189,7 @@ func (c *TreeView) onMouseMove(x int, y int, mods KeyModifiers) bool {
 	}
 	if hover != c.hoverRow {
 		c.hoverRow = hover
-		c.form.Update()
+		c.Update()
 	}
 
 	if c.selectionDragging {
@@ -1203,7 +1203,7 @@ func (c *TreeView) onMouseMove(x int, y int, mods KeyModifiers) bool {
 			} else {
 				c.moveTo(node, false, false)
 			}
-			c.form.Update()
+			c.Update()
 		}
 	}
 	return true
@@ -1216,7 +1216,7 @@ func (c *TreeView) onMouseMoveHeader(x int, y int) MouseCursor {
 	}
 	if c.hoverRow != -1 {
 		c.hoverRow = -1
-		c.form.Update()
+		c.Update()
 	}
 	if c.headerBorderAt(x) >= 0 {
 		return MouseCursorResizeHor
@@ -1374,7 +1374,7 @@ func (c *TreeView) ProcessKeyDown(key Key, mods KeyModifiers) bool {
 	default:
 		return false
 	}
-	c.form.Update()
+	c.Update()
 	return true
 }
 
@@ -1874,7 +1874,7 @@ func (n *TreeNode) changed(structural bool) {
 		return
 	}
 	n.tree.layoutChildren()
-	n.tree.form.Update()
+	n.tree.Update()
 }
 
 // handlesKey: Enter and F2 that open the editor of the current cell go to

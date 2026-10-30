@@ -64,7 +64,7 @@ func (c *Label) ProcessPropChange(key string, value interface{}) {
 	if key != "text" {
 		c.form.UpdateLayout()
 	}
-	c.form.Update()
+	c.Update()
 }
 
 /////////////////////////////////////////////////////////////////////////////////

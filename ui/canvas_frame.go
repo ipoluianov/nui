@@ -110,7 +110,7 @@ func cornerCoverages(radius int) []float64 {
 // blendPixel blends the straight (not premultiplied) color into the pixel
 // (x, y) of the image, inside the clip rectangle only.
 func (c *Canvas) blendPixel(x, y int, col color.RGBA) {
-	if x < c.state.clipX || x >= c.state.clipX+c.state.clipW || y < c.state.clipY || y >= c.state.clipY+c.state.clipH {
+	if !(image.Point{x, y}).In(c.clipRect()) {
 		return
 	}
 	if !(image.Point{x, y}).In(c.rgba.Rect) {
@@ -130,8 +130,11 @@ func (c *Canvas) fillRoundedPixels(x, y, w, h int, radius float64, thickness int
 	if w <= 0 || h <= 0 {
 		return
 	}
-	b := image.Rect(x, y, x+w, y+h).Intersect(clip).Intersect(c.clipRect()).Intersect(c.rgba.Rect)
-	if b.Empty() {
+	// The pieces are cut in the clip of the whole frame (see shapeClip),
+	// the pixels written in visible
+	b := image.Rect(x, y, x+w, y+h).Intersect(clip).Intersect(c.shapeClip()).Intersect(c.rgba.Rect)
+	visible := b.Intersect(c.clipRect())
+	if visible.Empty() {
 		return
 	}
 	outline := thickness > 0 && w > thickness*2 && h > thickness*2
@@ -146,7 +149,7 @@ func (c *Canvas) fillRoundedPixels(x, y, w, h int, radius float64, thickness int
 	}
 	part := func(r image.Rectangle) {
 		r = r.Intersect(b)
-		if r.Empty() {
+		if !r.Overlaps(visible) {
 			return
 		}
 		ras := rasterizers.Get().(*rasterizer)
@@ -154,10 +157,10 @@ func (c *Canvas) fillRoundedPixels(x, y, w, h int, radius float64, thickness int
 		z := ras.reset(r.Dx(), r.Dy())
 		addPoints(z, outerPts, float64(r.Min.X), float64(r.Min.Y))
 		addPoints(z, innerPts, float64(r.Min.X), float64(r.Min.Y))
-		c.fillRasterized(ras, r, col)
+		c.fillRasterized(ras, r, visible, col)
 	}
 	fill := func(r image.Rectangle) {
-		if r = r.Intersect(b); !r.Empty() {
+		if r = r.Intersect(visible); !r.Empty() {
 			c.fillRectPixels(r.Min.X, r.Min.Y, r.Dx(), r.Dy(), col)
 		}
 	}
@@ -207,18 +210,20 @@ func addPoints(z *vector.Rasterizer, pts [][2]float64, ox, oy float64) {
 	z.ClosePath()
 }
 
-// fillRasterized blends the color over the pixels of b by how much the
-// shape added to the rasterizer covers each: it is b's size, its origin
-// at b.Min
-func (c *Canvas) fillRasterized(ras *rasterizer, b image.Rectangle, col color.Color) {
+// fillRasterized blends the color over the pixels of b within clip by how
+// much the shape added to the rasterizer covers each: it is b's size, its
+// origin at b.Min
+func (c *Canvas) fillRasterized(ras *rasterizer, b, clip image.Rectangle, col color.Color) {
 	mask := ras.mask(b.Dx(), b.Dy())
 	ras.z.DrawOp = draw.Src
 	ras.z.Draw(mask, mask.Rect, image.Opaque, image.Point{})
 
 	r, g, bl, a := straightRGBA8(col)
-	for yy := 0; yy < b.Dy(); yy++ {
-		offset := c.rgba.PixOffset(b.Min.X, b.Min.Y+yy)
-		for xx, m := range mask.Pix[yy*mask.Stride : yy*mask.Stride+b.Dx()] {
+	clip = clip.Intersect(b)
+	for y := clip.Min.Y; y < clip.Max.Y; y++ {
+		offset := c.rgba.PixOffset(clip.Min.X, y)
+		row := mask.Pix[(y-b.Min.Y)*mask.Stride:]
+		for xx, m := range row[clip.Min.X-b.Min.X : clip.Max.X-b.Min.X] {
 			if m != 0 {
 				c.mixPixelAt(offset+xx*4, r, g, bl, (a*uint32(m)+127)/255)
 			}
@@ -238,9 +243,11 @@ func (c *Canvas) fillPolygonPixels(pts [][2]float64, col color.Color) {
 		minX, minY = math.Min(minX, p[0]), math.Min(minY, p[1])
 		maxX, maxY = math.Max(maxX, p[0]), math.Max(maxY, p[1])
 	}
+	// Rasterized in the clip of the whole frame, see shapeClip
 	b := image.Rect(int(math.Floor(minX)), int(math.Floor(minY)), int(math.Ceil(maxX)), int(math.Ceil(maxY))).
-		Intersect(c.clipRect()).Intersect(c.rgba.Rect)
-	if b.Empty() {
+		Intersect(c.shapeClip()).Intersect(c.rgba.Rect)
+	clip := b.Intersect(c.clipRect())
+	if clip.Empty() {
 		return
 	}
 	ras := rasterizers.Get().(*rasterizer)
@@ -252,7 +259,7 @@ func (c *Canvas) fillPolygonPixels(pts [][2]float64, col color.Color) {
 		z.LineTo(float32(p[0]-ox), float32(p[1]-oy))
 	}
 	z.ClosePath()
-	c.fillRasterized(ras, b, col)
+	c.fillRasterized(ras, b, clip, col)
 }
 
 // drawMark draws a stroke of a mark (a check, a dash) of the logical width,
@@ -364,5 +371,26 @@ func roundedRectPoints(pts [][2]float64, x, y, w, h, radius float64) [][2]float6
 
 // clipRect returns the clip in pixels of the image
 func (c *Canvas) clipRect() image.Rectangle {
+	r := c.shapeClip()
+	if c.partial {
+		r = r.Intersect(c.part)
+	}
+	return r
+}
+
+// shapeClip returns the clip as the whole frame has it, even when only a
+// part of the frame is repainted: what is drawn (where a line starts, the
+// pieces a shape is rasterized in) is worked out in it, and only the
+// pixels within clipRect are written. So the pixels of any part are those
+// of the whole frame.
+func (c *Canvas) shapeClip() image.Rectangle {
+	if c.state.clipW <= 0 || c.state.clipH <= 0 {
+		return image.Rectangle{}
+	}
 	return image.Rect(c.state.clipX, c.state.clipY, c.state.clipX+c.state.clipW, c.state.clipY+c.state.clipH)
+}
+
+// setPart restricts the pixels written to the part of the image, see part
+func (c *Canvas) setPart(r image.Rectangle) {
+	c.part, c.partial = r, r != c.rgba.Rect
 }

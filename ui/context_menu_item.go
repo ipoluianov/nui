@@ -363,7 +363,7 @@ func (c *ContextMenuItem) MouseLeave() {
 }
 
 func (c *ContextMenuItem) MouseMove(x int, y int, mods KeyModifiers) bool {
-	c.form.Update()
+	c.Update()
 	return true
 }
 

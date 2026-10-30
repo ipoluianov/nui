@@ -780,7 +780,7 @@ func (c *TextBox) MouseMove(x int, y int, mods KeyModifiers) {
 	if c.mouseButtonPressed {
 		c.moveCursorNearPoint(x, y, mods)
 	}
-	c.form.Update()
+	c.Update()
 }
 
 func (c *TextBox) moveCursorNearPoint(x, y int, modifiers KeyModifiers) {

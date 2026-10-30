@@ -866,8 +866,12 @@ func (c *nativeWindow) paint() {
 		return
 	}
 
+	// The buffer keeps the last frame: the form paints over it what
+	// changed, its background too
 	buf := c.ensureCanvasBuffer(hdcWidth * hdcHeight * 4)
-	fillCanvasBuffer(buf, c.platform.bgColor)
+	if c.onPaint == nil {
+		fillCanvasBuffer(buf, c.platform.bgColor)
+	}
 
 	img := &image.RGBA{
 		Pix:    buf,
