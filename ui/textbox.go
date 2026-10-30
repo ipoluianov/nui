@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"image/color"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -454,38 +455,32 @@ func (c *TextBox) Draw(ctx *Canvas, width, height int) {
 		last = min(last, (c.scrollY+vh)/oneLineHeight+1)
 	}
 
-	// Selection
+	// Selection: the ranges of x each line's selected characters take, a
+	// few where text written right to left is mixed in
 	if len(c.selectedLines()) > 0 {
 		selection := c.selectionRange()
 		for selY := max(selection.Y1, first); selY <= min(selection.Y2, last); selY++ {
-			lineCharPos, err := GetCharPositions(c.FontFamily(), c.FontSize(), c.lineToPasswordChars(lines[selY]))
-
-			if err != nil {
-				return
-			}
-			for i := 0; i < len(lineCharPos); i++ {
-				lineCharPos[i] = lineCharPos[i] + c.textX()
-			}
-
-			selXBegin := 0
-			selXWidth := lineCharPos[len(lineCharPos)-1]
+			line := c.lineToPasswordChars(lines[selY])
+			from, to := 0, utf8.RuneCountInString(line)
 			if selY == selection.Y1 {
-				selXBegin = lineCharPos[selection.X1]
-				selXWidth = lineCharPos[len(lineCharPos)-1] - selXBegin
+				from = selection.X1
 			}
 			if selY == selection.Y2 {
-				if selection.X2 < len(lineCharPos) {
-					selXWidth = lineCharPos[selection.X2] - selXBegin
-				}
+				to = min(to, selection.X2)
 			}
-
 			rectY := selY * oneLineHeight
-
 			if !c.Multiline() {
 				rectY = yStaticOffset
 			}
-
-			ctx.FillRect(selXBegin, rectY, selXWidth, oneLineHeight, p.Selection)
+			for _, span := range TextSelectionSpans(c.FontFamily(), c.FontSize(), line, from, to) {
+				x0, x1 := c.textX()+span[0], c.textX()+span[1]
+				// A line the selection goes on to is marked from the edge
+				// of the box (in text written a character after another)
+				if selY != selection.Y1 && !needsShaping(line) {
+					x0 = 0
+				}
+				ctx.FillRect(x0, rectY, x1-x0, oneLineHeight, p.Selection)
+			}
 		}
 	}
 
@@ -515,19 +510,10 @@ func (c *TextBox) Draw(ctx *Canvas, width, height int) {
 
 	// Cursor
 	if focus && c.cursorVisible {
-		charPos, err := GetCharPositions(c.FontFamily(), c.FontSize(), c.lineToPasswordChars(lines[c.cursorPosY]))
-		for i := 0; i < len(charPos); i++ {
-			charPos[i] = charPos[i] + c.textX()
-		}
-		if err != nil {
-			return
-		}
-		if c.cursorPosX < len(charPos) {
-			cursorPosInPixels := charPos[c.cursorPosX]
-			curX := cursorPosInPixels - (c.cursorWidth / 2)
-			curY := yStaticOffset + c.cursorPosY*oneLineHeight
-			ctx.FillRect(curX, curY, c.cursorWidth, oneLineHeight, textColor)
-		}
+		cursorPosInPixels := c.textX() + c.caretX(c.cursorPosY, c.cursorPosX)
+		curX := cursorPosInPixels - (c.cursorWidth / 2)
+		curY := yStaticOffset + c.cursorPosY*oneLineHeight
+		ctx.FillRect(curX, curY, c.cursorWidth, oneLineHeight, textColor)
 	}
 
 	if len(lines) == 1 && lines[0] == "" && c.Hint() != "" && !focus {
@@ -550,11 +536,7 @@ func (c *TextBox) caretRect() (x, y, width, height int) {
 	if c.Multiline() {
 		y = 1 + c.cursorPosY*lineHeight
 	}
-	x = c.textX()
-	line := c.lines[min(c.cursorPosY, len(c.lines)-1)]
-	if charPos, err := GetCharPositions(c.FontFamily(), c.FontSize(), c.lineToPasswordChars(line)); err == nil && c.cursorPosX < len(charPos) {
-		x += charPos[c.cursorPosX]
-	}
+	x = c.textX() + c.caretX(min(c.cursorPosY, len(c.lines)-1), c.cursorPosX)
 	return x, y, 1, lineHeight
 }
 
@@ -668,23 +650,34 @@ func (c *TextBox) KeyDown(key Key, mods KeyModifiers) bool {
 		return true
 	}
 
+	// Left and right go over a letter with its marks, a conjunct of an
+	// Indic script, in the order of the text (in text written right to
+	// left, Left goes back to its start, on the right)
 	if key == KeyArrowLeft {
-		c.moveCursor(c.cursorPosX-1, c.cursorPosY, mods)
+		x := c.cursorPosX - 1
+		if line := c.lines[c.cursorPosY]; x >= 0 && needsShaping(line) {
+			x = prevGrapheme(line, c.cursorPosX)
+		}
+		c.moveCursor(x, c.cursorPosY, mods)
 		return true
 	}
 
 	if key == KeyArrowRight {
-		c.moveCursor(c.cursorPosX+1, c.cursorPosY, mods)
+		x := c.cursorPosX + 1
+		if line := c.lines[c.cursorPosY]; needsShaping(line) {
+			x = nextGrapheme(line, c.cursorPosX)
+		}
+		c.moveCursor(x, c.cursorPosY, mods)
 		return true
 	}
 
 	if key == KeyArrowUp {
-		c.moveCursor(c.cursorPosX, c.cursorPosY-1, mods)
+		c.moveCursorToLine(c.cursorPosY-1, mods)
 		return true
 	}
 
 	if key == KeyArrowDown {
-		c.moveCursor(c.cursorPosX, c.cursorPosY+1, mods)
+		c.moveCursorToLine(c.cursorPosY+1, mods)
 		return true
 	}
 
@@ -786,6 +779,14 @@ func (c *TextBox) moveCursorNearPoint(x, y int, modifiers KeyModifiers) {
 
 	if lineNumber < 0 {
 		lineNumber = 0
+	}
+
+	// Shaped text: the caret nearest the point, at the start of a letter
+	// with its marks
+	if line := c.lineToPasswordChars(lines[lineNumber]); needsShaping(line) {
+		i := TextIndexAt(c.FontFamily(), c.FontSize(), line, x-c.textX())
+		c.moveCursor(snapToGrapheme(line, i), lineNumber, modifiers)
+		return
 	}
 
 	charPos, _ := GetCharPositions(c.FontFamily(), c.FontSize(), c.lineToPasswordChars(lines[lineNumber]))
@@ -921,6 +922,24 @@ func (c *TextBox) moveCursor(posX int, posY int, modifiers KeyModifiers) {
 	c.form.Update()
 }
 
+// caretX returns the x of the caret before the character x of the line y,
+// from the start of the text: where the layout of the line puts it
+func (c *TextBox) caretX(y, x int) int {
+	return TextCaretX(c.FontFamily(), c.FontSize(), c.lineToPasswordChars(c.lines[y]), x)
+}
+
+// moveCursorToLine moves the cursor up or down to the line, at the same
+// character, the start of a letter with its marks there
+func (c *TextBox) moveCursorToLine(y int, modifiers KeyModifiers) {
+	x := c.cursorPosX
+	if y >= 0 && y < len(c.lines) {
+		if line := c.lines[y]; needsShaping(line) {
+			x = snapToGrapheme(line, min(x, utf8.RuneCountInString(line)))
+		}
+	}
+	c.moveCursor(x, y, modifiers)
+}
+
 func (c *TextBox) SelectedText() string {
 	lines := c.lines
 	selection := c.selectionRange()
@@ -981,16 +1000,8 @@ func (c *TextBox) deleteSelection() bool {
 }
 
 func (c *TextBox) ensureVisibleCursor() {
-	lines := c.lines
 	_, oneLineHeight, _ := MeasureText(c.FontFamily(), c.FontSize(), "Q")
-	charPos, err := GetCharPositions(c.FontFamily(), c.FontSize(), c.lineToPasswordChars(lines[c.cursorPosY]))
-	for i := 0; i < len(charPos); i++ {
-		charPos[i] = charPos[i] + c.textX()
-	}
-	if err != nil {
-		return
-	}
-	cursorPosInPixels := charPos[c.cursorPosX]
+	cursorPosInPixels := c.textX() + c.caretX(c.cursorPosY, c.cursorPosX)
 	curX := cursorPosInPixels - (c.cursorWidth / 2)
 	curY := c.cursorPosY * oneLineHeight
 	// The column of the line numbers covers the left of the view
@@ -1049,7 +1060,12 @@ func (c *TextBox) modifyText(cmd textboxModifyCommand, modifiers KeyModifiers, d
 		}
 		runes := []rune(c.lines[curPosY])
 		if curPosX < len(runes) {
-			c.setLine(curPosY, string(runes[:curPosX])+string(runes[curPosX+1:]))
+			// A letter with its marks, a conjunct, as one
+			next := curPosX + 1
+			if needsShaping(c.lines[curPosY]) {
+				next = max(next, nextGrapheme(c.lines[curPosY], curPosX))
+			}
+			c.setLine(curPosY, string(runes[:curPosX])+string(runes[next:]))
 			changed = true
 		} else if curPosY < len(c.lines)-1 {
 			c.setLine(curPosY, c.lines[curPosY]+c.lines[curPosY+1])
@@ -1525,6 +1541,10 @@ func (c *TextBox) drawHighlighted(ctx *Canvas, line int, text string, x, y, heig
 			of[i] = k
 		}
 	}
+	if needsShaping(text) {
+		c.drawHighlightedShaped(ctx, runes, spans, of, x, y, height, textColor)
+		return
+	}
 	positions, err := GetCharPositions(c.FontFamily(), c.FontSize(), text)
 	if err != nil {
 		return
@@ -1554,4 +1574,48 @@ func (c *TextBox) drawHighlighted(ctx *Canvas, line int, text string, x, y, heig
 		start = end
 	}
 	ctx.SetFontFamily(family)
+}
+
+// drawHighlightedShaped draws a line of shaped text in the styles of the
+// highlighter: one layout of all of it, the parts in their styles, so
+// letters join and the order is right across them. of is the part of
+// each rune.
+func (c *TextBox) drawHighlightedShaped(ctx *Canvas, runes []rune, spans []TextSpan, of []int, x, y, height int, textColor color.Color) {
+	family, size := c.FontFamily(), c.FontSize()
+	l := NewTextLayout("", TextStyle{Font: family, Size: size})
+	type mark struct {
+		from, to int // byte offsets
+		col      color.Color
+	}
+	var backs []mark
+	off := 0
+	for start := 0; start < len(runes); {
+		end := start + 1
+		for end < len(runes) && of[end] == of[start] {
+			end++
+		}
+		st := TextStyle{Font: family, Size: size, Color: colorToRGBA(textColor)}
+		part := string(runes[start:end])
+		if k := of[start]; k >= 0 {
+			span := spans[k]
+			if span.Color != nil {
+				st.Color = colorToRGBA(span.Color)
+			}
+			st.Bold, st.Italic = span.Bold, span.Italic
+			if span.Background != nil {
+				backs = append(backs, mark{off, off + len(part), span.Background})
+			}
+		}
+		l.Append(part, st)
+		off += len(part)
+		start = end
+	}
+	// The backgrounds as tall as the line, as the selection
+	for _, b := range backs {
+		for _, r := range l.SelectionRects(b.from, b.to) {
+			x0, x1 := int(math.Round(r.MinX)), int(math.Round(r.MaxX))
+			ctx.FillRect(x+x0, y, x1-x0, height, b.col)
+		}
+	}
+	ctx.drawLayoutAsText(l, x, y, height, family, size)
 }

@@ -136,10 +136,11 @@ func clearAllRenderedTexts() {
 	renderedTexts = make(map[string]*renderedText)
 	renderedTextsBytes = 0
 	renderedTextsMu.Unlock()
-	// The layouts of DrawTextF, in the fonts before
+	// The layouts of DrawTextF and of the shaped lines, in the fonts before
 	textFLayoutsMu.Lock()
 	clear(textFLayouts)
 	textFLayoutsMu.Unlock()
+	clearShapedLines()
 }
 
 // clearRenderedTexts must be called with renderedTextsMu held.
@@ -193,6 +194,11 @@ func DrawText(rgba *image.RGBA, text string, textColor color.Color, fontFamily s
 // Canvas.lcd)
 func drawText(rgba *image.RGBA, text string, textColor color.Color, fontFamily string, fontSize float64, x, y int, clip image.Rectangle, lcd int) {
 	clipX, clipY, clipWidth, clipHeight := clip.Min.X, clip.Min.Y, clip.Dx(), clip.Dy()
+	// Right to left, joined, combined: through the shaper
+	if needsShaping(text) {
+		drawShapedText(rgba, text, textColor, fontFamily, fontSize, x, y, clip, lcd)
+		return
+	}
 	// A system font is drawn straight onto the pixels under it: its subpixel
 	// antialiasing depends on them, so there is no image to cache
 	if sf := systemFontFor(fontFamily, fontSize, text); sf != nil {
@@ -343,6 +349,9 @@ func GetCharPositions(fontFamily string, fontSize float64, text string) ([]int, 
 }
 
 func charPositions(fontFamily string, fontSize float64, text string) ([]int, error) {
+	if needsShaping(text) {
+		return shapedPositions(text, fontFamily, fontSize), nil
+	}
 	if sf := systemFontFor(fontFamily, fontSize, text); sf != nil {
 		return sf.Positions(text), nil
 	}
@@ -385,6 +394,11 @@ func MeasureText(fontFamily string, fontSize float64, text string) (int, int, er
 }
 
 func measureText(fontFamily string, fontSize float64, text string) (int, int, error) {
+	if needsShaping(text) {
+		// The height is the font's, as for any text
+		_, h, err := measureText(fontFamily, fontSize, "")
+		return shapedWidth(text, fontFamily, fontSize), h, err
+	}
 	if sf := systemFontFor(fontFamily, fontSize, text); sf != nil {
 		positions := sf.Positions(text)
 		ascent, descent := sf.Metrics()

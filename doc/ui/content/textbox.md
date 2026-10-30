@@ -65,6 +65,22 @@ code.SetHighlighter(func(line int, text string) []ui.TextSpan {
 
 The highlighter is asked for the lines shown only, at each paint: it may be a syntax highlighter or the matches of a search. Bold and italic keep the places of the regular face: they fit a monospaced font best.
 
+## Scripts and directions
+
+A line of Arabic, Hebrew, an Indic script, Thai, or with combining marks is shaped and laid out by
+the bidi algorithm, as in `TextLayout` (see [canvas.md](canvas.md), "Text laid out"): the letters
+join, the right-to-left words read from the right, numbers and Latin words within them keep their
+order. Other lines are drawn a character after another, as before.
+
+- The caret stands where the layout puts the character: in a right-to-left word the start of the
+  word is at its right; a click lands on the character under the pointer.
+- Left and Right go over the text in its order (logical), a letter with its marks, or a conjunct of
+  an Indic script, as one; Delete removes such a group, Backspace one code point, as the system
+  editors do. Up and Down land at the start of a group.
+- A selection that takes in a part of a right-to-left run is painted in a few pieces, over the
+  characters it holds.
+- The lines are aligned to the left of the box whatever their direction.
+
 ## Signals
 
 `OnTextChanged` (any change), `OnTextEdited` (the user's), `OnSubmit` (Enter in a single-line box), `OnEditingFinished` (Enter, or leaving the box after a change); see [events](../../events.md).

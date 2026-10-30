@@ -91,10 +91,14 @@ are meant for text on opaque backgrounds, which all the controls have.
   `sbix`; Noto Color Emoji keeps `CBDT` bitmaps or `COLR` layers), and nui's rasterizer draws outline
   fonts only, in one color. An emoji is typed, copied, stored and measured as one character: only
   its picture is a box (the `.notdef` glyph of the font), and the cursor stays right around it.
-- **Shaping only in `TextLayout`.** `DrawText` and the widgets draw each character with its own
-  glyph: Latin, Cyrillic, Greek, CJK are right; Arabic letters are not joined, Indic letters not
-  combined, right-to-left text not reordered. `TextLayout` and `DrawTextF` shape the text (see
-  [canvas.md](canvas.md), "Text laid out").
+- **Shaping.** A line that needs it - Arabic, Hebrew, the Indic scripts, Thai and the other
+  scripts whose letters join or combine, combining marks, the marks of direction - is shaped and
+  laid out by the bidi algorithm wherever it is drawn: `DrawText`, the labels, buttons, menus,
+  tables, the text box (see [textbox.md](textbox.md)). Other text is drawn a character after
+  another, as quick as before. `MeasureText` measures a shaped line as it is drawn;
+  `GetCharPositions` gives the carets of its characters, which in right-to-left text are not in
+  order - `TextCaretX`, `TextIndexAt` and `TextSelectionSpans` are the caret, the click and the
+  selection for any text.
 - **Symbols below Hebrew.** A character before U+0590 the built-in fonts lack (rare Latin, IPA) is
   not looked up among the system fonts: register a font with it and add it to the chain,
   `ui.RegisterFont(name, data)`, then `ui.AddFallbackFont(name)`.

@@ -251,7 +251,10 @@ func drawMnemonicUnderline(cnv *Canvas, x, y, w, h int, text string, index int) 
 	}
 	lineY := top + textHeight - max(textHeight/6, 2)
 	thickness := max(int(size/14), 1)
-	cnv.FillRect(left+positions[index], lineY, positions[index+1]-positions[index], thickness, cnv.state.col)
+	// The box of the letter: of its glyphs, wherever the shaper put them
+	for _, span := range TextSelectionSpans(family, size, text, index, index+1) {
+		cnv.FillRect(left+span[0], lineY, span[1]-span[0], thickness, cnv.state.col)
+	}
 }
 
 // Form shortcuts
