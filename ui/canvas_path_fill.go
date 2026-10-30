@@ -130,8 +130,7 @@ func (r *evenOddRasterizer) accumulate(mask *image.Alpha) {
 // made in the drawing coordinates, so the width, the joins and the dashes
 // are transformed with the path, and then its polygons are transformed to
 // the pixels
-func (c *Canvas) strokePathXf(p *Path, style StrokeStyle, col color.Color) {
-	r, g, b, a := straightRGBA8(col)
+func (c *Canvas) strokePathXf(p *Path, style StrokeStyle, in pathInk, col color.Color, paint Paint) {
 	m := c.pixelMatrix()
 	k := m.meanScale()
 	if k == 0 || math.IsNaN(k) || math.IsInf(k, 0) {
@@ -153,7 +152,11 @@ func (c *Canvas) strokePathXf(p *Path, style StrokeStyle, col color.Color) {
 				}
 				st.DashOffset *= ks
 			}
-			c.rec.strokePath(c, tp, st, col)
+			if paint != nil {
+				c.rec.paintXf = &xf
+				defer func() { c.rec.paintXf = nil }()
+			}
+			c.rec.strokePath(c, tp, st, col, paint)
 		})
 	}
 	// Flattened at the density of the pixels: k of them per unit
@@ -195,7 +198,5 @@ func (c *Canvas) strokePathXf(p *Path, style StrokeStyle, col color.Color) {
 	for i, pt := range pb.pts {
 		pb.pts[i] = pm.ApplyPoint(pt)
 	}
-	c.rasterizePolys(pb, func(i, m uint32, _, _ int) {
-		c.mixPixelAt(int(i), r, g, b, (a*m+127)/255)
-	})
+	c.rasterizePolys(pb, func(off int, cover []uint8, px, py int) { c.blendInk(off, cover, px, py, &in) })
 }

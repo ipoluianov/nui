@@ -20,7 +20,7 @@ type SVGRecorder struct {
 	width, height float64
 	defs          bytes.Buffer
 	body          bytes.Buffer
-	clips         map[[4]float64]string
+	clips         map[svgClipKey]string
 	nextID        int
 	lastClip      string
 	open          bool
@@ -31,7 +31,7 @@ type SVGRecorder struct {
 
 // NewSVGRecorder makes a recorder of a picture of the logical size
 func NewSVGRecorder(width, height float64) *SVGRecorder {
-	return &SVGRecorder{width: width, height: height, clips: map[[4]float64]string{}}
+	return &SVGRecorder{width: width, height: height, clips: map[svgClipKey]string{}}
 }
 
 // SetRecorder makes the canvas record what it draws into the recorder as
@@ -75,13 +75,14 @@ func (r *SVGRecorder) id(prefix string) string {
 // are in the same clip
 func (r *SVGRecorder) clip(c *Canvas) {
 	s := c.scale
-	box := [4]float64{float64(c.state.clipX) / s, float64(c.state.clipY) / s, float64(c.state.clipW) / s, float64(c.state.clipH) / s}
-	id, ok := r.clips[box]
+	key := svgClipKey{[4]float64{float64(c.state.clipX) / s, float64(c.state.clipY) / s, float64(c.state.clipW) / s, float64(c.state.clipH) / s}, c.state.svgClip}
+	id, ok := r.clips[key]
 	if !ok {
 		id = r.id("c")
-		r.clips[box] = id
-		fmt.Fprintf(&r.defs, `<clipPath id="%s"><rect x="%s" y="%s" width="%s" height="%s"/></clipPath>`+"\n",
-			id, svgNum(box[0]), svgNum(box[1]), svgNum(box[2]), svgNum(box[3]))
+		r.clips[key] = id
+		box := key.box
+		fmt.Fprintf(&r.defs, `<clipPath id="%s"%s><rect x="%s" y="%s" width="%s" height="%s"/></clipPath>`+"\n",
+			id, svgClipRef(key.shape), svgNum(box[0]), svgNum(box[1]), svgNum(box[2]), svgNum(box[3]))
 	}
 	if id == r.lastClip && r.open {
 		return
@@ -91,6 +92,30 @@ func (r *SVGRecorder) clip(c *Canvas) {
 	}
 	fmt.Fprintf(&r.body, `<g clip-path="url(#%s)">`+"\n", id)
 	r.lastClip, r.open = id, true
+}
+
+// svgClipKey is a clip of the canvas: its rectangle and the shape of
+// ClipPath within it, if any
+type svgClipKey struct {
+	box   [4]float64
+	shape string
+}
+
+// svgClipRef is the attribute that clips an element to the shape of the id
+func svgClipRef(id string) string {
+	if id == "" {
+		return ""
+	}
+	return ` clip-path="url(#` + id + `)"`
+}
+
+// clipPath records the shape of Canvas.ClipPath, within the shapes before
+func (r *SVGRecorder) clipPath(c *Canvas, p *Path) {
+	id := r.id("s")
+	ox, oy := c.origin()
+	fmt.Fprintf(&r.defs, `<clipPath id="%s"%s><path d="%s"%s/></clipPath>`+"\n",
+		id, svgClipRef(c.state.svgClip), svgPathData(p, ox, oy), svgClipRule(p))
+	c.state.svgClip = id
 }
 
 // origin returns where the logical point 0, 0 of the canvas is in the picture
@@ -157,6 +182,17 @@ func (r *SVGRecorder) fillPath(c *Canvas, p *Path, col color.Color) {
 func (r *SVGRecorder) fillPathPaint(c *Canvas, p *Path, paint Paint) {
 	r.clip(c)
 	ox, oy := c.origin()
+	fill, ok := r.paintAttr(c, "fill", p, paint)
+	if !ok {
+		return
+	}
+	fmt.Fprintf(&r.body, `<path d="%s" %s%s/>`+"\n", svgPathData(p, ox, oy), fill, svgFillRule(p))
+}
+
+// paintAttr returns the attribute (fill or stroke) that paints the path
+// with the paint, its gradient or pattern added to the definitions
+func (r *SVGRecorder) paintAttr(c *Canvas, attr string, p *Path, paint Paint) (string, bool) {
+	ox, oy := c.origin()
 	fill := ""
 	// The coordinates of a paint under a transform stay its own; the
 	// gradient or the pattern is transformed to the picture
@@ -192,12 +228,12 @@ func (r *SVGRecorder) fillPathPaint(c *Canvas, p *Path, paint Paint) {
 		id := r.id("g")
 		fmt.Fprintf(&r.defs, `<linearGradient id="%s" gradientUnits="userSpaceOnUse" x1="%s" y1="%s" x2="%s" y2="%s"%s>%s</linearGradient>`+"\n",
 			id, svgNum(g.X1+gx), svgNum(g.Y1+gy), svgNum(g.X2+gx), svgNum(g.Y2+gy), gradXf+spread(g.Spread), stops(g.Stops))
-		fill = `fill="url(#` + id + `)"`
+		fill = attr + `="url(#` + id + `)"`
 	case RadialGradient:
 		id := r.id("g")
 		fmt.Fprintf(&r.defs, `<radialGradient id="%s" gradientUnits="userSpaceOnUse" cx="%s" cy="%s" r="%s"%s>%s</radialGradient>`+"\n",
 			id, svgNum(g.CX+gx), svgNum(g.CY+gy), svgNum(g.R), gradXf+spread(g.Spread), stops(g.Stops))
-		fill = `fill="url(#` + id + `)"`
+		fill = attr + `="url(#` + id + `)"`
 	case HatchPaint:
 		id := r.id("h")
 		spacing, width := g.Spacing, g.Width
@@ -215,26 +251,37 @@ func (r *SVGRecorder) fillPathPaint(c *Canvas, p *Path, paint Paint) {
 		fmt.Fprintf(&r.defs, `<pattern id="%s" patternUnits="userSpaceOnUse" width="%s" height="%s" patternTransform="%srotate(%s)">%s<rect y="%s" width="%s" height="%s" %s/></pattern>`+"\n",
 			id, svgNum(spacing), svgNum(spacing), gxf+" ", svgNum(-g.Angle*180/math.Pi), bg,
 			svgNum((spacing-width)/2), svgNum(spacing), svgNum(width), svgColor("fill", g.Color))
-		fill = `fill="url(#` + id + `)"`
+		fill = attr + `="url(#` + id + `)"`
 	default:
 		// A paint of the application's own: its color in the middle
 		minX, minY, maxX, maxY, ok := p.Bounds()
 		if !ok {
-			return
+			return "", false
 		}
-		fill = svgColor("fill", paint.ColorAt((minX+maxX)/2, (minY+maxY)/2))
+		fill = svgColor(attr, paint.ColorAt((minX+maxX)/2, (minY+maxY)/2))
 	}
-	fmt.Fprintf(&r.body, `<path d="%s" %s%s/>`+"\n", svgPathData(p, ox, oy), fill, svgFillRule(p))
+	return fill, true
 }
 
-func (r *SVGRecorder) strokePath(c *Canvas, p *Path, style StrokeStyle, col color.Color) {
+// strokePath records the outline of the path in the color, or the paint
+// if it is not nil
+func (r *SVGRecorder) strokePath(c *Canvas, p *Path, style StrokeStyle, col color.Color, paint Paint) {
 	r.clip(c)
 	ox, oy := c.origin()
 	w := style.Width
 	if w <= 0 {
 		w = 1
 	}
-	attrs := []string{svgColor("stroke", col), `fill="none"`, `stroke-width="` + svgNum(w) + `"`}
+	stroke := ""
+	if paint != nil {
+		var ok bool
+		if stroke, ok = r.paintAttr(c, "stroke", p, paint); !ok {
+			return
+		}
+	} else {
+		stroke = svgColor("stroke", col)
+	}
+	attrs := []string{stroke, `fill="none"`, `stroke-width="` + svgNum(w) + `"`}
 	switch style.Join {
 	case LineJoinRound:
 		attrs = append(attrs, `stroke-linejoin="round"`)
@@ -336,6 +383,13 @@ func (r *SVGRecorder) text(c *Canvas, text string, x, y, lineH, angle, ax, ay fl
 func svgFillRule(p *Path) string {
 	if p.fillRule == FillRuleEvenOdd {
 		return ` fill-rule="evenodd"`
+	}
+	return ""
+}
+
+func svgClipRule(p *Path) string {
+	if p.fillRule == FillRuleEvenOdd {
+		return ` clip-rule="evenodd"`
 	}
 	return ""
 }

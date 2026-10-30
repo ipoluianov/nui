@@ -48,6 +48,7 @@ var (
 // CJK characters, and again after the language wants another variant. Call
 // it before taking a face: loading resets the faces.
 func ensureFallbackFonts(text string) {
+	ensureScriptFonts(text)
 	if !hasCJK(text) {
 		return
 	}
@@ -232,6 +233,7 @@ func openSystemFont(path string, families []string) (*sfnt.Font, error) {
 	fonts := make([]*sfnt.Font, 0, collection.NumFonts())
 	for i := 0; i < collection.NumFonts(); i++ {
 		if f, err := collection.Font(i); err == nil && hasGlyph(f, &buf, '中') {
+			setFontSource(f, fontSource{path: path, index: i})
 			fonts = append(fonts, f)
 		}
 	}
@@ -278,11 +280,13 @@ func openFontFile(path, postScriptName string) (f *sfnt.Font, exact bool, err er
 	var buf sfnt.Buffer
 	for i := 0; i < collection.NumFonts(); i++ {
 		if f, err := collection.Font(i); err == nil && fontName(f, &buf, sfnt.NameIDPostScript) == postScriptName {
+			setFontSource(f, fontSource{path: path, index: i})
 			return f, true, nil
 		}
 	}
 	// The file stays open while the font is in use: the application's lifetime
 	f, err = collection.Font(0)
+	setFontSource(f, fontSource{path: path})
 	return f, false, err
 }
 

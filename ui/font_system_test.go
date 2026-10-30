@@ -25,7 +25,7 @@ func TestSystemCJKFont(t *testing.T) {
 	var cjkAdvance, boxAdvance int
 	withFace(FontFamilySans, 14, func(face font.Face) {
 		fb := face.(*fallbackFace)
-		a, _ := fb.faces[len(fb.faces)-1].GlyphAdvance('中')
+		a, _ := fb.faceFor('中').GlyphAdvance('中')
 		cjkAdvance = a.Round()
 		b, _ := fb.faces[0].GlyphAdvance('中')
 		boxAdvance = b.Round()

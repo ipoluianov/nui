@@ -52,6 +52,7 @@ func RegisterFont(family string, data []byte) error {
 	if err != nil {
 		return fmt.Errorf("font %q: %w", family, err)
 	}
+	setFontSource(f, fontSource{data: data})
 	base, style := parseFontFamily(family)
 	name := faceName(strings.ToLower(base), style)
 	forgetFoundSystemFamily(strings.ToLower(base))

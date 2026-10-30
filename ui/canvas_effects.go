@@ -258,59 +258,6 @@ func boxBlurV(buf []uint32, w, h, n, r int) {
 	}
 }
 
-// canvasLayer is what BeginLayer keeps: the pixels of the clip before it
-type canvasLayer struct {
-	rect    image.Rectangle
-	pix     []uint8
-	opacity float64
-}
-
-// BeginLayer starts a group of drawings that EndLayer puts on the canvas
-// at the opacity 0..1 as one: where shapes of the group overlap, they are
-// not seen through each other, only the group is seen through. Layers
-// nest. The group covers the clip at the time of BeginLayer.
-//
-//	cnv.BeginLayer(0.5)
-//	cnv.FillCircle(40, 40, 20, red)
-//	cnv.FillCircle(60, 40, 20, red) // no darker overlap
-//	cnv.EndLayer()
-func (c *Canvas) BeginLayer(opacity float64) {
-	b := c.clipRect().Intersect(c.rgba.Rect)
-	l := canvasLayer{rect: b, opacity: max(0, min(1, opacity))}
-	l.pix = make([]uint8, b.Dx()*b.Dy()*4)
-	for y := b.Min.Y; y < b.Max.Y; y++ {
-		off := c.rgba.PixOffset(b.Min.X, y)
-		copy(l.pix[(y-b.Min.Y)*b.Dx()*4:], c.rgba.Pix[off:off+b.Dx()*4])
-	}
-	c.layers = append(c.layers, l)
-}
-
-// EndLayer ends the group of the last BeginLayer, mixing what was drawn in
-// it with what was under it by its opacity
-func (c *Canvas) EndLayer() {
-	if len(c.layers) == 0 {
-		return
-	}
-	l := c.layers[len(c.layers)-1]
-	c.layers = c.layers[:len(c.layers)-1]
-	if l.opacity >= 1 {
-		return
-	}
-	// The group drawn over what was under it, mixed with what was under
-	// it: the group at the opacity over it, as the pixels are blended over
-	k := uint32(math.Round(l.opacity * 256))
-	b := l.rect
-	for y := b.Min.Y; y < b.Max.Y; y++ {
-		off := c.rgba.PixOffset(b.Min.X, y)
-		cur := c.rgba.Pix[off : off+b.Dx()*4]
-		old := l.pix[(y-b.Min.Y)*b.Dx()*4:]
-		for i, v := range cur {
-			o := uint32(old[i])
-			cur[i] = uint8((o*(256-k) + uint32(v)*k + 128) >> 8)
-		}
-	}
-}
-
 // FloodFill fills the area of the pixels around the logical pixel (x, y)
 // that have its color, within tolerance (0..255, the largest difference
 // of a component), with the color: the bucket of a paint program. Only the

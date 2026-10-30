@@ -646,9 +646,7 @@ func (c *Canvas) FillPath(p *Path, col color.Color) {
 	if c.rec != nil {
 		c.rec.fillPath(c, p, col)
 	}
-	c.fillPathWith(p, func(i, m uint32, _, _ int) {
-		c.mixPixelAt(int(i), r, g, b, (a*m+127)/255)
-	})
+	c.fillPathWith(p, func(off int, cover []uint8, _, _ int) { c.blendSolid(off, cover, r, g, b, a) })
 }
 
 // Paint gives the color of each point of a shape filled by
@@ -696,18 +694,13 @@ func (c *Canvas) FillPathPaint(p *Path, paint Paint) {
 // fillPathColors fills the path with the colors of the logical points of
 // the canvas colorAt gives
 func (c *Canvas) fillPathColors(p *Path, colorAt func(x, y float64) color.RGBA) {
-	tx, ty, s := float64(c.state.translateX), float64(c.state.translateY), c.scale
-	c.fillPathWith(p, func(i, m uint32, px, py int) {
-		// The logical point at the center of the pixel
-		col := colorAt((float64(px)+0.5-tx)/s, (float64(py)+0.5-ty)/s)
-		c.mixPixelAt(int(i), uint32(col.R), uint32(col.G), uint32(col.B), (uint32(col.A)*m+127)/255)
-	})
+	in := pathInk{at: colorAt}
+	c.fillPathWith(p, func(off int, cover []uint8, px, py int) { c.blendInk(off, cover, px, py, &in) })
 }
 
-// fillPathWith rasterizes the path and calls blend for every pixel it
-// covers: the offset of the pixel in Pix, the coverage 1..255 and the
-// pixel's position in the image
-func (c *Canvas) fillPathWith(p *Path, blend func(i, m uint32, px, py int)) {
+// fillPathWith rasterizes the path and calls blend for the runs of the
+// pixels it covers (see coverRow)
+func (c *Canvas) fillPathWith(p *Path, blend coverRow) {
 	if c.clipEmpty() || len(p.ops) == 0 {
 		return
 	}
@@ -733,19 +726,78 @@ func (c *Canvas) fillPathWith(p *Path, blend func(i, m uint32, px, py int)) {
 // translucent color is blended once, as SVG does.
 func (c *Canvas) StrokePath(p *Path, style StrokeStyle, col color.Color) {
 	r, g, b, a := straightRGBA8(col)
-	if a == 0 || c.clipEmpty() || len(p.ops) == 0 {
+	if a == 0 {
+		return
+	}
+	c.stroke(p, style, pathInk{r: r, g: g, b: b, a: a}, col, nil)
+}
+
+// StrokePathPaint draws the outline of the path, as StrokePath, with the
+// colors the paint gives: a line along a gradient, a track colored by a
+// value of the application's own
+func (c *Canvas) StrokePathPaint(p *Path, style StrokeStyle, paint Paint) {
+	if paint == nil {
+		return
+	}
+	c.stroke(p, style, pathInk{at: fastPaint(paint)}, nil, paint)
+}
+
+// pathInk is what a shape is filled with: a straight color, or the colors of
+// a paint at the logical points of the canvas
+type pathInk struct {
+	r, g, b, a uint32
+	at         func(x, y float64) color.RGBA
+}
+
+// blendInk blends the ink over the run of pixels from the offset off, at
+// (px, py), by their coverage
+func (c *Canvas) blendInk(off int, cover []uint8, px, py int, in *pathInk) {
+	if in.at == nil {
+		c.blendSolid(off, cover, in.r, in.g, in.b, in.a)
+		return
+	}
+	tx, ty, s := float64(c.state.translateX), float64(c.state.translateY), c.scale
+	for x, m := range cover {
+		if m != 0 {
+			// The logical point at the center of the pixel
+			col := in.at((float64(px+x)+0.5-tx)/s, (float64(py)+0.5-ty)/s)
+			c.mixPixelAt(off+x*4, uint32(col.R), uint32(col.G), uint32(col.B), (uint32(col.A)*uint32(m)+127)/255)
+		}
+	}
+}
+
+// stroke strokes the path with the ink; col or paint is the ink for the
+// SVG recorder
+func (c *Canvas) stroke(p *Path, style StrokeStyle, in pathInk, col color.Color, paint Paint) {
+	if c.clipEmpty() || len(p.ops) == 0 {
 		return
 	}
 	if c.state.hasXf {
+		xf := c.state.xf
+		if in.at != nil {
+			// The paint is in the drawing coordinates
+			inv, ok := xf.Invert()
+			if !ok {
+				return
+			}
+			at := in.at
+			in.at = func(x, y float64) color.RGBA { return at(inv.Apply(x, y)) }
+		}
 		if style.NonScaling {
-			c.withPathXf(p, func(tp *Path) { c.StrokePath(tp, style, col) })
+			c.withPathXf(p, func(tp *Path) {
+				if c.rec != nil && paint != nil {
+					c.rec.paintXf = &xf
+					defer func() { c.rec.paintXf = nil }()
+				}
+				c.stroke(tp, style, in, col, paint)
+			})
 			return
 		}
-		c.strokePathXf(p, style, col)
+		c.strokePathXf(p, style, in, col, paint)
 		return
 	}
 	if c.rec != nil {
-		c.rec.strokePath(c, p, style, col)
+		c.rec.strokePath(c, p, style, col, paint)
 	}
 	// What lies more than the width past the clip draws nothing there
 	width := style.Width
@@ -772,9 +824,7 @@ func (c *Canvas) StrokePath(p *Path, style StrokeStyle, col color.Color) {
 	for _, sub := range fp.subs {
 		strokeSubpathCulled(pb, fp.pts[sub.from:sub.to], sub.closed, st, cull)
 	}
-	c.rasterizePolys(pb, func(i, m uint32, _, _ int) {
-		c.mixPixelAt(int(i), r, g, b, (a*m+127)/255)
-	})
+	c.rasterizePolys(pb, func(off int, cover []uint8, px, py int) { c.blendInk(off, cover, px, py, &in) })
 }
 
 // strokeStyleInPixels returns the style with its lengths in pixels
@@ -914,7 +964,7 @@ func circleSteps(r float64) int {
 
 // rasterizePolys fills the polygons, anti-aliased, and calls blend for
 // every pixel within the clip they cover
-func (c *Canvas) rasterizePolys(pb *polyBuilder, blend func(i, m uint32, px, py int)) {
+func (c *Canvas) rasterizePolys(pb *polyBuilder, blend coverRow) {
 	if len(pb.ends) == 0 {
 		return
 	}
@@ -990,7 +1040,7 @@ func boxPixels(box [4]float64) image.Rectangle {
 // rasterizeRect rasterizes the polygons of pb that reach into b (of those
 // numbered in only, if given), clipped to it, and blends the pixels of b
 // they cover
-func (c *Canvas) rasterizeRect(pb *polyBuilder, b image.Rectangle, only []int, blend func(i, m uint32, px, py int)) {
+func (c *Canvas) rasterizeRect(pb *polyBuilder, b image.Rectangle, only []int, blend coverRow) {
 	ras := rasterizers.Get().(*rasterizer)
 	defer rasterizers.Put(ras)
 	var z pathSink = ras.reset(b.Dx(), b.Dy())
@@ -1043,10 +1093,55 @@ func (c *Canvas) rasterizeRect(pb *polyBuilder, b image.Rectangle, only []int, b
 	}
 	for yy := 0; yy < b.Dy(); yy++ {
 		row := mask.Pix[yy*mask.Stride : yy*mask.Stride+b.Dx()]
-		offset := c.rgba.PixOffset(b.Min.X, b.Min.Y+yy)
-		for xx, m := range row {
+		// The row from its first covered pixel to its last
+		first, last := 0, len(row)
+		for first < last && row[first] == 0 {
+			first++
+		}
+		for last > first && row[last-1] == 0 {
+			last--
+		}
+		if first < last {
+			blend(c.rgba.PixOffset(b.Min.X+first, b.Min.Y+yy), row[first:last], b.Min.X+first, b.Min.Y+yy)
+		}
+	}
+}
+
+// coverRow blends a run of pixels of a row: off is the offset in Pix of
+// the first, at (px, py); cover is the coverage 0..255 of each
+type coverRow func(off int, cover []uint8, px, py int)
+
+// blendSolid blends the straight color (r, g, b, a) over the run of
+// pixels from the offset off by their coverage
+func (c *Canvas) blendSolid(off int, cover []uint8, r, g, b, a uint32) {
+	pix := c.rgba.Pix[off : off+len(cover)*4 : off+len(cover)*4]
+	if a != 255 {
+		for x, m := range cover {
 			if m != 0 {
-				blend(uint32(offset+xx*4), uint32(m), b.Min.X+xx, b.Min.Y+yy)
+				c.mixPixelAt(off+x*4, r, g, b, (a*uint32(m)+127)/255)
+			}
+		}
+		return
+	}
+	// An opaque color: the coverage is its alpha, as mixPixelAt blends it
+	for x, m := range cover {
+		switch m {
+		case 0:
+		case 255:
+			p := pix[x*4 : x*4+4 : x*4+4]
+			p[0], p[1], p[2], p[3] = uint8(r), uint8(g), uint8(b), 255
+		default:
+			p := pix[x*4 : x*4+4 : x*4+4]
+			k, ik := uint32(m), 255-uint32(m)
+			v := r*k + uint32(p[0])*ik + 128
+			p[0] = uint8((v + v>>8) >> 8)
+			v = g*k + uint32(p[1])*ik + 128
+			p[1] = uint8((v + v>>8) >> 8)
+			v = b*k + uint32(p[2])*ik + 128
+			p[2] = uint8((v + v>>8) >> 8)
+			if p[3] != 255 {
+				v = 255*k + uint32(p[3])*ik + 128
+				p[3] = uint8((v + v>>8) >> 8)
 			}
 		}
 	}

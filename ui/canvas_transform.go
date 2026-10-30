@@ -339,6 +339,18 @@ func (c *Canvas) drawImageMatrix(img image.Image, src image.Rectangle, m Matrix,
 	if src.Empty() || c.clipEmpty() {
 		return
 	}
+	// A MipImage drawn small: its copy of the nearest size, whose point q
+	// is the point Min + q/f of the image
+	b := img.Bounds()
+	if lv, part, f := sourceImage(img, src, math.Sqrt(math.Abs(m.A*m.D-m.B*m.C)), smooth); f != 1 {
+		m = ScalingMatrix(1/f, 1/f).Then(TranslationMatrix(float64(b.Min.X), float64(b.Min.Y))).Then(m)
+		img, src = lv, part
+	} else {
+		img = lv
+	}
+	if src.Empty() {
+		return
+	}
 	inv, ok := m.Invert()
 	if !ok {
 		return
@@ -350,11 +362,12 @@ func (c *Canvas) drawImageMatrix(img image.Image, src image.Rectangle, m Matrix,
 		x, y := m.Apply(q[0], q[1])
 		minX, minY, maxX, maxY = math.Min(minX, x), math.Min(minY, y), math.Max(maxX, x), math.Max(maxY, y)
 	}
-	b := boxPixels([4]float64{minX, minY, maxX, maxY}).Intersect(c.clipRect()).Intersect(c.rgba.Rect)
+	b = boxPixels([4]float64{minX, minY, maxX, maxY}).Intersect(c.clipRect()).Intersect(c.rgba.Rect)
 	if b.Empty() {
 		return
 	}
 	sample := imageSampler(img, src, smooth)
+	opacity := float64(255-c.state.imageFade) / 255
 	sx0, sy0 := float64(src.Min.X), float64(src.Min.Y)
 	sx1, sy1 := float64(src.Max.X), float64(src.Max.Y)
 	for py := b.Min.Y; py < b.Max.Y; py++ {
@@ -364,7 +377,7 @@ func (c *Canvas) drawImageMatrix(img image.Image, src image.Rectangle, m Matrix,
 		for px := b.Min.X; px < b.Max.X; px, off, u, v = px+1, off+4, u+inv.A, v+inv.B {
 			// How much of the pixel is inside the source: the edges are
 			// soft over a pixel of the destination
-			cov := edgeCoverage(u, sx0, sx1, inv.A, inv.C) * edgeCoverage(v, sy0, sy1, inv.B, inv.D)
+			cov := edgeCoverage(u, sx0, sx1, inv.A, inv.C) * edgeCoverage(v, sy0, sy1, inv.B, inv.D) * opacity
 			if cov <= 0 {
 				continue
 			}
@@ -452,6 +465,29 @@ func imageSampler(img image.Image, src image.Rectangle, smooth bool) func(x, y f
 	}
 }
 
+// drawTextOutlines draws the text of DrawText in its box, aligned in it,
+// as the outlines of its letters (see TextLayout)
+func (c *Canvas) drawTextOutlines(x, y, width, height int, text string) {
+	l := NewTextLayout(text, TextStyle{Font: c.state.fontFamily, Size: c.state.fontSize, Underline: c.state.underline})
+	l.SetAlign(c.state.hAlign)
+	lw, lh := l.Size()
+	fx := float64(x)
+	switch c.state.hAlign {
+	case HAlignCenter:
+		fx += (float64(width) - lw) / 2
+	case HAlignRight:
+		fx += float64(width) - lw
+	}
+	fy := float64(y)
+	switch c.state.vAlign {
+	case VAlignCenter:
+		fy += (float64(height) - lh) / 2
+	case VAlignBottom:
+		fy += float64(height) - lh
+	}
+	c.DrawTextLayout(l, fx, fy)
+}
+
 // drawTextXf draws the text of DrawText under the transform: drawn into a
 // picture at the canvas' resolution, which is then drawn transformed
 func (c *Canvas) drawTextXf(x, y, width, height int, text string) {
@@ -462,7 +498,13 @@ func (c *Canvas) drawTextXf(x, y, width, height int, text string) {
 	// so the text is as sharp as it can be
 	k := max(1, c.state.xf.meanScale()) * c.scale
 	pw, ph := int(math.Ceil(float64(width)*k)), int(math.Ceil(float64(height)*k))
-	if pw <= 0 || ph <= 0 || pw*ph > 4096*4096 {
+	if pw <= 0 || ph <= 0 {
+		return
+	}
+	if pw*ph > 1<<20 {
+		// Too large a picture: the outlines of the letters, sharp at any
+		// zoom
+		c.drawTextOutlines(x, y, width, height, text)
 		return
 	}
 	img := image.NewRGBA(image.Rect(0, 0, pw, ph))
@@ -472,5 +514,9 @@ func (c *Canvas) drawTextXf(x, y, width, height int, text string) {
 	sub.state.hAlign, sub.state.vAlign, sub.state.underline = st.hAlign, st.vAlign, st.underline
 	sub.SetDirectTranslateAndClip(0, 0, int(math.Ceil(float64(pw)/k)), int(math.Ceil(float64(ph)/k)))
 	sub.drawTextLines(0, 0, width, height, text, false)
+	// The text is not an image: drawn opaque whatever SetImageOpacity says
+	fade := c.state.imageFade
+	c.state.imageFade = 0
 	c.drawImageMatrix(img, img.Rect, ScalingMatrix(1/k, 1/k).Then(TranslationMatrix(float64(x), float64(y))).Then(c.pixelMatrix()), true)
+	c.state.imageFade = fade
 }

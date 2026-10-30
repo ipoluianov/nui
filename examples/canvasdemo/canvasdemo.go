@@ -1,6 +1,7 @@
 // Package canvasdemo shows what the canvas of nui draws: transforms,
 // paths read from SVG, fill rules, splines, gradients, patterns, shadows,
-// layers and blur, in tiles of a custom widget, some of them moving.
+// layers and blur, clips to shapes, blend modes, text laid out, in tiles
+// of a custom widget, some of them moving.
 package canvasdemo
 
 import (
@@ -28,6 +29,8 @@ type demo struct {
 	t       float64 // seconds since the start, for the moving tiles
 	pattern image.Image
 	heart   *ui.Path
+	photo   *ui.MipImage
+	label   *ui.TextLayout
 	// The mouse, and the origin of the tile being drawn, in the widget
 	mouseX, mouseY float64
 	tileX, tileY   float64
@@ -47,6 +50,13 @@ func newDemo() *demo {
 		return false
 	})
 	d.pattern = dots()
+	d.photo = ui.NewMipImage(photo())
+	d.label = ui.NewTextLayout("Shaped ", ui.TextStyle{Size: 15})
+	d.label.Append("and wrapped", ui.TextStyle{Size: 15, Bold: true, Color: blue})
+	d.label.Append(" text: office, AV, ", ui.TextStyle{Size: 15})
+	d.label.Append("שלום", ui.TextStyle{Size: 15, Color: orange})
+	d.label.Append(" and مرحبا 2024.", ui.TextStyle{Size: 15, Italic: true})
+	d.label.SetWidth(tileW - 30)
 	// A heart of an SVG icon (24 x 24)
 	d.heart, _ = ui.ParseSVGPath("M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z")
 	d.AddTimer(33, func() {
@@ -81,6 +91,10 @@ func (d *demo) paint(cnv *ui.Canvas) {
 		{"Shadow and layers", d.shadows},
 		{"Text on a transform", d.text},
 		{"Path under the mouse", d.hitTest},
+		{"Clip to a shape", d.clips},
+		{"Blend modes, eraser", d.blends},
+		{"Text laid out", d.layout},
+		{"Gradient line, faded", d.fades},
 	}
 	cols := max(1, (d.Width()-gap)/(tileW+gap))
 	for i, tile := range tiles {
@@ -246,6 +260,130 @@ func (d *demo) hitTest(cnv *ui.Canvas) {
 		cnv.FillPath(p, col)
 		cnv.StrokePath(p, ui.StrokeStyle{Width: 1.5, Join: ui.LineJoinRound}, ink)
 	}
+}
+
+// clips: a picture in a turning star, a mipmapped thumbnail in a circle
+func (d *demo) clips(cnv *ui.Canvas) {
+	star := ui.NewPath()
+	star.Star(70, 85, 60, 30, 5)
+	cnv.Save()
+	cnv.RotateAround(d.t/2, 70, 85)
+	cnv.ClipPath(star)
+	cnv.ResetTransform()
+	cnv.DrawImageRect(10, 25, 120, 120, d.photo, d.photo.Bounds(), true)
+	cnv.Restore()
+	circle := ui.NewPath()
+	circle.Circle(175, 85, 40)
+	cnv.Save()
+	cnv.ClipPath(circle)
+	// The picture of 512 pixels drawn 80 wide: smooth, from its mipmaps
+	cnv.DrawImageRect(135, 45, 80, 80, d.photo, d.photo.Bounds(), true)
+	cnv.Restore()
+	cnv.StrokePath(circle, ui.StrokeStyle{Width: 2}, ink)
+}
+
+// blends: light added on black, inks multiplied on paper, rubbed out by
+// an eraser in their layer
+func (d *demo) blends(cnv *ui.Canvas) {
+	cnv.FillRect(10, 10, 100, 130, color.RGBA{20, 20, 24, 255})
+	cnv.Save()
+	cnv.TranslateAndClip(10, 10, 100, 130)
+	for i, col := range []color.RGBA{{255, 0, 0, 255}, {0, 255, 0, 255}, {0, 0, 255, 255}} {
+		cnv.BeginLayerStyle(ui.LayerStyle{Blend: ui.BlendScreen})
+		a := d.t + float64(i)*2*math.Pi/3
+		cnv.FillCircle(50+14*math.Cos(a), 65+14*math.Sin(a), 28, col)
+		cnv.EndLayer()
+	}
+	cnv.Restore()
+	cnv.Save()
+	cnv.TranslateAndClip(120, 10, 100, 130)
+	// The inks in a layer of their own: the eraser rubs them out, not the
+	// paper
+	cnv.BeginLayerStyle(ui.LayerStyle{Isolated: true})
+	for i, col := range []color.RGBA{{0, 200, 255, 255}, {255, 0, 200, 255}, {255, 230, 0, 255}} {
+		cnv.BeginLayerStyle(ui.LayerStyle{Blend: ui.BlendMultiply})
+		a := -d.t + float64(i)*2*math.Pi/3
+		cnv.FillCircle(50+14*math.Cos(a), 65+14*math.Sin(a), 28, col)
+		cnv.EndLayer()
+	}
+	cnv.BeginLayerStyle(ui.LayerStyle{Blend: ui.BlendErase})
+	line := ui.NewPath()
+	line.MoveTo(15, 65+30*math.Sin(d.t*1.3))
+	line.LineTo(85, 65-30*math.Sin(d.t*1.3))
+	cnv.StrokePath(line, ui.StrokeStyle{Width: 8, Cap: ui.LineCapRound}, ink)
+	cnv.EndLayer()
+	cnv.EndLayer()
+	cnv.Restore()
+}
+
+// layout: styled, shaped text wrapped in a width; the caret follows the
+// mouse
+func (d *demo) layout(cnv *ui.Canvas) {
+	x, y := 15.0, 12.0
+	cnv.DrawTextLayout(d.label, x, y)
+	mx, my := d.mouseX-d.tileX-x, d.mouseY-d.tileY-y
+	w, h := d.label.Size()
+	if mx >= 0 && my >= 0 && mx <= w && my <= h {
+		at := d.label.IndexAt(mx, my)
+		for _, r := range d.label.SelectionRects(0, at) {
+			p := ui.NewPath()
+			p.Rect(x+r.MinX, y+r.MinY, r.Width(), r.Height())
+			cnv.FillPath(p, color.RGBA{37, 99, 235, 40})
+		}
+		c := d.label.CaretRect(at)
+		caret := ui.NewPath()
+		caret.Rect(x+c.MinX-0.5, y+c.MinY, 1, c.Height())
+		cnv.FillPath(caret, ink)
+	}
+	cnv.SetColor(ink)
+	cnv.SetFontSize(11)
+	cnv.DrawTextF(x, y+h+8, "at x 15, the caret under the mouse")
+}
+
+// fades: a spiral colored along its length, stripes faded out at the right
+func (d *demo) fades(cnv *ui.Canvas) {
+	spiral := ui.NewPath()
+	for i := 0; i <= 200; i++ {
+		a := float64(i) / 200 * 4 * math.Pi
+		r := 5 + float64(i)/200*55
+		px, py := 70+r*math.Cos(a+d.t), 85+r*math.Sin(a+d.t)
+		if i == 0 {
+			spiral.MoveTo(px, py)
+		} else {
+			spiral.LineTo(px, py)
+		}
+	}
+	stops := []ui.GradientStop{}
+	for i := 0; i <= 6; i++ {
+		stops = append(stops, ui.GradientStop{Offset: float64(i) / 6, Color: hue(float64(i) / 6)})
+	}
+	cnv.StrokePathPaint(spiral, ui.StrokeStyle{Width: 4, Cap: ui.LineCapRound, Join: ui.LineJoinRound},
+		ui.ConicGradient{CX: 70, CY: 85, Angle: d.t, Stops: stops})
+	cnv.Save()
+	cnv.TranslateAndClip(140, 20, 80, 130)
+	cnv.BeginLayerStyle(ui.LayerStyle{Mask: ui.LinearGradient{X1: 20, X2: 80,
+		Stops: []ui.GradientStop{{Offset: 0, Color: color.RGBA{0, 0, 0, 255}}, {Offset: 1}}}})
+	for i := 0; i < 8; i++ {
+		cnv.FillRect(0, i*16, 80, 10, []color.RGBA{blue, orange, green, purple}[i%4])
+	}
+	cnv.EndLayer()
+	cnv.Restore()
+}
+
+// photo is a picture of 512 pixels with fine detail: rings that shimmer
+// when it is drawn small without its mipmaps
+func photo() image.Image {
+	img := image.NewRGBA(image.Rect(0, 0, 512, 512))
+	for y := 0; y < 512; y++ {
+		for x := 0; x < 512; x++ {
+			dx, dy := float64(x-256), float64(y-256)
+			r := math.Hypot(dx, dy)
+			v := 0.5 + 0.5*math.Sin(r*0.6)
+			c := hue(math.Mod(math.Atan2(dy, dx)/(2*math.Pi)+1, 1))
+			img.SetRGBA(x, y, color.RGBA{uint8(float64(c.R) * v), uint8(float64(c.G) * v), uint8(float64(c.B) * v), 255})
+		}
+	}
+	return img
 }
 
 // hue returns the color of the hue 0..1 at full saturation

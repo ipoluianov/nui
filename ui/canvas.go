@@ -37,6 +37,17 @@ type canvasState struct {
 	// false for the identity, which takes the paths of the code untouched
 	xf    Matrix
 	hasXf bool
+
+	// The count of the clips by shapes in force (ClipPath), and the
+	// rectangle of the last: no drawing goes outside it
+	clipDepth int
+	clipBound image.Rectangle
+	// svgClip is the id of the shape of the clip in the SVG recorder
+	svgClip string
+
+	// imageFade is 255 less the opacity of the images (SetImageOpacity):
+	// 0, the zero value, draws them opaque
+	imageFade uint8
 }
 
 type Canvas struct {
@@ -52,6 +63,8 @@ type Canvas struct {
 	rec *SVGRecorder
 	// The groups of BeginLayer not ended yet
 	layers []canvasLayer
+	// The clips by shapes not restored yet
+	clips []clipLayer
 }
 
 type VAlign int
@@ -117,14 +130,24 @@ func (c *Canvas) Scale() float64 {
 	return c.scale
 }
 
+// image returns the image of the canvas, not the picture of a layer
+func (c *Canvas) image() *image.RGBA {
+	for _, l := range c.layers {
+		if l.base != nil {
+			return l.base
+		}
+	}
+	return c.rgba
+}
+
 // Width returns the width of the canvas in logical pixels
 func (c *Canvas) Width() int {
-	return c.unscale(c.rgba.Rect.Max.X)
+	return c.unscale(c.image().Rect.Max.X)
 }
 
 // Height returns the height of the canvas in logical pixels
 func (c *Canvas) Height() int {
-	return c.unscale(c.rgba.Rect.Max.Y)
+	return c.unscale(c.image().Rect.Max.Y)
 }
 
 // scaled converts a logical length (or an offset from the translation) to pixels
@@ -182,6 +205,9 @@ func (c *Canvas) Restore() {
 	}
 	*c.state = c.stack[len(c.stack)-1]
 	c.stack = c.stack[:len(c.stack)-1]
+	if len(c.clips) > c.state.clipDepth {
+		c.endClips(c.state.clipDepth)
+	}
 }
 
 func (c *Canvas) SetColor(col color.Color) {
@@ -228,6 +254,11 @@ func (c *Canvas) SetDirectTranslateAndClip(x, y, w, h int) {
 	c.state.clipY = c.state.translateY
 	c.state.clipW = c.scaled(x+w) - c.state.clipX
 	c.state.clipH = c.scaled(y+h) - c.state.clipY
+	if c.state.clipDepth > 0 {
+		// Within the shape's clip, whose pixels outside are put back
+		r := c.clipRect().Intersect(c.state.clipBound)
+		c.state.clipX, c.state.clipY, c.state.clipW, c.state.clipH = r.Min.X, r.Min.Y, r.Dx(), r.Dy()
+	}
 }
 
 func (c *Canvas) TranslateAndClip(x, y int, w, h int) {
@@ -356,7 +387,7 @@ func (c *Canvas) DrawLine(x1 int, y1 int, x2 int, y2 int, width int, col color.C
 		p := NewPath()
 		p.MoveTo(float64(x1)+0.5, float64(y1)+0.5)
 		p.LineTo(float64(x2)+0.5, float64(y2)+0.5)
-		c.rec.strokePath(c, p, StrokeStyle{Width: float64(max(width, 1))}, col)
+		c.rec.strokePath(c, p, StrokeStyle{Width: float64(max(width, 1))}, col, nil)
 	}
 	if (x1 == x2 || y1 == y2) && width == 1 {
 		if x1 == x2 {
@@ -983,14 +1014,14 @@ func (c *Canvas) FillRect(x int, y int, width int, height int, colr color.Color)
 // fillRectPixels fills the rectangle in pixels of the image, within the clip
 func (c *Canvas) fillRectPixels(x int, y int, width int, height int, colr color.Color) {
 
-	if x < 0 {
-		width += x
-		x = 0
+	if x < c.rgba.Rect.Min.X {
+		width -= c.rgba.Rect.Min.X - x
+		x = c.rgba.Rect.Min.X
 	}
 
-	if y < 0 {
-		height += y
-		y = 0
+	if y < c.rgba.Rect.Min.Y {
+		height -= c.rgba.Rect.Min.Y - y
+		y = c.rgba.Rect.Min.Y
 	}
 
 	if x+width > c.rgba.Rect.Max.X {
@@ -1039,14 +1070,14 @@ func (c *Canvas) fillRectPixels(x int, y int, width int, height int, colr color.
 		cc := color.RGBAModel.Convert(colr).(color.RGBA)
 		// The first row filled by doubling its filled part, the others
 		// copied from it: no pixel loop, nothing allocated
-		first := y*c.rgba.Stride + x*4
+		first := c.rgba.PixOffset(x, y)
 		line := c.rgba.Pix[first : first+width*4]
 		line[0], line[1], line[2], line[3] = cc.R, cc.G, cc.B, cc.A
 		for filled := 4; filled < len(line); filled *= 2 {
 			copy(line[filled:], line[:filled])
 		}
 		for yy := y + 1; yy < y+height; yy++ {
-			offset := yy*c.rgba.Stride + x*4
+			offset := c.rgba.PixOffset(x, yy)
 			copy(c.rgba.Pix[offset:offset+width*4], line)
 		}
 	} else {
@@ -1148,6 +1179,9 @@ func (c *Canvas) fillPolygon(pts [][2]float64, colr color.Color) {
 }
 
 func (c *Canvas) DrawImage(x int, y int, img image.Image) {
+	if m, ok := img.(*MipImage); ok && !c.state.hasXf {
+		img = m.Image // drawn at its size
+	}
 	if c.state.hasXf {
 		b := img.Bounds()
 		c.drawImageXf(float64(x), float64(y), float64(b.Dx()), float64(b.Dy()), img, b, true)
@@ -1193,7 +1227,42 @@ func (c *Canvas) DrawImage(x int, y int, img image.Image) {
 		return
 	}
 
-	draw.Draw(c.rgba, bInner, img, img.Bounds().Min.Add(image.Point{xOffset, yOffset}), draw.Over)
+	sp := img.Bounds().Min.Add(image.Point{xOffset, yOffset})
+	if mask := c.imageMask(); mask != nil {
+		draw.DrawMask(c.rgba, bInner, img, sp, mask, image.Point{}, draw.Over)
+		return
+	}
+	draw.Draw(c.rgba, bInner, img, sp, draw.Over)
+}
+
+// SetImageOpacity sets the opacity 0..1 the images are drawn at by
+// DrawImage, DrawImageRect and DrawImageTransformed, kept by Save and
+// Restore: a picture fading in, a disabled icon
+func (c *Canvas) SetImageOpacity(opacity float64) {
+	c.state.imageFade = 255 - uint8(math.Round(max(0, min(1, opacity))*255))
+}
+
+// ImageOpacity returns the opacity of SetImageOpacity
+func (c *Canvas) ImageOpacity() float64 {
+	return float64(255-c.state.imageFade) / 255
+}
+
+// imageMask returns the mask of the opacity of the images, nil if opaque
+func (c *Canvas) imageMask() image.Image {
+	if c.state.imageFade == 0 {
+		return nil
+	}
+	return &image.Uniform{C: color.Alpha{A: 255 - c.state.imageFade}}
+}
+
+// imageOptions returns the options of x/image/draw for the opacity of the
+// images, nil if opaque
+func (c *Canvas) imageOptions() *xdraw.Options {
+	mask := c.imageMask()
+	if mask == nil {
+		return nil
+	}
+	return &xdraw.Options{SrcMask: mask}
 }
 
 // drawImageScaled draws the image, its pixels taken as logical ones,
@@ -1213,7 +1282,7 @@ func (c *Canvas) drawImageScaled(x int, y int, img image.Image) {
 	if b.Dx()*b.Dy() > 256*256 {
 		scaler = xdraw.ApproxBiLinear
 	}
-	scaler.Scale(target, dst, img, b, xdraw.Over, nil)
+	scaler.Scale(target, dst, img, b, xdraw.Over, c.imageOptions())
 }
 
 // TranslatedX returns the logical x of the current origin
@@ -1362,6 +1431,11 @@ func (c *Canvas) DrawImageRect(x, y, width, height int, img image.Image, src ima
 	if visible.Empty() {
 		return
 	}
+	// A MipImage drawn small: its copy of the nearest size
+	img, src, _ = sourceImage(img, src, min(float64(dst.Dx())/float64(src.Dx()), float64(dst.Dy())/float64(src.Dy())), smooth)
+	if src.Empty() {
+		return
+	}
 	// The part of src that lands in the visible part of dst
 	fx := float64(src.Dx()) / float64(dst.Dx())
 	fy := float64(src.Dy()) / float64(dst.Dy())
@@ -1383,5 +1457,5 @@ func (c *Canvas) DrawImageRect(x, y, width, height int, img image.Image, src ima
 	if smooth {
 		scaler = xdraw.ApproxBiLinear
 	}
-	scaler.Scale(target, dstVisible, img, srcVisible, xdraw.Over, nil)
+	scaler.Scale(target, dstVisible, img, srcVisible, xdraw.Over, c.imageOptions())
 }

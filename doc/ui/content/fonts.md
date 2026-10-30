@@ -6,7 +6,11 @@ By default the interface is drawn with **Noto Sans** (`ui.FontFamilySans`), buil
 application, so it looks the same everywhere. **JetBrains Mono** (`ui.FontFamilyMono`) is built in
 for code and logs. Characters Noto Sans lacks come from the fallback fonts: JetBrains Mono for
 symbols such as the keys of the shortcuts on macOS (⌘ ⇧ ⌃ ⌥) and arrows, a system CJK font for
-Chinese, Japanese and Korean text (see [Limitations](#limitations)).
+Chinese, Japanese and Korean text, and a system font for each other script the built-in fonts lack
+(Arabic, Hebrew, Devanagari and the other Indic scripts, Thai, Armenian, Georgian...), looked up the
+first time a character of it is drawn: by fontconfig on Linux, among the fonts of Windows and
+macOS that have many scripts (see [Limitations](#limitations)). `ui.SystemFallbackFonts = false`
+keeps to the fonts the application registers.
 
 ```go
 logView.SetFontFamily(ui.FontFamilyMono)
@@ -64,7 +68,10 @@ are meant for text on opaque backgrounds, which all the controls have.
   `sbix`; Noto Color Emoji keeps `CBDT` bitmaps or `COLR` layers), and nui's rasterizer draws outline
   fonts only, in one color. An emoji is typed, copied, stored and measured as one character: only
   its picture is a box (the `.notdef` glyph of the font), and the cursor stays right around it.
-- **No fallback for other symbols.** Beyond the built-in fonts and the CJK font, nui doesn't look
-  for a font that has a character (`⌫`, `★`, `✓`, rare scripts): it is drawn as a box too. Register a
-  font with it and add it to the chain: `ui.RegisterFont(name, data)`, then
-  `ui.AddFallbackFont(name)`.
+- **Shaping only in `TextLayout`.** `DrawText` and the widgets draw each character with its own
+  glyph: Latin, Cyrillic, Greek, CJK are right; Arabic letters are not joined, Indic letters not
+  combined, right-to-left text not reordered. `TextLayout` and `DrawTextF` shape the text (see
+  [canvas.md](canvas.md), "Text laid out").
+- **Symbols below Hebrew.** A character before U+0590 the built-in fonts lack (rare Latin, IPA) is
+  not looked up among the system fonts: register a font with it and add it to the chain,
+  `ui.RegisterFont(name, data)`, then `ui.AddFallbackFont(name)`.

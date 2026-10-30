@@ -136,6 +136,10 @@ func clearAllRenderedTexts() {
 	renderedTexts = make(map[string]*renderedText)
 	renderedTextsBytes = 0
 	renderedTextsMu.Unlock()
+	// The layouts of DrawTextF, in the fonts before
+	textFLayoutsMu.Lock()
+	clear(textFLayouts)
+	textFLayoutsMu.Unlock()
 }
 
 // clearRenderedTexts must be called with renderedTextsMu held.
