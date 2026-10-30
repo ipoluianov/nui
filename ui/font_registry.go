@@ -180,7 +180,12 @@ func getFaceEntry(family string, style FontStyle, size float64) (*faceEntry, err
 		faces = append(faces, newSyntheticFace(face, f.synth, size))
 	}
 
-	entry = &faceEntry{face: newFallbackFace(faces)}
+	fb := newFallbackFace(faces)
+	for _, f := range chain {
+		fb.fonts = append(fb.fonts, f.font)
+		fb.synths = append(fb.synths, f.synth)
+	}
+	entry = &faceEntry{face: fb}
 	faceCache[key] = entry
 	return entry, nil
 }
@@ -241,6 +246,10 @@ func findSystemFamily(name string) {
 type fallbackFace struct {
 	faces   []font.Face
 	metrics font.Metrics
+	// The font of each face and the styles synthesized on it, for the
+	// glyphs nui draws itself (see drawTextGlyphs)
+	fonts  []*sfnt.Font
+	synths []FontStyle
 
 	// Caches of what measuring asks for again and again: the lookups in the
 	// font's tables are slow (the advances and the kerning of a long text
@@ -268,8 +277,13 @@ func newFallbackFace(faces []font.Face) *fallbackFace {
 }
 
 func (f *fallbackFace) faceFor(r rune) font.Face {
+	return f.faces[f.faceIndexFor(r)]
+}
+
+// faceIndexFor returns the index of the face that draws the character
+func (f *fallbackFace) faceIndexFor(r rune) int {
 	if i, ok := f.faceIndex[r]; ok {
-		return f.faces[i]
+		return i
 	}
 	index := 0
 	for i, face := range f.faces {
@@ -282,7 +296,7 @@ func (f *fallbackFace) faceFor(r rune) font.Face {
 		f.faceIndex = make(map[rune]int)
 	}
 	f.faceIndex[r] = index
-	return f.faces[index]
+	return index
 }
 
 func (f *fallbackFace) Close() error {

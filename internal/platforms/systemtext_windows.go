@@ -291,3 +291,26 @@ func (f *windowsFont) drawMask(dst *image.RGBA, s []uint16, col color.RGBA, x, y
 	}
 	blendMask(dst, col, mask, r.Dx(), r.Dy(), r.Dx(), false, r.Min.X, r.Min.Y, r)
 }
+
+const (
+	c_SPI_GETFONTSMOOTHING            = 0x004A
+	c_SPI_GETFONTSMOOTHINGTYPE        = 0x200A
+	c_SPI_GETFONTSMOOTHINGORIENTATION = 0x2012
+	c_FE_FONTSMOOTHINGCLEARTYPE       = 2
+)
+
+// systemSubpixelOrder is the setting of ClearType: on, and the order of
+// the stripes of the screen
+func systemSubpixelOrder() int {
+	var on, kind, orientation uint32
+	if r, _, _ := procSystemParametersInfoW.Call(c_SPI_GETFONTSMOOTHING, 0, uintptr(unsafe.Pointer(&on)), 0); r == 0 || on == 0 {
+		return 0
+	}
+	if r, _, _ := procSystemParametersInfoW.Call(c_SPI_GETFONTSMOOTHINGTYPE, 0, uintptr(unsafe.Pointer(&kind)), 0); r == 0 || kind != c_FE_FONTSMOOTHINGCLEARTYPE {
+		return 0
+	}
+	if r, _, _ := procSystemParametersInfoW.Call(c_SPI_GETFONTSMOOTHINGORIENTATION, 0, uintptr(unsafe.Pointer(&orientation)), 0); r != 0 && orientation == 0 {
+		return 2
+	}
+	return 1
+}

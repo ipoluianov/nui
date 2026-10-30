@@ -186,10 +186,22 @@ func trimRenderedTexts() {
 }
 
 func DrawText(rgba *image.RGBA, text string, textColor color.Color, fontFamily string, fontSize float64, x int, y int, clipX int, clipY int, clipWidth int, clipHeight int) {
+	drawText(rgba, text, textColor, fontFamily, fontSize, x, y, image.Rect(clipX, clipY, clipX+clipWidth, clipY+clipHeight), 0)
+}
+
+// drawText is DrawText on a screen whose pixels have the stripes lcd (see
+// Canvas.lcd)
+func drawText(rgba *image.RGBA, text string, textColor color.Color, fontFamily string, fontSize float64, x, y int, clip image.Rectangle, lcd int) {
+	clipX, clipY, clipWidth, clipHeight := clip.Min.X, clip.Min.Y, clip.Dx(), clip.Dy()
 	// A system font is drawn straight onto the pixels under it: its subpixel
 	// antialiasing depends on them, so there is no image to cache
 	if sf := systemFontFor(fontFamily, fontSize, text); sf != nil {
-		sf.Draw(rgba, text, colorToRGBA(textColor), x, y, image.Rect(clipX, clipY, clipX+clipWidth, clipY+clipHeight))
+		sf.Draw(rgba, text, colorToRGBA(textColor), x, y, clip)
+		return
+	}
+	// nui's own glyphs, fitted to the pixels, in the stripes of the screen
+	if TextHinting || lcd != 0 {
+		drawTextGlyphs(rgba, text, textColor, fontFamily, fontSize, x, y, clip, lcd)
 		return
 	}
 

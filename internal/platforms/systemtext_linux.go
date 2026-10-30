@@ -461,3 +461,19 @@ func (f *linuxFont) Draw(dst *image.RGBA, text string, col color.RGBA, x, y int,
 		blendMask(dst, col, g.mask, g.w, g.h, g.stride, g.subpixel, gx, gy, clip)
 	}
 }
+
+// systemSubpixelOrder is fontconfig's rgba of the sans-serif font: the
+// setting of the desktop
+func systemSubpixelOrder() int {
+	fc, ok := fcMatch("sans-serif")
+	if !ok || !fc.antialias {
+		return 0
+	}
+	switch fc.rgba {
+	case 1:
+		return 1
+	case 2:
+		return 2
+	}
+	return 0
+}

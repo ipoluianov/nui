@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"image"
 	"image/color"
 	"math"
 	"sync"
@@ -106,82 +105,6 @@ func (g *glyphShape) addTo(p *Path, x, y, size float64, italic bool) {
 	}
 }
 
-// glyphMaskKey is a glyph drawn at a size in pixels, its origin a quarter
-// of a pixel right of a whole one
-type glyphMaskKey struct {
-	shapedGlyphKey
-	size  float32
-	phase uint8
-	synth FontStyle
-}
-
-// glyphMask is the coverage of a glyph, its origin at (-x, -y) of it
-type glyphMask struct {
-	x, y, w, h int
-	pix        []uint8
-}
-
-var (
-	glyphMasksMu sync.Mutex
-	glyphMasks   = map[glyphMaskKey]*glyphMask{}
-)
-
-// maxGlyphMasks is how many masks are kept: when there are more, they are
-// all made again as needed
-const maxGlyphMasks = 16384
-
-// maskOf returns the mask of the glyph at the pixel size
-func maskOf(face *gtfont.Face, gid gtfont.GID, size float64, phase int, synth FontStyle) *glyphMask {
-	key := glyphMaskKey{shapedGlyphKey{face.Font, gid}, float32(size), uint8(phase), synth}
-	glyphMasksMu.Lock()
-	m, ok := glyphMasks[key]
-	glyphMasksMu.Unlock()
-	if ok {
-		return m
-	}
-	p := NewPath()
-	g := shapeOf(face, gid)
-	ox := float64(phase) / 4
-	g.addTo(p, ox, 0, size, synth&FontItalic != 0)
-	if synth&FontBold != 0 {
-		// Widened to the right, as the bold of DrawText
-		g.addTo(p, ox+size/24, 0, size, synth&FontItalic != 0)
-	}
-	m = &glyphMask{}
-	if minX, minY, maxX, maxY, ok := p.Bounds(); ok {
-		r := image.Rect(int(math.Floor(minX))-1, int(math.Floor(minY))-1, int(math.Ceil(maxX))+1, int(math.Ceil(maxY))+1)
-		m = &glyphMask{x: r.Min.X, y: r.Min.Y, w: r.Dx(), h: r.Dy(), pix: make([]uint8, r.Dx()*r.Dy())}
-		// A canvas of the box of the glyph, only to rasterize: the
-		// coverage goes to the mask
-		mc := &Canvas{rgba: &image.RGBA{Rect: r, Stride: r.Dx() * 4}, scale: 1,
-			state: &canvasState{clipX: r.Min.X, clipY: r.Min.Y, clipW: r.Dx(), clipH: r.Dy()}}
-		mc.fillPathWith(p, func(_ int, cover []uint8, px, py int) {
-			copy(m.pix[(py-r.Min.Y)*m.w+px-r.Min.X:], cover)
-		})
-	}
-	glyphMasksMu.Lock()
-	if len(glyphMasks) >= maxGlyphMasks {
-		clear(glyphMasks)
-	}
-	glyphMasks[key] = m
-	glyphMasksMu.Unlock()
-	return m
-}
-
-// blendMask blends the color over the pixels the mask covers, its origin
-// at the pixel (x, y), within the clip
-func (c *Canvas) blendMask(m *glyphMask, x, y int, r, g, b, a uint32) {
-	box := image.Rect(x+m.x, y+m.y, x+m.x+m.w, y+m.y+m.h)
-	vis := box.Intersect(c.clipRect()).Intersect(c.rgba.Rect)
-	if vis.Empty() {
-		return
-	}
-	for py := vis.Min.Y; py < vis.Max.Y; py++ {
-		row := m.pix[(py-box.Min.Y)*m.w+vis.Min.X-box.Min.X : (py-box.Min.Y)*m.w+vis.Max.X-box.Min.X]
-		c.blendSolid(c.rgba.PixOffset(vis.Min.X, py), row, r, g, b, a)
-	}
-}
-
 // maxMaskSize is the size in pixels over which glyphs are filled as
 // outlines, not kept as masks
 const maxMaskSize = 160
@@ -246,8 +169,8 @@ func (c *Canvas) drawRunMasks(r *layoutRun, m Matrix, left, baseline float64, co
 		px, py := m.Apply(gx, gy)
 		ix := math.Floor(px)
 		phase := int((px - ix) * 4)
-		mask := maskOf(r.out.Face, g.GlyphID, size*m.A, phase, r.synth)
-		c.blendMask(mask, int(ix), int(math.Round(py)), cr, cg, cb, ca)
+		mask := layoutGlyphMask(r.out.Face, g.GlyphID, size*m.A, phase, r.synth, c.lcd)
+		blendGlyphMask(c.rgba, c.clipRect(), mask, int(ix), int(math.Round(py)), cr, cg, cb, ca, c.lcd)
 	}
 }
 

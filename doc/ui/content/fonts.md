@@ -29,6 +29,29 @@ opaque pixels under the text; on a transparent image the text is drawn in graysc
 ui.NativeFontRendering = false // before the first form: nui's rasterizer everywhere
 ```
 
+### nui's rasterizer
+
+Elsewhere - the built-in fonts on Linux and macOS, every font with `NativeFontRendering` off,
+`TextLayout` and `DrawTextF` - nui draws the glyphs itself, the way FreeType draws the system's:
+
+- **Hinting.** A light vertical hinter, as FreeType's "slight": the height of the small letters is
+  scaled to whole pixels, the baseline, the tops of the small letters, of the capitals and of the
+  ascenders lie on the edges of the pixels, and the horizontal strokes (the bars of e, H, t) take
+  whole rows. Across, the glyphs are not moved: the widths of the text and the layout stay as they
+  are. `ui.TextHinting = false` draws the outlines as they are, as before (the classic drawing).
+- **Subpixels.** On an LCD screen the text is drawn with the red, green and blue stripes of its
+  pixels - three times as many columns - filtered as FreeType's default LCD filter, so stems have no
+  colored fringes. The order of the stripes is the system's: fontconfig's `rgba` on Linux, ClearType
+  on Windows; macOS draws in gray, as it does itself. `ui.TextSubpixel` sets it
+  (`ui.SubpixelAuto`, `SubpixelNone`, `SubpixelRGB`, `SubpixelBGR`).
+- Only the windows have subpixels: pictures (`NewImageCanvas`, export, printing), the headless mode
+  of the tests and text over what is not opaque are drawn in gray, so they do not depend on the
+  screen.
+
+The masks of the glyphs are kept, made once for a font, a size and a place: a line of 25 characters
+takes about 13 µs in gray and 20 µs in subpixels (11 µs the classic drawing). On Linux the text
+drawn so has the same weight and the same heights as FreeType's, to a tenth of a percent of its ink.
+
 ## System fonts
 
 A system font is a font of the operating system, not built into the application. It is drawn by the

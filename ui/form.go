@@ -976,6 +976,8 @@ func (c *Form) updateTextInputRect() {
 // paintScaled paints the form on rgba, scale pixels of it per logical pixel
 func (c *Form) paintScaled(rgba *image.RGBA, scale float64) {
 	cnv := NewCanvasScaled(rgba, scale)
+	// The text in the stripes of the screen, as the system draws its own
+	cnv.lcd = lcdOf(platforms.SubpixelOrder())
 	cnv.SetDirectTranslateAndClip(0, 0, c.width, c.height)
 	if c.menuBar != nil {
 		cnv.Save()

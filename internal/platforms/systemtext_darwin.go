@@ -175,3 +175,6 @@ func systemUIFontName() string {
 	}
 	return family
 }
+
+// systemSubpixelOrder: macOS draws text in grayscale
+func systemSubpixelOrder() int { return 0 }

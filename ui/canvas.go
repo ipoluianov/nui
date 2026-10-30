@@ -65,6 +65,10 @@ type Canvas struct {
 	layers []canvasLayer
 	// The clips by shapes not restored yet
 	clips []clipLayer
+	// lcd is the order of the stripes of the screen the canvas is shown
+	// on, which text is drawn with: 0 none (gray), 1 RGB, 2 BGR. Only the
+	// canvas of a window has it.
+	lcd int
 }
 
 type VAlign int
@@ -1396,7 +1400,7 @@ func (c *Canvas) drawTextLines(x int, y int, width int, height int, text string,
 		textX := c.state.translateX + c.scaled(xx)
 		textY := c.state.translateY + c.scaled(yOffset)
 
-		DrawText(c.rgba, str, colr, fontFamily, fontSize*c.scale, textX, textY, c.state.clipX, c.state.clipY, c.state.clipW, c.state.clipH)
+		drawText(c.rgba, str, colr, fontFamily, fontSize*c.scale, textX, textY, c.clipRect(), c.lcd)
 
 		// Where and as thick as drawMnemonicUnderline underlines a letter
 		if underline && textWidth > 0 {

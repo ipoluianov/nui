@@ -181,6 +181,9 @@ func TestContextMenuClosesNestedSubmenus(t *testing.T) {
 func TestRenderedTextsBudget(t *testing.T) {
 	NativeFontRendering = false
 	defer func() { NativeFontRendering = true }()
+	// The images of whole texts are kept by the classic drawing only
+	TextHinting = false
+	defer func() { TextHinting = true }()
 	clearAllRenderedTexts()
 	defer clearAllRenderedTexts()
 	img := image.NewRGBA(image.Rect(0, 0, 100, 100))

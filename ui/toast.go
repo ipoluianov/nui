@@ -116,6 +116,7 @@ func (c *Form) showToastPopup(t *toast) {
 		t.popup.OnPaint(func(rgba *image.RGBA) {
 			c.useTextScale()
 			cnv := NewCanvasScaled(rgba, t.popup.Scale())
+			cnv.lcd = lcdOf(platforms.SubpixelOrder())
 			cnv.SetDirectTranslateAndClip(0, 0, t.w, t.h)
 			// The window is rectangular: no rounded corners
 			drawToast(cnv, t, 0, 0, 0)

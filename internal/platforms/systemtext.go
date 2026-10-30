@@ -4,6 +4,7 @@ import (
 	"errors"
 	"image"
 	"image/color"
+	"sync"
 )
 
 // ErrSystemFontNotFound is returned when the system has no font of the name
@@ -110,4 +111,21 @@ func RegisterFontData(data []byte) (FontData, error) {
 // OpenFontData opens a font of RegisterFontData with the em size in pixels
 func OpenFontData(fd FontData, pixelSize float64) (SystemFont, error) {
 	return openFontData(fd, pixelSize)
+}
+
+var (
+	subpixelOnce  sync.Once
+	subpixelOrder int
+)
+
+// SubpixelOrder returns the order of the colored stripes of the pixels of
+// the screen that the system draws text with: 0 none (grayscale), 1 RGB,
+// 2 BGR. It is 0 in the headless mode, so that pictures of windows do not
+// depend on the machine.
+func SubpixelOrder() int {
+	if IsHeadless() {
+		return 0
+	}
+	subpixelOnce.Do(func() { subpixelOrder = systemSubpixelOrder() })
+	return subpixelOrder
 }
