@@ -693,7 +693,7 @@ func (v *View2D) paintGrid(cnv *Canvas, f view2DFrame, r RectF, bg color.RGBA) {
 					col = strong
 				}
 				s := f.toScreen(PointF{i * step, j * step})
-				cnv.FillRect(int(math.Floor(s.X)), int(math.Floor(s.Y)), 1, 1, col)
+				cnv.FillRect(snapLine(s.X), snapLine(s.Y), 1, 1, col)
 			}
 		}
 		return
@@ -708,7 +708,7 @@ func (v *View2D) paintGrid(cnv *Canvas, f view2DFrame, r RectF, bg color.RGBA) {
 				col = strong
 			}
 			x := f.toScreen(PointF{i * step, 0}).X
-			cnv.FillRect(int(math.Floor(x)), 0, 1, h, col)
+			cnv.FillRect(snapLine(x), 0, 1, h, col)
 		}
 		for j := j0; j <= j1; j++ {
 			if isMajor(j) != (pass == 1) {
@@ -719,19 +719,26 @@ func (v *View2D) paintGrid(cnv *Canvas, f view2DFrame, r RectF, bg color.RGBA) {
 				col = strong
 			}
 			y := f.toScreen(PointF{0, j * step}).Y
-			cnv.FillRect(0, int(math.Floor(y)), w, 1, col)
+			cnv.FillRect(0, snapLine(y), w, 1, col)
 		}
 	}
 }
+
+// snapLine returns the pixel of a line of the grid or an axis at the
+// coordinate. The coordinate of a line that should fall on a pixel edge
+// comes out a hair below it or not by the rounding (fused multiply-add on
+// arm64), and the line would jump a pixel between the paints the scroll
+// joins
+func snapLine(v float64) int { return int(math.Floor(v + 1e-6)) }
 
 // paintAxes draws the axes through the origin: x red, y green, faint
 func (v *View2D) paintAxes(cnv *Canvas, f view2DFrame, bg color.RGBA) {
 	o := f.toScreen(PointF{})
 	if o.Y >= -1 && o.Y <= f.h+1 {
-		cnv.FillRect(0, int(math.Floor(o.Y)), int(f.w), 1, mixRGBA(bg, color.RGBA{220, 50, 47, 255}, 0.55))
+		cnv.FillRect(0, snapLine(o.Y), int(f.w), 1, mixRGBA(bg, color.RGBA{220, 50, 47, 255}, 0.55))
 	}
 	if o.X >= -1 && o.X <= f.w+1 {
-		cnv.FillRect(int(math.Floor(o.X)), 0, 1, int(f.h), mixRGBA(bg, color.RGBA{60, 170, 60, 255}, 0.55))
+		cnv.FillRect(snapLine(o.X), 0, 1, int(f.h), mixRGBA(bg, color.RGBA{60, 170, 60, 255}, 0.55))
 	}
 }
 
