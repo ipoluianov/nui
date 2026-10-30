@@ -24,6 +24,9 @@ type LinearGradient struct {
 	// Spread is what is past the ends: the end colors, or the gradient
 	// repeated or mirrored
 	Spread GradientSpread
+	// LinearRGB mixes the colors of the stops in linear light (SVG's
+	// color-interpolation="linearRGB"): brighter between saturated colors
+	LinearRGB bool
 }
 
 // GradientSpread is how a gradient goes on past its ends
@@ -62,7 +65,7 @@ func (g LinearGradient) ColorAt(x, y float64) color.RGBA {
 	if l2 > 0 {
 		t = ((x-g.X1)*dx + (y-g.Y1)*dy) / l2
 	}
-	return gradientColor(g.Stops, spreadT(t, g.Spread))
+	return gradientColorIn(g.Stops, g.LinearRGB, spreadT(t, g.Spread))
 }
 
 // RadialGradient is a Paint whose color changes from the center (CX, CY)
@@ -72,6 +75,8 @@ type RadialGradient struct {
 	Stops     []GradientStop
 	// Spread is what is past the circle, as of LinearGradient
 	Spread GradientSpread
+	// LinearRGB mixes in linear light, as of LinearGradient
+	LinearRGB bool
 }
 
 // ColorAt implements Paint
@@ -80,7 +85,7 @@ func (g RadialGradient) ColorAt(x, y float64) color.RGBA {
 	if g.R > 0 {
 		t = math.Hypot(x-g.CX, y-g.CY) / g.R
 	}
-	return gradientColor(g.Stops, spreadT(t, g.Spread))
+	return gradientColorIn(g.Stops, g.LinearRGB, spreadT(t, g.Spread))
 }
 
 // ConicGradient is a Paint whose color changes around the center (CX, CY):
@@ -90,11 +95,13 @@ func (g RadialGradient) ColorAt(x, y float64) color.RGBA {
 type ConicGradient struct {
 	CX, CY, Angle float64
 	Stops         []GradientStop
+	// LinearRGB mixes in linear light, as of LinearGradient
+	LinearRGB bool
 }
 
 // ColorAt implements Paint
 func (g ConicGradient) ColorAt(x, y float64) color.RGBA {
-	return gradientColor(g.Stops, conicT(x-g.CX, y-g.CY, g.Angle))
+	return gradientColorIn(g.Stops, g.LinearRGB, conicT(x-g.CX, y-g.CY, g.Angle))
 }
 
 func conicT(dx, dy, angle float64) float64 {
@@ -151,6 +158,12 @@ func (p ImagePattern) sampler() func(x, y float64) color.RGBA {
 // stops around it. The stops are taken in their order; ones out of order
 // are skipped over, as in CSS.
 func gradientColor(stops []GradientStop, t float64) color.RGBA {
+	return gradientColorIn(stops, false, t)
+}
+
+// gradientColorIn is gradientColor, the colors mixed in linear light if
+// linear
+func gradientColorIn(stops []GradientStop, linear bool, t float64) color.RGBA {
 	switch len(stops) {
 	case 0:
 		return color.RGBA{}
@@ -166,6 +179,9 @@ func gradientColor(stops []GradientStop, t float64) color.RGBA {
 			span := b.Offset - a.Offset
 			if span <= 0 {
 				return b.Color
+			}
+			if linear {
+				return mixRGBALinear(a.Color, b.Color, (t-a.Offset)/span)
 			}
 			return mixRGBA(a.Color, b.Color, (t-a.Offset)/span)
 		}
@@ -242,7 +258,7 @@ type gradientLUT struct {
 	colors      [gradientLUTSize + 1]color.RGBA
 }
 
-func newGradientLUT(stops []GradientStop) *gradientLUT {
+func newGradientLUT(stops []GradientStop, linear bool) *gradientLUT {
 	l := &gradientLUT{}
 	if len(stops) == 0 {
 		return l
@@ -254,10 +270,10 @@ func newGradientLUT(stops []GradientStop) *gradientLUT {
 	if l.hi > l.lo {
 		l.k = gradientLUTSize / (l.hi - l.lo)
 	}
-	l.first = gradientColor(stops, l.lo)
-	l.last = gradientColor(stops, math.Inf(1))
+	l.first = gradientColorIn(stops, linear, l.lo)
+	l.last = gradientColorIn(stops, linear, math.Inf(1))
 	for i := range l.colors {
-		l.colors[i] = gradientColor(stops, l.lo+(l.hi-l.lo)*float64(i)/gradientLUTSize)
+		l.colors[i] = gradientColorIn(stops, linear, l.lo+(l.hi-l.lo)*float64(i)/gradientLUTSize)
 	}
 	return l
 }
@@ -280,7 +296,7 @@ func fastPaint(paint Paint) func(x, y float64) color.RGBA {
 		if len(g.Stops) < 2 {
 			break
 		}
-		lut := newGradientLUT(g.Stops)
+		lut := newGradientLUT(g.Stops, g.LinearRGB)
 		dx, dy := g.X2-g.X1, g.Y2-g.Y1
 		l2 := dx*dx + dy*dy
 		if l2 <= 0 {
@@ -299,7 +315,7 @@ func fastPaint(paint Paint) func(x, y float64) color.RGBA {
 		if len(g.Stops) < 2 || g.R <= 0 {
 			break
 		}
-		lut := newGradientLUT(g.Stops)
+		lut := newGradientLUT(g.Stops, g.LinearRGB)
 		k := 1 / g.R
 		return func(x, y float64) color.RGBA {
 			dx, dy := x-g.CX, y-g.CY
@@ -309,7 +325,7 @@ func fastPaint(paint Paint) func(x, y float64) color.RGBA {
 		if len(g.Stops) < 2 {
 			break
 		}
-		lut := newGradientLUT(g.Stops)
+		lut := newGradientLUT(g.Stops, g.LinearRGB)
 		return func(x, y float64) color.RGBA {
 			return lut.at(conicT(x-g.CX, y-g.CY, g.Angle))
 		}

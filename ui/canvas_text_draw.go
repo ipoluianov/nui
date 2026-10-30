@@ -169,6 +169,12 @@ func (c *Canvas) drawRunMasks(r *layoutRun, m Matrix, left, baseline float64, co
 		px, py := m.Apply(gx, gy)
 		ix := math.Floor(px)
 		phase := int((px - ix) * 4)
+		if kind := colorKindOf(r.out.Face, g.GlyphID); kind != colorNone {
+			// An emoji: in its own colors
+			ci := colorGlyphImage(r.out.Face, g.GlyphID, kind, size*m.A, phase, col)
+			blendColorImage(c.rgba, c.clipRect(), ci, int(ix), int(math.Round(py)), ca)
+			continue
+		}
 		mask := layoutGlyphMask(r.out.Face, g.GlyphID, size*m.A, phase, r.synth, c.lcd)
 		blendGlyphMask(c.rgba, c.clipRect(), mask, int(ix), int(math.Round(py)), cr, cg, cb, ca, c.lcd)
 	}
@@ -176,6 +182,10 @@ func (c *Canvas) drawRunMasks(r *layoutRun, m Matrix, left, baseline float64, co
 
 // drawRunOutlines fills the outlines of the glyphs of the run
 func (c *Canvas) drawRunOutlines(r *layoutRun, left, baseline float64, col color.RGBA) {
+	// Text is mixed as the system mixes it, in sRGB (see SetLinearBlending)
+	linear := c.state.linear
+	c.state.linear = false
+	defer func() { c.state.linear = linear }()
 	size := r.style.size()
 	p := NewPath()
 	pen := left + r.x
@@ -184,6 +194,10 @@ func (c *Canvas) drawRunOutlines(r *layoutRun, left, baseline float64, col color
 		gx := pen + fromFixed(g.XOffset)
 		gy := baseline - fromFixed(g.YOffset)
 		pen += fromFixed(g.Advance)
+		if kind := colorKindOf(r.out.Face, g.GlyphID); kind != colorNone {
+			c.drawColorGlyph(r.out.Face, g.GlyphID, kind, gx, gy, size, col)
+			continue
+		}
 		s := shapeOf(r.out.Face, g.GlyphID)
 		s.addTo(p, gx, gy, size, italic)
 		if r.synth&FontBold != 0 {
@@ -191,6 +205,30 @@ func (c *Canvas) drawRunOutlines(r *layoutRun, left, baseline float64, col color
 		}
 	}
 	c.FillPath(p, col)
+}
+
+// drawColorGlyph draws a color glyph with its origin at (gx, gy) of the
+// drawing, under the transform: its layers as shapes, sharp at any scale
+// and recorded as SVG; its picture stretched
+func (c *Canvas) drawColorGlyph(face *gtfont.Face, gid gtfont.GID, kind colorKind, gx, gy, size float64, col color.RGBA) {
+	k := size / float64(face.Upem())
+	if kind == colorLayers {
+		c.Save()
+		// Font units, y up, to the drawing
+		c.Concat(Matrix{A: k, D: -k, E: gx, F: gy})
+		drawColrGlyph(c, face, gid, col)
+		c.Restore()
+		return
+	}
+	img, box := glyphBitmap(face, gid)
+	if img == nil {
+		return
+	}
+	b := img.Bounds()
+	m := TranslationMatrix(-float64(b.Min.X), -float64(b.Min.Y)).
+		Then(ScalingMatrix((box[2]-box[0])*k/float64(b.Dx()), (box[3]-box[1])*k/float64(b.Dy()))).
+		Then(TranslationMatrix(gx+box[0]*k, gy-box[3]*k))
+	c.DrawImageTransformed(img, m, true)
 }
 
 // drawRunLines draws the underline and the line through the run

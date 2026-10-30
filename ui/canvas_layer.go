@@ -90,6 +90,9 @@ type canvasLayer struct {
 	base *image.RGBA
 	// The count of the clips by shapes before the layer
 	clips int
+	// rec is the SVG recorder of the canvas, put back at EndLayer, when the
+	// layer is of a blend SVG has not and is not recorded
+	rec *SVGRecorder
 }
 
 // BeginLayer starts a group of drawings that EndLayer puts on the canvas
@@ -129,6 +132,9 @@ func (c *Canvas) BeginLayerStyle(st LayerStyle) {
 	l := canvasLayer{rect: b, opacity: min(1, opacity), blend: st.Blend, clips: len(c.clips)}
 	if st.Mask != nil {
 		l.mask = c.maskSampler(st.Mask)
+	}
+	if c.rec != nil && !c.rec.beginLayer(c, st) {
+		l.rec, c.rec = c.rec, nil
 	}
 	l.pix = make([]uint8, b.Dx()*b.Dy()*4)
 	if st.Blend == BlendNormal && !st.Isolated {
@@ -170,6 +176,11 @@ func (c *Canvas) EndLayer() {
 	c.layers = c.layers[:len(c.layers)-1]
 	// The clips by shapes begun in the layer end with it
 	c.endClips(l.clips)
+	if l.rec != nil {
+		c.rec = l.rec
+	} else if c.rec != nil {
+		c.rec.endLayer()
+	}
 	if l.base != nil {
 		c.rgba = l.base
 		c.compositeLayer(l)

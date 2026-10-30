@@ -1123,6 +1123,14 @@ func (c *Canvas) blendSolid(off int, cover []uint8, r, g, b, a uint32) {
 		}
 		return
 	}
+	if c.state.linear {
+		for x, m := range cover {
+			if m != 0 {
+				c.mixPixelAt(off+x*4, r, g, b, uint32(m))
+			}
+		}
+		return
+	}
 	// An opaque color: the coverage is its alpha, as mixPixelAt blends it
 	for x, m := range cover {
 		switch m {

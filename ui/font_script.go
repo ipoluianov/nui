@@ -7,41 +7,55 @@ import (
 	"runtime"
 	"strconv"
 	"sync"
+	"sync/atomic"
+	"unicode"
 
 	"golang.org/x/image/font/sfnt"
 )
 
-// Text of the scripts the built-in fonts lack - Arabic, Hebrew, the Indic
-// scripts, Thai, Armenian, Georgian, Ethiopic... - is drawn with a font of
+// Text of the scripts and the symbols the built-in fonts lack - Arabic,
+// Hebrew, the Indic scripts, Thai, Armenian, Georgian, Ethiopic, rare Latin
+// letters, IPA, symbols - is drawn with a font of
 // the system that has them, looked up the first time such a character is
 // drawn and added to the fallback fonts (CJK has its own, see
 // ensureFallbackFonts). With SystemFallbackFonts false, none is looked up.
 
 var (
 	scriptFontsMu sync.Mutex
-	// scriptBlocks are the blocks of 128 characters looked up already
-	scriptBlocks = map[rune]bool{}
+	// scriptRunes are the characters looked up already, a bit each: read
+	// without a lock, as text of any script is measured and drawn often
+	scriptRunes [(unicode.MaxRune + 1) / 32]atomic.Uint32
 	// scriptFiles are the files added already
 	scriptFiles = map[string]bool{}
+	// emojiFontOnce looks up the font of color emoji with the first emoji
+	emojiFontOnce sync.Once
 )
 
 // ensureScriptFonts adds a font of the system for each character of the
 // text that no font of nui has
 func ensureScriptFonts(text string) {
 	for _, r := range text {
-		// Below Hebrew the built-in fonts have the scripts; CJK is apart
-		if r < 0x0590 || isCJKRune(r) || (r >= 0xFE00 && r <= 0xFE0F) || r == 0x200C || r == 0x200D {
+		// ASCII is the built-in fonts'; CJK is apart
+		if r < 0x80 || r > unicode.MaxRune || isCJKRune(r) || (r >= 0xFE00 && r <= 0xFE0F) || r == 0x200C || r == 0x200D {
 			continue
 		}
-		block := r >> 7
-		scriptFontsMu.Lock()
-		tried := scriptBlocks[block]
-		scriptBlocks[block] = true
-		scriptFontsMu.Unlock()
-		if tried || !SystemFallbackFonts || anyFontHas(r) {
+		word, bit := &scriptRunes[r/32], uint32(1)<<(r%32)
+		if word.Load()&bit != 0 {
 			continue
 		}
-		addScriptFont(r)
+		// Looked up once, whether a font is found or not
+		if word.Or(bit)&bit != 0 || !SystemFallbackFonts {
+			continue
+		}
+		if isEmojiRune(r) && r != 0xFE0F {
+			// The font of color emoji, whatever other fonts have the
+			// character in black
+			emojiFontOnce.Do(func() { addScriptFont(r) })
+			continue
+		}
+		if !anyFontHas(r) {
+			addScriptFont(r)
+		}
 	}
 }
 
@@ -98,6 +112,7 @@ func addScriptFont(r rune) {
 // the character: fontconfig's choice on Linux, the fonts of Windows and
 // macOS that have many scripts
 func scriptFontFiles(r rune) []string {
+	emoji := isEmojiRune(r)
 	switch runtime.GOOS {
 	case "windows":
 		dir := filepath.Join(os.Getenv("WINDIR"), "Fonts")
@@ -105,6 +120,9 @@ func scriptFontFiles(r rune) []string {
 			dir = `C:\Windows\Fonts`
 		}
 		var out []string
+		if emoji {
+			out = append(out, filepath.Join(dir, "seguiemj.ttf"))
+		}
 		for _, f := range []string{"segoeui.ttf", "Nirmala.ttc", "Nirmala.ttf", "LeelawUI.ttf", "ebrima.ttf",
 			"gadugi.ttf", "seguihis.ttf", "arial.ttf", "tahoma.ttf", "seguisym.ttf", "mvboli.ttf", "himalaya.ttf"} {
 			out = append(out, filepath.Join(dir, f))
@@ -112,6 +130,9 @@ func scriptFontFiles(r rune) []string {
 		return out
 	case "darwin":
 		var out []string
+		if emoji {
+			out = append(out, "/System/Library/Fonts/Apple Color Emoji.ttc")
+		}
 		for _, pattern := range []string{"/System/Library/Fonts/SFArabic.ttf", "/System/Library/Fonts/SFHebrew.ttf",
 			"/System/Library/Fonts/GeezaPro.ttc", "/System/Library/Fonts/ArialHB.ttc", "/System/Library/Fonts/Kohinoor*.ttc",
 			"/System/Library/Fonts/Thonburi.ttc", "/System/Library/Fonts/Supplemental/*.ttf", "/System/Library/Fonts/Supplemental/*.ttc",
@@ -121,8 +142,15 @@ func scriptFontFiles(r rune) []string {
 		}
 		return out
 	}
-	if path := fontconfigMatch(fmt.Sprintf(":charset=%x", r)); path != "" {
-		return []string{path}
+	var out []string
+	if emoji {
+		// A font of color emoji, not a font of their black outlines
+		if path := fontconfigMatch(fmt.Sprintf(":color=true:charset=%x", r)); path != "" {
+			out = append(out, path)
+		}
 	}
-	return nil
+	if path := fontconfigMatch(fmt.Sprintf(":charset=%x", r)); path != "" {
+		out = append(out, path)
+	}
+	return out
 }

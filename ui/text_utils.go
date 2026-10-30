@@ -3,6 +3,9 @@ package ui
 // truncateTextToWidth shortens text with a trailing "..." so its rendered
 // width fits within maxWidth pixels for the given font. Returns text
 // unchanged if it already fits, or if maxWidth/measurement isn't usable.
+// It is cut between graphemes - a letter keeps its marks, a conjunct of an
+// Indic script is not split - and in text written right to left the
+// ellipsis is at the end of its reading, on the left.
 func truncateTextToWidth(fontFamily string, fontSize float64, text string, maxWidth int) string {
 	if maxWidth <= 0 {
 		return text
@@ -22,19 +25,24 @@ func truncateTextToWidth(fontFamily string, fontSize float64, text string, maxWi
 		return ellipsis
 	}
 
+	// The longest start that fits with the ellipsis: the width grows with
+	// the start, so it is searched by halves
 	runes := []rune(text)
-	for len(runes) > 0 {
-		runes = runes[:len(runes)-1]
-		candidate := string(runes) + ellipsis
-		candidateWidth, _, err := MeasureText(fontFamily, fontSize, candidate)
-		if err != nil {
-			return candidate
-		}
-		if candidateWidth <= maxWidth {
-			return candidate
+	bounds := graphemeBounds(text)
+	fits := func(k int) bool {
+		w, _, err := MeasureText(fontFamily, fontSize, string(runes[:bounds[k]])+ellipsis)
+		return err == nil && w <= maxWidth
+	}
+	lo, hi := 0, len(bounds)-2 // bounds[lo] fits (the empty start), bounds[hi+1] is all of it
+	for lo < hi {
+		mid := (lo + hi + 1) / 2
+		if fits(mid) {
+			lo = mid
+		} else {
+			hi = mid - 1
 		}
 	}
-	return ellipsis
+	return string(runes[:bounds[lo]]) + ellipsis
 }
 
 func MakeLinesFromStringWithWordWrapping(text string, maxChars int) []string {

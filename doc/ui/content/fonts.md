@@ -87,10 +87,13 @@ are meant for text on opaque backgrounds, which all the controls have.
 
 ## Limitations
 
-- **Emoji are drawn as boxes.** The emoji fonts are color fonts (Apple Color Emoji keeps images,
-  `sbix`; Noto Color Emoji keeps `CBDT` bitmaps or `COLR` layers), and nui's rasterizer draws outline
-  fonts only, in one color. An emoji is typed, copied, stored and measured as one character: only
-  its picture is a box (the `.notdef` glyph of the font), and the cursor stays right around it.
+- **Emoji in color.** The font of color emoji of the system - Noto Color Emoji on Linux, Segoe UI
+  Emoji on Windows, Apple Color Emoji on macOS - is looked up with the first emoji, and its glyphs
+  are drawn in their colors: the pictures of `CBDT` and `sbix` fonts scaled to the glyph, the
+  layers of `COLR` fonts (versions 0 and 1: shapes, gradients, transforms, compositing) drawn as
+  shapes, sharp at any size and written to SVG as shapes. Sequences - families, flags, skin tones -
+  are one picture and one place of the caret. A sweep gradient of COLR is written to SVG in one
+  color: SVG has none.
 - **Shaping.** A line that needs it - Arabic, Hebrew, the Indic scripts, Thai and the other
   scripts whose letters join or combine, combining marks, the marks of direction - is shaped and
   laid out by the bidi algorithm wherever it is drawn: `DrawText`, the labels, buttons, menus,
@@ -99,6 +102,10 @@ are meant for text on opaque backgrounds, which all the controls have.
   `GetCharPositions` gives the carets of its characters, which in right-to-left text are not in
   order - `TextCaretX`, `TextIndexAt` and `TextSelectionSpans` are the caret, the click and the
   selection for any text.
-- **Symbols below Hebrew.** A character before U+0590 the built-in fonts lack (rare Latin, IPA) is
-  not looked up among the system fonts: register a font with it and add it to the chain,
-  `ui.RegisterFont(name, data)`, then `ui.AddFallbackFont(name)`.
+- **Any character.** A character no font of nui has - Armenian, rare Latin letters, symbols - is
+  looked up among the system fonts once, the first time it is drawn. An application that wants its
+  own font for it registers it and adds it to the chain: `ui.RegisterFont(name, data)`, then
+  `ui.AddFallbackFont(name)`.
+- **Ellipsis.** Text cut to a width (the cells of tables and trees, the items of menus) is cut
+  between graphemes - a letter keeps its marks, a conjunct is not split - and in right-to-left text
+  the ellipsis is at the end of its reading, on the left.

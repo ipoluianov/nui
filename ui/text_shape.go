@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"os"
 	"sync"
+	"unicode"
+
+	"github.com/go-text/typesetting/harfbuzz"
 
 	gtfont "github.com/go-text/typesetting/font"
 	"github.com/go-text/typesetting/shaping"
@@ -85,12 +88,32 @@ type fontChain struct {
 // ResolveFace returns the first face of the chain that has the character,
 // the first face if none does (it draws its "missing" glyph)
 func (c *fontChain) ResolveFace(r rune) *gtfont.Face {
+	// An emoji in color, if a font of color emoji has it: some fonts of
+	// text have black ones (a flag in letters in boxes)
+	if isEmojiRune(r) {
+		for _, f := range c.fonts {
+			if _, ok := f.face.NominalGlyph(r); ok && isColorFace(f.face) {
+				return f.face
+			}
+		}
+	}
 	for _, f := range c.fonts {
 		if _, ok := f.face.NominalGlyph(r); ok {
 			return f.face
 		}
 	}
 	return c.fonts[0].face
+}
+
+// textFace returns the first face of the chain that has the character and
+// is not of color emoji: the face of a space between emoji
+func (c *fontChain) textFace(r rune) *gtfont.Face {
+	for _, f := range c.fonts {
+		if _, ok := f.face.NominalGlyph(r); ok && !isColorFace(f.face) {
+			return f.face
+		}
+	}
+	return c.ResolveFace(r)
 }
 
 // synthOf returns the styles to synthesize on the face of the chain
@@ -140,4 +163,49 @@ func shapeChain(family string, style FontStyle) *fontChain {
 		return nil
 	}
 	return c
+}
+
+// splitByFace splits the input into runs of the faces of the chain, as
+// shaping.SplitByFace does - a space, a joiner, a selector keeps the face
+// of the run it is in, so a run is not cut for it (Pango's rule) - but a
+// space after emoji takes the face of the text: the spaces of the fonts
+// of emoji are as wide as an emoji
+func splitByFace(input shaping.Input, chain *fontChain) []shaping.Input {
+	var out []shaping.Input
+	cur := input
+	cur.Face = nil
+	for i := input.RunStart; i < input.RunEnd; i++ {
+		r := input.Text[i]
+		keep := unicode.In(r, unicode.Cc, unicode.Cs, unicode.Zl, unicode.Zp) ||
+			(unicode.Is(unicode.Zs, r) && r != '\u1680') || harfbuzz.IsDefaultIgnorable(r)
+		space := unicode.Is(unicode.Zs, r) && cur.Face != nil && isColorFace(cur.Face)
+		if space {
+			keep = false
+		}
+		if keep && (cur.Face != nil || i < input.RunEnd-1) {
+			continue
+		}
+		face := chain.ResolveFace(r)
+		if space {
+			face = chain.textFace(r)
+		}
+		if cur.Face == nil {
+			cur.Face = face
+		}
+		if cur.Face == face {
+			continue
+		}
+		if i != input.RunStart {
+			cur.RunEnd = i
+			out = append(out, cur)
+		}
+		cur = input
+		cur.RunStart = i
+		cur.Face = face
+	}
+	cur.RunEnd = input.RunEnd
+	if cur.Face == nil {
+		cur.Face = chain.fonts[0].face
+	}
+	return append(out, cur)
 }

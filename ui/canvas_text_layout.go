@@ -364,7 +364,7 @@ func (l *TextLayout) layoutParagraph(start, end int, broken bool) {
 			in := part
 			in.RunStart, in.RunEnd = a, b
 			in.Size = toFixed(st.size())
-			for _, sub := range shaping.SplitByFace(in, chain) {
+			for _, sub := range splitByFace(in, chain) {
 				out := shaper.Shape(sub)
 				synth := chain.synthOf(sub.Face)
 				if synth&FontBold != 0 {

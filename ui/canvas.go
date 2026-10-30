@@ -48,6 +48,8 @@ type canvasState struct {
 	// imageFade is 255 less the opacity of the images (SetImageOpacity):
 	// 0, the zero value, draws them opaque
 	imageFade uint8
+	// linear mixes the colors in linear light (SetLinearBlending)
+	linear bool
 }
 
 type Canvas struct {
@@ -365,6 +367,10 @@ func (c *Canvas) mixPixelAt(i int, r, g, b, alpha uint32) {
 	pix := c.rgba.Pix[i : i+4 : i+4]
 	if alpha == 255 {
 		pix[0], pix[1], pix[2], pix[3] = uint8(r), uint8(g), uint8(b), 255
+		return
+	}
+	if c.state.linear && pix[3] == 255 {
+		pix[0], pix[1], pix[2] = mixLinear(uint32(pix[0]), r, alpha), mixLinear(uint32(pix[1]), g, alpha), mixLinear(uint32(pix[2]), b, alpha)
 		return
 	}
 	pix[0] = blend8(uint32(pix[0]), r, alpha)
@@ -1089,6 +1095,14 @@ func (c *Canvas) fillRectPixels(x int, y int, width int, height int, colr color.
 		// the clip and the image already
 		r, g, b, alpha := straightRGBA8(colr)
 		if alpha == 0 {
+			return
+		}
+		if c.state.linear {
+			for yy := y; yy < y+height; yy++ {
+				for xx := x; xx < x+width; xx++ {
+					c.mixPixelAt(c.rgba.PixOffset(xx, yy), r, g, b, alpha)
+				}
+			}
 			return
 		}
 		// blend8 with the source's part computed once

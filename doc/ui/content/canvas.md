@@ -309,7 +309,12 @@ cnv.EndLayer()
 - `ClipPath` begun in a layer ends with it at the latest.
 - A blend costs about 8 ns a pixel of the layer's area on the old desktop
   CPU (0.5 ms for 300 × 200); keep the clip of such a layer to what it
-  covers. Layers are not written to SVG.
+  covers.
+- The SVG recorder writes a layer as a group: its opacity, its blend as
+  `mix-blend-mode` (`BlendAdd` as `plus-lighter`), its isolation, its mask
+  as a `<mask>` of the paint. `BlendErase`, `BlendKeepInside` and
+  `BlendAtop` have no counterpart in SVG: what is drawn in such a layer is
+  not written, rather than written as ink.
 
 ## Pixels
 
@@ -441,7 +446,26 @@ not safe for concurrent use; the drawing of different layouts is.
 as SVG too: paths (with their fill rules and transforms), fills with
 gradients and hatches, strokes with dashes, rectangles, lines and texts.
 Paint a widget into such a canvas and write the recorder out: a picture
-sharp at any size. Images and 3D scenes are not recorded.
+sharp at any size. Images and 3D scenes are not recorded; a `PaintCache`
+paints directly into a recorded canvas, so its drawing is recorded.
+
+## Colors in linear light
+
+sRGB, the space of the colors of nui and of the screens, is not linear in
+light: the middle between black and white by its numbers (128) is darker
+than the middle in light (188). Browsers and nui mix in sRGB by default.
+Two settings mix in linear light, as light mixes:
+
+- `LinearRGB: true` on a `LinearGradient`, `RadialGradient` or
+  `ConicGradient`: the colors between the stops (SVG's
+  `color-interpolation="linearRGB"`); brighter between saturated colors, no
+  dark band between red and green. Written to SVG as stops close enough
+  for any viewer.
+- `cnv.SetLinearBlending(true)` (kept by `Save` and `Restore`): the
+  antialiased edges and the translucent fills of paths, rectangles and
+  transformed images; thin lines keep their weight at any angle. Text keeps
+  the mixing of the system, in sRGB, so it has the weight of the system's
+  text; layers, blur, `DrawImage` and `DrawImageRect` mix in sRGB.
 
 ## Performance
 

@@ -65,6 +65,11 @@ type TextBox struct {
 
 	dragingCursor bool
 
+	// textAlign places the lines in the box (SetTextAlign); visualArrows
+	// moves the cursor by Left and Right on the screen
+	textAlign    TextAlign
+	visualArrows bool
+
 	padding int
 
 	cursorVisible         bool
@@ -473,10 +478,11 @@ func (c *TextBox) Draw(ctx *Canvas, width, height int) {
 				rectY = yStaticOffset
 			}
 			for _, span := range TextSelectionSpans(c.FontFamily(), c.FontSize(), line, from, to) {
-				x0, x1 := c.textX()+span[0], c.textX()+span[1]
+				lx := c.lineX(selY)
+				x0, x1 := lx+span[0], lx+span[1]
 				// A line the selection goes on to is marked from the edge
 				// of the box (in text written a character after another)
-				if selY != selection.Y1 && !needsShaping(line) {
+				if selY != selection.Y1 && !needsShaping(line) && c.textAlign == TextAlignLeft {
 					x0 = 0
 				}
 				ctx.FillRect(x0, rectY, x1-x0, oneLineHeight, p.Selection)
@@ -490,14 +496,19 @@ func (c *TextBox) Draw(ctx *Canvas, width, height int) {
 	ctx.SetVAlign(VAlignCenter)
 	ctx.SetFontFamily(c.FontFamily())
 	ctx.SetFontSize(c.FontSize())
-	textX := c.textX()
 	for i := first; i <= last; i++ {
+		textX := c.lineX(i)
 		y := yStaticOffset + i*oneLineHeight
 		if c.highlighter != nil && !c.GetPropBool("ispassword", false) {
 			c.drawHighlighted(ctx, i, lines[i], textX, y, oneLineHeight, textColor)
 			continue
 		}
-		ctx.DrawText(textX, y, width-textX-c.leftAndRightPadding, oneLineHeight, c.lineToPasswordChars(lines[i]))
+		w := width - textX - c.leftAndRightPadding
+		if c.textAlign != TextAlignLeft {
+			// Moved to the right of the content: as wide as it is
+			w = max(w, c.lineWidths[i]+1)
+		}
+		ctx.DrawText(textX, y, w, oneLineHeight, c.lineToPasswordChars(lines[i]))
 	}
 	c.drawGutter(ctx, first, last, yStaticOffset, oneLineHeight)
 
@@ -510,7 +521,7 @@ func (c *TextBox) Draw(ctx *Canvas, width, height int) {
 
 	// Cursor
 	if focus && c.cursorVisible {
-		cursorPosInPixels := c.textX() + c.caretX(c.cursorPosY, c.cursorPosX)
+		cursorPosInPixels := c.lineX(c.cursorPosY) + c.caretX(c.cursorPosY, c.cursorPosX)
 		curX := cursorPosInPixels - (c.cursorWidth / 2)
 		curY := yStaticOffset + c.cursorPosY*oneLineHeight
 		ctx.FillRect(curX, curY, c.cursorWidth, oneLineHeight, textColor)
@@ -536,7 +547,8 @@ func (c *TextBox) caretRect() (x, y, width, height int) {
 	if c.Multiline() {
 		y = 1 + c.cursorPosY*lineHeight
 	}
-	x = c.textX() + c.caretX(min(c.cursorPosY, len(c.lines)-1), c.cursorPosX)
+	line := min(c.cursorPosY, len(c.lines)-1)
+	x = c.lineX(line) + c.caretX(line, c.cursorPosX)
 	return x, y, 1, lineHeight
 }
 
@@ -653,6 +665,13 @@ func (c *TextBox) KeyDown(key Key, mods KeyModifiers) bool {
 	// Left and right go over a letter with its marks, a conjunct of an
 	// Indic script, in the order of the text (in text written right to
 	// left, Left goes back to its start, on the right)
+	if (key == KeyArrowLeft || key == KeyArrowRight) && c.visualArrows {
+		if x, ok := c.visualStep(key == KeyArrowRight); ok {
+			c.moveCursor(x, c.cursorPosY, mods)
+			return true
+		}
+	}
+
 	if key == KeyArrowLeft {
 		x := c.cursorPosX - 1
 		if line := c.lines[c.cursorPosY]; x >= 0 && needsShaping(line) {
@@ -784,14 +803,14 @@ func (c *TextBox) moveCursorNearPoint(x, y int, modifiers KeyModifiers) {
 	// Shaped text: the caret nearest the point, at the start of a letter
 	// with its marks
 	if line := c.lineToPasswordChars(lines[lineNumber]); needsShaping(line) {
-		i := TextIndexAt(c.FontFamily(), c.FontSize(), line, x-c.textX())
+		i := TextIndexAt(c.FontFamily(), c.FontSize(), line, x-c.lineX(lineNumber))
 		c.moveCursor(snapToGrapheme(line, i), lineNumber, modifiers)
 		return
 	}
 
 	charPos, _ := GetCharPositions(c.FontFamily(), c.FontSize(), c.lineToPasswordChars(lines[lineNumber]))
 	for i := 0; i < len(charPos); i++ {
-		charPos[i] = charPos[i] + c.textX()
+		charPos[i] = charPos[i] + c.lineX(lineNumber)
 	}
 
 	if len(charPos) == 1 {
@@ -1001,7 +1020,7 @@ func (c *TextBox) deleteSelection() bool {
 
 func (c *TextBox) ensureVisibleCursor() {
 	_, oneLineHeight, _ := MeasureText(c.FontFamily(), c.FontSize(), "Q")
-	cursorPosInPixels := c.textX() + c.caretX(c.cursorPosY, c.cursorPosX)
+	cursorPosInPixels := c.lineX(c.cursorPosY) + c.caretX(c.cursorPosY, c.cursorPosX)
 	curX := cursorPosInPixels - (c.cursorWidth / 2)
 	curY := c.cursorPosY * oneLineHeight
 	// The column of the line numbers covers the left of the view
@@ -1475,6 +1494,93 @@ func (c *TextBox) SetLineNumbers(show bool) {
 
 func (c *TextBox) LineNumbers() bool {
 	return c.lineNumbers
+}
+
+// TextAlign is where the lines of a TextBox are in it
+type TextAlign int
+
+const (
+	// TextAlignLeft puts every line at the left (the default)
+	TextAlignLeft TextAlign = iota
+	// TextAlignRight puts every line at the right
+	TextAlignRight
+	// TextAlignCenter puts every line in the middle
+	TextAlignCenter
+	// TextAlignStart puts a line at the side its direction starts: a line
+	// of Arabic or Hebrew at the right, the others at the left
+	TextAlignStart
+)
+
+// SetTextAlign places the lines in the box: TextAlignStart for a box of
+// Arabic or Hebrew text
+func (c *TextBox) SetTextAlign(a TextAlign) {
+	c.textAlign = a
+	c.form.Update()
+}
+
+// TextAlign returns where the lines are placed
+func (c *TextBox) TextAlign() TextAlign {
+	return c.textAlign
+}
+
+// SetVisualCursorMovement makes Left and Right move the cursor on the
+// screen - to the left and to the right - in text written right to left
+// too; by default they go back and on in the order of the text
+func (c *TextBox) SetVisualCursorMovement(on bool) {
+	c.visualArrows = on
+}
+
+// lineX returns where the line y starts in the box, by the alignment
+func (c *TextBox) lineX(y int) int {
+	x := c.textX()
+	if c.textAlign == TextAlignLeft || y < 0 || y >= len(c.lines) {
+		return x
+	}
+	// The width the lines are aligned in: the view, or the widest line
+	view := c.Width()
+	if c.Multiline() {
+		view, _ = c.viewportSize()
+	}
+	area := max(view, c.innerWidth) - x - c.leftAndRightPadding
+	if c.lineWidths[y] < 0 {
+		c.lineWidths[y], _, _ = MeasureText(c.FontFamily(), c.FontSize(), c.lineToPasswordChars(c.lines[y]))
+	}
+	free := max(0, area-c.lineWidths[y])
+	switch c.textAlign {
+	case TextAlignRight:
+		return x + free
+	case TextAlignCenter:
+		return x + free/2
+	}
+	if textIsRightToLeft(c.lines[y]) {
+		return x + free
+	}
+	return x
+}
+
+// visualStep returns where Left (or Right) puts the cursor on the screen:
+// the start of the grapheme whose caret is the nearest to the left (right)
+// of the cursor's; false at the edge of the line
+func (c *TextBox) visualStep(right bool) (int, bool) {
+	line := c.lineToPasswordChars(c.lines[c.cursorPosY])
+	if !needsShaping(line) {
+		return 0, false // as the logical order
+	}
+	at := c.caretX(c.cursorPosY, c.cursorPosX)
+	best, bestX := -1, 0
+	for _, i := range graphemeBounds(line) {
+		if i == c.cursorPosX {
+			continue
+		}
+		x := c.caretX(c.cursorPosY, i)
+		if (right && x > at && (best < 0 || x < bestX)) || (!right && x < at && (best < 0 || x > bestX)) {
+			best, bestX = i, x
+		}
+	}
+	if best < 0 {
+		return c.cursorPosX, true
+	}
+	return best, true
 }
 
 // textX is where the text starts: after the inset, and the line numbers

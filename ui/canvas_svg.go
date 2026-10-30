@@ -27,6 +27,8 @@ type SVGRecorder struct {
 	// paintXf is the transform of the paint being recorded: its
 	// coordinates are those of the drawing methods
 	paintXf *Matrix
+	// layers is the count of the groups of the layers open
+	layers int
 }
 
 // NewSVGRecorder makes a recorder of a picture of the logical size
@@ -53,6 +55,9 @@ func (r *SVGRecorder) WriteTo(w io.Writer) (int64, error) {
 	b.Write(r.body.Bytes())
 	if r.open {
 		b.WriteString("</g>\n")
+	}
+	for i := 0; i < r.layers; i++ {
+		b.WriteString("</g>\n") // a layer not ended
 	}
 	b.WriteString("</svg>\n")
 	n, err := w.Write(b.Bytes())
@@ -227,12 +232,20 @@ func (r *SVGRecorder) paintAttr(c *Canvas, attr string, p *Path, paint Paint) (s
 	case LinearGradient:
 		id := r.id("g")
 		fmt.Fprintf(&r.defs, `<linearGradient id="%s" gradientUnits="userSpaceOnUse" x1="%s" y1="%s" x2="%s" y2="%s"%s>%s</linearGradient>`+"\n",
-			id, svgNum(g.X1+gx), svgNum(g.Y1+gy), svgNum(g.X2+gx), svgNum(g.Y2+gy), gradXf+spread(g.Spread), stops(g.Stops))
+			id, svgNum(g.X1+gx), svgNum(g.Y1+gy), svgNum(g.X2+gx), svgNum(g.Y2+gy), gradXf+spread(g.Spread), stops(gradientStops(g.Stops, g.LinearRGB)))
 		fill = attr + `="url(#` + id + `)"`
 	case RadialGradient:
 		id := r.id("g")
 		fmt.Fprintf(&r.defs, `<radialGradient id="%s" gradientUnits="userSpaceOnUse" cx="%s" cy="%s" r="%s"%s>%s</radialGradient>`+"\n",
-			id, svgNum(g.CX+gx), svgNum(g.CY+gy), svgNum(g.R), gradXf+spread(g.Spread), stops(g.Stops))
+			id, svgNum(g.CX+gx), svgNum(g.CY+gy), svgNum(g.R), gradXf+spread(g.Spread), stops(gradientStops(g.Stops, g.LinearRGB)))
+		fill = attr + `="url(#` + id + `)"`
+	case solidPaint:
+		fill = svgColor(attr, color.RGBA(g))
+	case twoCircleGradient:
+		// The circles of the gradient: the focal one at 0, the outer at 1
+		id := r.id("g")
+		fmt.Fprintf(&r.defs, `<radialGradient id="%s" gradientUnits="userSpaceOnUse" cx="%s" cy="%s" r="%s" fx="%s" fy="%s" fr="%s"%s>%s</radialGradient>`+"\n",
+			id, svgNum(g.x1+gx), svgNum(g.y1+gy), svgNum(g.r1), svgNum(g.x0+gx), svgNum(g.y0+gy), svgNum(g.r0), gradXf+spread(g.spread), stops(g.stops))
 		fill = attr + `="url(#` + id + `)"`
 	case HatchPaint:
 		id := r.id("h")
@@ -392,4 +405,80 @@ func svgClipRule(p *Path) string {
 		return ` clip-rule="evenodd"`
 	}
 	return ""
+}
+
+// svgBlendModes are the blend modes as CSS names them
+var svgBlendModes = map[BlendMode]string{
+	BlendMultiply: "multiply", BlendScreen: "screen", BlendOverlay: "overlay", BlendDarken: "darken",
+	BlendLighten: "lighten", BlendColorDodge: "color-dodge", BlendColorBurn: "color-burn",
+	BlendHardLight: "hard-light", BlendSoftLight: "soft-light", BlendDifference: "difference",
+	BlendExclusion: "exclusion", BlendHue: "hue", BlendSaturation: "saturation", BlendColor: "color",
+	BlendLuminosity: "luminosity", BlendAdd: "plus-lighter",
+}
+
+// closeClip ends the group of the clip open, so that a group of a layer
+// nests around whole groups
+func (r *SVGRecorder) closeClip() {
+	if r.open {
+		r.body.WriteString("</g>\n")
+		r.open, r.lastClip = false, ""
+	}
+}
+
+// beginLayer starts the group of a layer of BeginLayerStyle: its opacity,
+// its blend, its mask. It returns false for a blend SVG has not (BlendErase,
+// BlendKeepInside, BlendAtop): such a layer is not recorded.
+func (r *SVGRecorder) beginLayer(c *Canvas, st LayerStyle) bool {
+	attrs := ""
+	style := ""
+	switch st.Blend {
+	case BlendNormal:
+	case BlendErase, BlendKeepInside, BlendAtop:
+		return false
+	default:
+		style = "mix-blend-mode:" + svgBlendModes[st.Blend] + ";"
+	}
+	if st.Isolated || st.Blend != BlendNormal || st.Mask != nil {
+		style += "isolation:isolate;"
+	}
+	if st.Opacity > 0 && st.Opacity < 1 {
+		attrs += ` opacity="` + svgNum4(st.Opacity) + `"`
+	}
+	if style != "" {
+		attrs += ` style="` + style + `"`
+	}
+	if st.Mask != nil {
+		// The mask: the area of the layer painted with the paint, its alpha
+		// the opacity
+		s := c.scale
+		ox, oy := c.origin()
+		area := NewPath()
+		area.Rect(float64(c.state.clipX)/s-ox, float64(c.state.clipY)/s-oy, float64(c.state.clipW)/s, float64(c.state.clipH)/s)
+		if c.state.hasXf {
+			xf := c.state.xf
+			r.paintXf = &xf
+		}
+		fill, ok := r.paintAttr(c, "fill", area, st.Mask)
+		r.paintXf = nil
+		if ok {
+			id := r.id("m")
+			fmt.Fprintf(&r.defs, `<mask id="%s" mask-type="alpha" maskUnits="userSpaceOnUse"><path d="%s" %s/></mask>`+"\n",
+				id, svgPathData(area, ox, oy), fill)
+			attrs += ` mask="url(#` + id + `)"`
+		}
+	}
+	r.closeClip()
+	r.body.WriteString("<g" + attrs + ">\n")
+	r.layers++
+	return true
+}
+
+// endLayer ends the group of the last layer
+func (r *SVGRecorder) endLayer() {
+	if r.layers == 0 {
+		return
+	}
+	r.closeClip()
+	r.body.WriteString("</g>\n")
+	r.layers--
 }

@@ -393,3 +393,166 @@ func TestShapedOnScaledScreen(t *testing.T) {
 		}
 	}
 }
+
+// A script below Hebrew the built-in fonts lack - Armenian - comes from
+// the system too
+func TestFontBelowHebrew(t *testing.T) {
+	if !SystemFallbackFonts {
+		t.Skip()
+	}
+	ensureFallbackFonts("Բարեւ")
+	if !anyFontHas('Բ') {
+		if p := fontconfigMatch(":charset=531"); p == "" {
+			t.Skip("no Armenian font on this system")
+		}
+		t.Fatal("the Armenian font of the system is not taken")
+	}
+	// Drawn as letters, not as the boxes of the missing glyph: the boxes
+	// of different letters are the same
+	a, b := drawLine("Բ", 20, 1), drawLine("Ր", 20, 1)
+	if string(a.Pix) == string(b.Pix) {
+		t.Fatal("two Armenian letters drawn the same")
+	}
+}
+
+func TestTextBoxAlign(t *testing.T) {
+	haveScripts(t, "שלום")
+	box := NewTextBox()
+	form := newTestForm(t, box)
+	box.SetText("שלום עולם")
+	box.Focus()
+	w, _, _ := MeasureText(box.FontFamily(), box.FontSize(), box.Text())
+	right := box.Width() - box.leftAndRightPadding
+	if x := box.lineX(0); x != box.textX() {
+		t.Fatalf("aligned to the left by default: %d", x)
+	}
+	for _, tc := range []struct {
+		align TextAlign
+		text  string
+		want  int // the start of the line
+	}{
+		{TextAlignStart, "שלום עולם", right - w},
+		{TextAlignRight, "שלום עולם", right - w},
+		{TextAlignCenter, "שלום עולם", box.textX() + (right-box.textX()-w)/2},
+		{TextAlignStart, "Hello", box.textX()},
+	} {
+		box.SetText(tc.text)
+		box.SetTextAlign(tc.align)
+		if x := box.lineX(0); abs(x-tc.want) > 1 {
+			t.Errorf("%v %q: the line at %d, want %d", tc.align, tc.text, x, tc.want)
+		}
+	}
+	// Right to left at the right: the cursor at the start of the text is
+	// at the right edge, a click lands where the characters are
+	box.SetText("abc שלום def")
+	box.SetTextAlign(TextAlignRight)
+	text := box.Text()
+	lx := box.lineX(0)
+	for _, i := range []int{0, 3, 5, 8, 12} {
+		x := lx + TextCaretX(box.FontFamily(), box.FontSize(), text, i)
+		box.MouseDown(MouseButtonLeft, x, box.Height()/2, KeyModifiers{})
+		box.MouseUp(MouseButtonLeft, x, box.Height()/2, KeyModifiers{})
+		if got := box.cursorPosX; abs(TextCaretX(box.FontFamily(), box.FontSize(), text, got)+lx-x) > 1 {
+			t.Errorf("a click at the caret of %d gives %d", i, got)
+		}
+		if cx, _, _, _ := box.caretRect(); abs(cx-x) > 1 && box.cursorPosX == i {
+			t.Errorf("the caret of %d at %d, want %d", i, cx, x)
+		}
+	}
+	// The selection painted where the line is
+	box.SetSelection(TextPos{Col: 0}, TextPos{Col: 3})
+	img := image.NewRGBA(image.Rect(0, 0, 500, 400))
+	form.paintScaled(img, 1)
+	ox, oy := box.RectClientAreaOnWindow()
+	sel := CurrentPalette().Selection
+	at := img.RGBAAt(ox+lx+TextCaretX(box.FontFamily(), box.FontSize(), text, 1), oy+box.Height()/2)
+	if math.Abs(float64(at.B)-float64(sel.B)) > 40 {
+		t.Errorf("the selection of abc is not under abc: %v", at)
+	}
+
+	// A multiline box: each line at the side of its direction
+	area := NewTextBox()
+	newTestForm(t, area)
+	area.SetMultiline(true)
+	area.SetText("Hello\nשלום\n")
+	area.SetTextAlign(TextAlignStart)
+	if area.lineX(0) != area.textX() || area.lineX(1) <= area.textX() || area.lineX(2) != area.textX() {
+		t.Fatalf("the lines at %d, %d, %d", area.lineX(0), area.lineX(1), area.lineX(2))
+	}
+}
+
+func TestTextBoxVisualArrows(t *testing.T) {
+	haveScripts(t, "שלום")
+	box := NewTextBox()
+	form := newTestForm(t, box)
+	box.SetText("abc שלום def")
+	box.Focus()
+	caret := func() int { x, _, _, _ := box.caretRect(); return x }
+
+	// In the order of the text: Left from the start of the Hebrew word goes
+	// back to the space before it
+	box.SetCursorPosition(TextPos{Col: 4})
+	typeKey(form, KeyArrowLeft, 0, KeyModifiers{})
+	if box.cursorPosX != 3 {
+		t.Fatalf("logical Left: %d", box.cursorPosX)
+	}
+	// On the screen: Left always moves to the left, through all the line
+	box.SetVisualCursorMovement(true)
+	box.SetCursorPosition(TextPos{Col: 12})
+	prev := caret()
+	for k := 0; k < 14; k++ {
+		typeKey(form, KeyArrowLeft, 0, KeyModifiers{})
+		x := caret()
+		if x > prev {
+			t.Fatalf("Left %d moved right: %d -> %d", k, prev, x)
+		}
+		prev = x
+	}
+	if prev != box.textX() {
+		t.Fatalf("Left does not reach the left edge: %d", prev)
+	}
+	for k := 0; k < 14; k++ {
+		typeKey(form, KeyArrowRight, 0, KeyModifiers{})
+		x := caret()
+		if x < prev {
+			t.Fatalf("Right %d moved left: %d -> %d", k, prev, x)
+		}
+		prev = x
+	}
+	w, _, _ := MeasureText(box.FontFamily(), box.FontSize(), box.Text())
+	if abs(prev-box.textX()-w) > 1 {
+		t.Fatalf("Right does not reach the right edge: %d", prev)
+	}
+	// Shift selects as it goes
+	box.SetCursorPosition(TextPos{Col: 0})
+	typeKey(form, KeyArrowRight, 0, KeyModifiers{Shift: true})
+	if box.SelectedText() != "a" {
+		t.Fatalf("Shift+Right selected %q", box.SelectedText())
+	}
+}
+
+// A line placed to the right is drawn there, not cut by the width of the
+// content
+func TestTextBoxAlignedDrawn(t *testing.T) {
+	haveScripts(t, "שלום")
+	box := NewTextBox()
+	form := newTestForm(t, box)
+	box.SetText("שלום עולם")
+	box.SetTextAlign(TextAlignStart)
+	img := image.NewRGBA(image.Rect(0, 0, 500, 400))
+	form.paintScaled(img, 1)
+	ox, oy := box.RectClientAreaOnWindow()
+	w, _, _ := MeasureText(box.FontFamily(), box.FontSize(), box.Text())
+	ink := 0
+	bg := img.RGBAAt(ox+box.Width()/4, oy+box.Height()/2)
+	for x := box.lineX(0); x < box.lineX(0)+w; x++ {
+		for y := 4; y < box.Height()-4; y++ {
+			if c := img.RGBAAt(ox+x, oy+y); abs(int(c.R)-int(bg.R)) > 80 {
+				ink++
+			}
+		}
+	}
+	if ink < 30 {
+		t.Fatalf("the right-aligned line is not drawn: %d pixels of ink", ink)
+	}
+}

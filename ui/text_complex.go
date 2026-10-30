@@ -11,6 +11,7 @@ import (
 
 	gtseg "github.com/go-text/typesetting/segmenter"
 	"golang.org/x/image/font"
+	xbidi "golang.org/x/text/unicode/bidi"
 )
 
 // Text that is not drawn right a character after another - written right
@@ -50,6 +51,8 @@ func needsShaping(text string) bool {
 			return true
 		case r >= 0x10800 && r <= 0x10FFF, r >= 0x11000 && r <= 0x11FFF, r >= 0x1E800 && r <= 0x1EFFF:
 			return true // the historic and other scripts of the SMP
+		case isEmojiRune(r):
+			return true // drawn in color, joined into sequences
 		}
 		if unicode.In(r, unicode.Mn, unicode.Mc, unicode.Me) {
 			return true
@@ -303,4 +306,26 @@ func (c *Canvas) drawLayoutAsText(l *TextLayout, x, y, h int, family string, siz
 	py := c.state.translateY + c.scaled(y)
 	baseline := float64(textBaseline(family, size*c.scale, py)-c.state.translateY) / c.scale
 	c.DrawTextLayout(l, float64(x), baseline-l.lines[0].ascent)
+}
+
+// textIsRightToLeft tells whether the text is written right to left: by
+// its first letter of a direction
+func textIsRightToLeft(text string) bool {
+	for _, r := range text {
+		p, _ := xbidi.LookupRune(r)
+		switch p.Class() {
+		case xbidi.L:
+			return false
+		case xbidi.R, xbidi.AL:
+			return true
+		}
+	}
+	return false
+}
+
+// isEmojiRune tells whether the character is an emoji, or makes a
+// sequence of emoji: the pictographs, the flags, the skin tones, the
+// selector of the emoji presentation, the tags of the flags of regions
+func isEmojiRune(r rune) bool {
+	return (r >= 0x1F000 && r <= 0x1FAFF) || r == 0xFE0F || (r >= 0xE0020 && r <= 0xE007F)
 }

@@ -74,12 +74,16 @@ order. Other lines are drawn a character after another, as before.
 
 - The caret stands where the layout puts the character: in a right-to-left word the start of the
   word is at its right; a click lands on the character under the pointer.
-- Left and Right go over the text in its order (logical), a letter with its marks, or a conjunct of
-  an Indic script, as one; Delete removes such a group, Backspace one code point, as the system
-  editors do. Up and Down land at the start of a group.
+- Left and Right go over the text in its order (logical), a letter with its marks, a conjunct of
+  an Indic script, an emoji sequence (a family, a flag, a skin tone), as one; Delete removes such a
+  group, Backspace one code point, as the system editors do. Up and Down land at the start of a
+  group. `SetVisualCursorMovement(true)` makes Left and Right move on the screen: to the left and to
+  the right, through text of both directions.
 - A selection that takes in a part of a right-to-left run is painted in a few pieces, over the
   characters it holds.
-- The lines are aligned to the left of the box whatever their direction.
+- `SetTextAlign(ui.TextAlignStart)` places each line at the side its direction starts - a line
+  of Arabic or Hebrew at the right, the others at the left - the box of a right-to-left interface;
+  `TextAlignLeft` (the default), `TextAlignRight`, `TextAlignCenter` place all the lines so.
 
 ## Signals
 
