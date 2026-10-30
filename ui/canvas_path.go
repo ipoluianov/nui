@@ -66,11 +66,16 @@ const (
 	pathQuadTo
 	pathCubicTo
 	pathClose
+	// pathArc is an arc of an ellipse: the points p[0] + p[1]*cos(t) +
+	// p[2]*sin(t) for t from a[0] to a[0]+a[1]. p[1] and p[2] are two
+	// conjugate radii, so a transformed arc is an arc too, exact.
+	pathArc
 )
 
 type pathOp struct {
 	kind pathOpKind
 	p    [3]PointF
+	a    [2]float64 // pathArc: the start and the sweep, radians
 }
 
 // NewPath makes an empty path
@@ -166,24 +171,44 @@ func (p *Path) EllipticalArc(cx, cy, rx, ry, start, end float64) {
 		p.MoveTo(x0, y0)
 	}
 	sweep := end - start
-	if sweep == 0 {
+	if sweep == 0 || math.IsNaN(sweep) {
 		return
 	}
-	// Up to a quarter of a turn per cubic curve: within 0.03% of the circle
-	n := int(math.Ceil(math.Abs(sweep) / (math.Pi / 2)))
-	n = max(1, min(n, 64))
+	// More than a few turns draw nothing more
+	sweep = max(-maxArcSweep, min(sweep, maxArcSweep))
+	// Kept as an arc, not as curves near it: it is exact at any zoom - the
+	// arcs of a drawing zoomed far in stay on their centers and tangents
+	end = start + sweep
+	pt := PointF{cx + rx*math.Cos(end), cy + ry*math.Sin(end)}
+	p.ops = append(p.ops, pathOp{kind: pathArc, p: [3]PointF{{cx, cy}, {rx, 0}, {0, ry}}, a: [2]float64{start, sweep}})
+	p.cur = pt
+}
+
+// maxArcSweep is the largest sweep of an arc: four turns
+const maxArcSweep = 8 * math.Pi
+
+// arcPoint returns the point of the arc op at the angle t
+func arcPoint(c, u, v PointF, t float64) PointF {
+	cos, sin := math.Cos(t), math.Sin(t)
+	return PointF{c.X + u.X*cos + v.X*sin, c.Y + u.Y*cos + v.Y*sin}
+}
+
+// arcCubics calls f with cubic curves near the arc op, each of up to an
+// eighth of a turn (within 0.0004% of its radius): for SVG
+func arcCubics(op pathOp, f func(c1, c2, e PointF)) {
+	c, u, v := op.p[0], op.p[1], op.p[2]
+	start, sweep := op.a[0], op.a[1]
+	n := max(1, int(math.Ceil(math.Abs(sweep)/(math.Pi/4))))
 	step := sweep / float64(n)
 	k := 4.0 / 3.0 * math.Tan(step/4)
 	a := start
 	for i := 0; i < n; i++ {
 		b := a + step
-		cosA, sinA := math.Cos(a), math.Sin(a)
-		cosB, sinB := math.Cos(b), math.Sin(b)
-		p.CubicTo(
-			cx+rx*(cosA-k*sinA), cy+ry*(sinA+k*cosA),
-			cx+rx*(cosB+k*sinB), cy+ry*(sinB-k*cosB),
-			cx+rx*cosB, cy+ry*sinB,
-		)
+		p0, p1 := arcPoint(c, u, v, a), arcPoint(c, u, v, b)
+		// The tangents: the derivatives at a and b
+		d0 := PointF{-u.X*math.Sin(a) + v.X*math.Cos(a), -u.Y*math.Sin(a) + v.Y*math.Cos(a)}
+		d1 := PointF{-u.X*math.Sin(b) + v.X*math.Cos(b), -u.Y*math.Sin(b) + v.Y*math.Cos(b)}
+		f(PointF{p0.X + k*d0.X, p0.Y + k*d0.Y}, PointF{p1.X - k*d1.X, p1.Y - k*d1.Y}, p1)
 		a = b
 	}
 }
@@ -273,6 +298,10 @@ func (p *Path) Bounds() (minX, minY, maxX, maxY float64, ok bool) {
 			n = 2
 		case pathCubicTo:
 			n = 3
+		case pathArc:
+			x0, y0, x1, y1 := arcBounds(op)
+			minX, minY = math.Min(minX, x0), math.Min(minY, y0)
+			maxX, maxY = math.Max(maxX, x1), math.Max(maxY, y1)
 		}
 		for _, pt := range op.p[:n] {
 			minX, minY = math.Min(minX, pt.X), math.Min(minY, pt.Y)
@@ -282,11 +311,46 @@ func (p *Path) Bounds() (minX, minY, maxX, maxY float64, ok bool) {
 	return minX, minY, maxX, maxY, minX <= maxX
 }
 
+// arcBounds returns the box of the arc op: its ends and the extremes it
+// passes
+func arcBounds(op pathOp) (minX, minY, maxX, maxY float64) {
+	c, u, v := op.p[0], op.p[1], op.p[2]
+	start, sweep := op.a[0], op.a[1]
+	from, to := start, start+sweep
+	if sweep < 0 {
+		from, to = to, from
+	}
+	p := arcPoint(c, u, v, from)
+	minX, minY, maxX, maxY = p.X, p.Y, p.X, p.Y
+	add := func(t float64) {
+		p := arcPoint(c, u, v, t)
+		minX, minY = math.Min(minX, p.X), math.Min(minY, p.Y)
+		maxX, maxY = math.Max(maxX, p.X), math.Max(maxY, p.Y)
+	}
+	add(to)
+	// x and y are extreme where their derivatives are 0
+	for _, t0 := range []float64{math.Atan2(v.X, u.X), math.Atan2(v.Y, u.Y)} {
+		for _, t := range []float64{t0, t0 + math.Pi} {
+			// The first angle of t + 2*pi*k at or after from
+			t += 2 * math.Pi * math.Ceil((from-t)/(2*math.Pi))
+			for ; t <= to; t += 2 * math.Pi {
+				add(t)
+			}
+		}
+	}
+	return minX, minY, maxX, maxY
+}
+
 // flatPath is a path flattened to polylines in pixels of the image
 type flatPath struct {
 	pts []PointF
 	// The subpaths: pts[subs[i].from:subs[i].to]
 	subs []flatSub
+	// culling: the curves out of cull (minX, minY, maxX, maxY, in pixels)
+	// are lines, and the long ones are split until what is in it is
+	// accurate. Set before a flatten, which clears it.
+	culling bool
+	cull    [4]float64
 }
 
 type flatSub struct {
@@ -302,6 +366,7 @@ const flattenTolerance = 0.05
 // (ox + x*scale, oy + y*scale). Curves are split by Wang's formula into
 // lines within flattenTolerance of them.
 func (p *Path) flatten(fp *flatPath, ox, oy, scale float64) {
+	defer func() { fp.culling = false }()
 	fp.pts = fp.pts[:0]
 	fp.subs = fp.subs[:0]
 	tr := func(pt PointF) PointF { return PointF{ox + pt.X*scale, oy + pt.Y*scale} }
@@ -340,6 +405,13 @@ func (p *Path) flatten(fp *flatPath, ox, oy, scale float64) {
 			beginSeg()
 			c, e := tr(op.p[0]), tr(op.p[1])
 			ddx, ddy := cur.X-2*c.X+e.X, cur.Y-2*c.Y+e.Y
+			if fp.culling && rawCurveSteps(math.Hypot(ddx, ddy)/4) > maxCurveSteps {
+				// As a cubic, split where it is seen
+				fp.cubicCulled(cur, PointF{cur.X + 2*(c.X-cur.X)/3, cur.Y + 2*(c.Y-cur.Y)/3},
+					PointF{e.X + 2*(c.X-e.X)/3, e.Y + 2*(c.Y-e.Y)/3}, e, 0)
+				cur = e
+				continue
+			}
 			n := curveSteps(math.Hypot(ddx, ddy) / 4)
 			for i := 1; i <= n; i++ {
 				t := float64(i) / float64(n)
@@ -355,6 +427,11 @@ func (p *Path) flatten(fp *flatPath, ox, oy, scale float64) {
 			c1, c2, e := tr(op.p[0]), tr(op.p[1]), tr(op.p[2])
 			d1 := math.Hypot(cur.X-2*c1.X+c2.X, cur.Y-2*c1.Y+c2.Y)
 			d2 := math.Hypot(c1.X-2*c2.X+e.X, c1.Y-2*c2.Y+e.Y)
+			if fp.culling && rawCurveSteps(0.75*math.Max(d1, d2)) > maxCurveSteps {
+				fp.cubicCulled(cur, c1, c2, e, 0)
+				cur = e
+				continue
+			}
 			n := curveSteps(0.75 * math.Max(d1, d2))
 			for i := 1; i <= n; i++ {
 				t := float64(i) / float64(n)
@@ -366,6 +443,13 @@ func (p *Path) flatten(fp *flatPath, ox, oy, scale float64) {
 				})
 			}
 			cur = e
+		case pathArc:
+			beginSeg()
+			c := tr(op.p[0])
+			u := PointF{op.p[1].X * scale, op.p[1].Y * scale}
+			v := PointF{op.p[2].X * scale, op.p[2].Y * scale}
+			fp.arc(c, u, v, op.a[0], op.a[1])
+			cur = fp.pts[len(fp.pts)-1]
 		case pathClose:
 			if subStart >= 0 {
 				// A line after Close goes on from the start, in a new subpath
@@ -380,10 +464,121 @@ func (p *Path) flatten(fp *flatPath, ox, oy, scale float64) {
 // curveSteps returns how many lines a curve is split into, for the
 // measure of its bend m of Wang's formula: sqrt(m / tolerance)
 func curveSteps(m float64) int {
+	return min(rawCurveSteps(m), maxCurveSteps)
+}
+
+// maxCurveSteps is the most lines a curve is split into: a curve longer
+// than that is not accurate, unless the flattening is culled (then it is
+// split where it is seen, see cubicCulled)
+const maxCurveSteps = 1000
+
+// rawCurveSteps is curveSteps without the limit
+func rawCurveSteps(m float64) int {
 	if math.IsNaN(m) || m <= 0 {
 		return 1
 	}
-	return max(1, min(int(math.Ceil(math.Sqrt(m/flattenTolerance))), 1000))
+	return int(max(1, min(math.Ceil(math.Sqrt(m/flattenTolerance)), 1<<30)))
+}
+
+// arcSteps returns how many lines an arc of the radius (in pixels) and the
+// sweep is split into, within flattenTolerance of it
+func arcSteps(r, sweep float64) int {
+	if !(r > flattenTolerance) {
+		return max(1, int(math.Ceil(math.Abs(sweep)/(math.Pi/2))))
+	}
+	step := 2 * math.Acos(1-flattenTolerance/r)
+	return int(max(1, min(math.Ceil(math.Abs(sweep)/step), 1<<30)))
+}
+
+// maxArcSteps is the most lines an arc is split into when the flattening
+// is not culled
+const maxArcSteps = 4096
+
+// arc adds the points of the arc op (in pixels) after its start, the last
+// point added. A culled long arc is split in quarters, and those in halves
+// while they are long, and the pieces out of fp.cull are their chords, as
+// cubicCulled does.
+func (fp *flatPath) arc(c, u, v PointF, start, sweep float64) {
+	// The radius is at most the root of the sum of the squares of two
+	// conjugate radii
+	r := math.Sqrt(u.X*u.X + u.Y*u.Y + v.X*v.X + v.Y*v.Y)
+	n := arcSteps(r, sweep)
+	if fp.culling && n > maxCurveSteps {
+		q := max(1, int(math.Ceil(math.Abs(sweep)/(math.Pi/2))))
+		step := sweep / float64(q)
+		for i := 0; i < q; i++ {
+			fp.arcCulled(c, u, v, r, start+step*float64(i), step, 0)
+		}
+		return
+	}
+	n = min(n, maxArcSteps)
+	for i := 1; i <= n; i++ {
+		fp.pts = append(fp.pts, arcPoint(c, u, v, start+sweep*float64(i)/float64(n)))
+	}
+}
+
+// arcCulled adds a piece of an arc of up to a quarter of a turn
+func (fp *flatPath) arcCulled(c, u, v PointF, r, start, sweep float64, depth int) {
+	p0, p1 := arcPoint(c, u, v, start), arcPoint(c, u, v, start+sweep)
+	// The piece is in the triangle of its ends and of where the tangents
+	// at them cross
+	h := sweep / 2
+	tp := arcPoint(PointF{}, u, v, start+h)
+	k := 1 / math.Cos(h)
+	t := PointF{c.X + tp.X*k, c.Y + tp.Y*k}
+	minX, minY := min(p0.X, p1.X, t.X), min(p0.Y, p1.Y, t.Y)
+	maxX, maxY := max(p0.X, p1.X, t.X), max(p0.Y, p1.Y, t.Y)
+	if maxX < fp.cull[0] || maxY < fp.cull[1] || minX > fp.cull[2] || minY > fp.cull[3] {
+		fp.pts = append(fp.pts, p1)
+		return
+	}
+	n := arcSteps(r, sweep)
+	if n > maxCurveSteps && depth < 60 {
+		fp.arcCulled(c, u, v, r, start, h, depth+1)
+		fp.arcCulled(c, u, v, r, start+h, h, depth+1)
+		return
+	}
+	n = min(n, maxCurveSteps)
+	for i := 1; i <= n; i++ {
+		fp.pts = append(fp.pts, arcPoint(c, u, v, start+sweep*float64(i)/float64(n)))
+	}
+}
+
+// cubicCulled adds the cubic from p0 (the last point added) to e, split in
+// halves while it is too long to be flattened accurately at once. A piece
+// whose control points are all out of fp.cull is its chord: the chord and
+// the area between it and the curve are out of it too, so neither a fill
+// nor a stroke changes in it.
+func (fp *flatPath) cubicCulled(p0, c1, c2, e PointF, depth int) {
+	minX, minY := min(p0.X, c1.X, c2.X, e.X), min(p0.Y, c1.Y, c2.Y, e.Y)
+	maxX, maxY := max(p0.X, c1.X, c2.X, e.X), max(p0.Y, c1.Y, c2.Y, e.Y)
+	if maxX < fp.cull[0] || maxY < fp.cull[1] || minX > fp.cull[2] || minY > fp.cull[3] {
+		fp.pts = append(fp.pts, e)
+		return
+	}
+	d1 := math.Hypot(p0.X-2*c1.X+c2.X, p0.Y-2*c1.Y+c2.Y)
+	d2 := math.Hypot(c1.X-2*c2.X+e.X, c1.Y-2*c2.Y+e.Y)
+	n := rawCurveSteps(0.75 * math.Max(d1, d2))
+	if n > maxCurveSteps && depth < 48 {
+		// de Casteljau at the middle
+		mid := func(a, b PointF) PointF { return PointF{(a.X + b.X) / 2, (a.Y + b.Y) / 2} }
+		ab, bc, cd := mid(p0, c1), mid(c1, c2), mid(c2, e)
+		abc, bcd := mid(ab, bc), mid(bc, cd)
+		m := mid(abc, bcd)
+		fp.cubicCulled(p0, ab, abc, m, depth+1)
+		fp.cubicCulled(m, bcd, cd, e, depth+1)
+		return
+	}
+	n = min(n, maxCurveSteps)
+	for i := 1; i <= n; i++ {
+		t := float64(i) / float64(n)
+		u := 1 - t
+		a, b, cc, d := u*u*u, 3*u*u*t, 3*u*t*t, t*t*t
+		fp.pts = append(fp.pts, PointF{
+			a*p0.X + b*c1.X + cc*c2.X + d*e.X,
+			a*p0.Y + b*c1.Y + cc*c2.Y + d*e.Y,
+		})
+	}
 }
 
 // LineJoin is the shape of the corners of a stroked line
@@ -428,6 +623,11 @@ type StrokeStyle struct {
 	Dash []float64
 	// DashOffset is where in the pattern the line starts, in logical pixels
 	DashOffset float64
+	// NonScaling keeps the width and the dashes in logical pixels of the
+	// canvas under its transform: the path is transformed, its line is
+	// not (SVG's vector-effect="non-scaling-stroke"). The lines of a
+	// drawing stay as thick at any zoom, as in CAD programs.
+	NonScaling bool
 }
 
 // FillPath fills the inside of the path with the color, anti-aliased, within
@@ -513,6 +713,9 @@ func (c *Canvas) fillPathWith(p *Path, blend func(i, m uint32, px, py int)) {
 	}
 	fp := flatPaths.Get().(*flatPath)
 	defer flatPaths.Put(fp)
+	clip := c.clipRect().Intersect(c.rgba.Rect)
+	fp.culling = true
+	fp.cull = [4]float64{float64(clip.Min.X) - 2, float64(clip.Min.Y) - 2, float64(clip.Max.X) + 2, float64(clip.Max.Y) + 2}
 	p.flatten(fp, float64(c.state.translateX), float64(c.state.translateY), c.scale)
 
 	pb := polyBuilders.Get().(*polyBuilder)
@@ -534,19 +737,16 @@ func (c *Canvas) StrokePath(p *Path, style StrokeStyle, col color.Color) {
 		return
 	}
 	if c.state.hasXf {
+		if style.NonScaling {
+			c.withPathXf(p, func(tp *Path) { c.StrokePath(tp, style, col) })
+			return
+		}
 		c.strokePathXf(p, style, col)
 		return
 	}
 	if c.rec != nil {
 		c.rec.strokePath(c, p, style, col)
 	}
-	fp := flatPaths.Get().(*flatPath)
-	defer flatPaths.Put(fp)
-	p.flatten(fp, float64(c.state.translateX), float64(c.state.translateY), c.scale)
-
-	pb := polyBuilders.Get().(*polyBuilder)
-	defer polyBuilders.Put(pb)
-	pb.reset()
 	// What lies more than the width past the clip draws nothing there
 	width := style.Width
 	if width <= 0 {
@@ -555,12 +755,22 @@ func (c *Canvas) StrokePath(p *Path, style StrokeStyle, col color.Color) {
 	hw := width * c.scale / 2
 	margin := hw*max(style.MiterLimit, 4) + 2
 	clip := c.clipRect().Intersect(c.rgba.Rect)
-	pb.cull = [4]float64{float64(clip.Min.X) - margin, float64(clip.Min.Y) - margin, float64(clip.Max.X) + margin, float64(clip.Max.Y) + margin}
+	cull := [4]float64{float64(clip.Min.X) - margin, float64(clip.Min.Y) - margin, float64(clip.Max.X) + margin, float64(clip.Max.Y) + margin}
+
+	fp := flatPaths.Get().(*flatPath)
+	defer flatPaths.Put(fp)
+	fp.culling, fp.cull = true, cull
+	p.flatten(fp, float64(c.state.translateX), float64(c.state.translateY), c.scale)
+
+	pb := polyBuilders.Get().(*polyBuilder)
+	defer polyBuilders.Put(pb)
+	pb.reset()
+	pb.cull = cull
 	pb.culling = true
 
 	st := strokeStyleInPixels(style, c.scale)
 	for _, sub := range fp.subs {
-		strokeSubpath(pb, fp.pts[sub.from:sub.to], sub.closed, st)
+		strokeSubpathCulled(pb, fp.pts[sub.from:sub.to], sub.closed, st, cull)
 	}
 	c.rasterizePolys(pb, func(i, m uint32, _, _ int) {
 		c.mixPixelAt(int(i), r, g, b, (a*m+127)/255)
@@ -609,8 +819,8 @@ type polyBuilder struct {
 	cull    [4]float64
 	// evenOdd fills by FillRuleEvenOdd
 	evenOdd bool
-	// The scratch for dashes and for the clipping of polygons
-	dash, clipA, clipB []PointF
+	// The scratch for dashes and for the clipping of polygons and lines
+	dash, clipA, clipB, run []PointF
 	// The bounds of the polygons (minX, minY, maxX, maxY), the polygons of
 	// the bands and their heights, for rasterizePolys
 	boxes  [][4]float64

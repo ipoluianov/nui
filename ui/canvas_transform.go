@@ -121,8 +121,16 @@ func (m Matrix) meanScale() float64 {
 // curves, so the shape is exact at any scale
 func (p *Path) Transform(m Matrix) {
 	for i := range p.ops {
-		for k := range p.ops[i].p {
-			p.ops[i].p[k] = m.ApplyPoint(p.ops[i].p[k])
+		op := &p.ops[i]
+		if op.kind == pathArc {
+			// The center moves, the radii turn and stretch
+			op.p[0] = m.ApplyPoint(op.p[0])
+			op.p[1].X, op.p[1].Y = m.ApplyVector(op.p[1].X, op.p[1].Y)
+			op.p[2].X, op.p[2].Y = m.ApplyVector(op.p[2].X, op.p[2].Y)
+			continue
+		}
+		for k := range op.p {
+			op.p[k] = m.ApplyPoint(op.p[k])
 		}
 	}
 	p.cur = m.ApplyPoint(p.cur)

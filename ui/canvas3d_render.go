@@ -38,6 +38,9 @@ type Renderer3D struct {
 	proj   []int32
 	tex    map[image.Image]*rTexture
 
+	// The cutting planes of the object being added, in its coordinates:
+	// a point p is kept where plane[0..2]·p + plane[3] >= 0
+	cuts    [][4]float64
 	persp   bool
 	ambient float32
 	lineMi  int32 // the material of the lines of the frame, -1 - none yet
@@ -75,7 +78,12 @@ const (
 type clipVert struct {
 	x, y, z, w float64
 	a          [nAttrs]float32
+	// cut is how far it is on the kept side of each cutting plane
+	cut [maxClipPlanes]float64
 }
+
+// maxClipPlanes is the most cutting planes of a scene that are used
+const maxClipPlanes = 6
 
 // rVertex is a corner on the buffer: x, y in samples, the depth key (less
 // is nearer), 1/w and the attributes times 1/w, for the perspective
@@ -276,10 +284,24 @@ func (r *Renderer3D) draw(w, h int, px float32, scene *Scene3D, cam Camera) {
 		model := o.model()
 		mv := view.Mul(model)
 		mvp := proj.Mul(mv)
+		r.setCuts(scene, model)
 		r.transformMesh(o.Mesh, mv, mvp, rm)
 		translucent := base.A < 255
 		if !mat.Wireframe {
-			r.assembleMesh(o.Mesh, mi, mat, translucent, mv.normalMatrix())
+			// The back sides seen through a cut are the inside: drawn in
+			// the color of the section
+			back := int32(-1)
+			if mat.DoubleSided {
+				back = mi
+			} else if len(r.cuts) > 0 && !translucent {
+				sc := scene.SectionColor
+				if sc.A == 0 {
+					sc = color.RGBA{uint8(int(base.R) * 3 / 5), uint8(int(base.G) * 3 / 5), uint8(int(base.B) * 3 / 5), 255}
+				}
+				back = int32(len(r.mats))
+				r.mats = append(r.mats, rMat{base: rgbaF(sc), unlit: true})
+			}
+			r.assembleMesh(o.Mesh, mi, back, mat, translucent, mv.normalMatrix())
 		}
 		edgeCol, edgeW := mat.EdgeColor, mat.EdgeWidth
 		if mat.Wireframe {
@@ -294,6 +316,17 @@ func (r *Renderer3D) draw(w, h int, px float32, scene *Scene3D, cam Camera) {
 			for i := 0; i+1 < len(edges); i += 2 {
 				r.addLine(r.clipV[edges[i]], r.clipV[edges[i+1]], col, float32(edgeW)*px)
 			}
+			// And the outline of the curved sides seen from here: a
+			// cylinder shows its sides as a drawing does
+			if !mat.Wireframe {
+				if inv, ok := model.Inverse(); ok {
+					eye := inv.MulPoint(cam.Position)
+					dir := inv.MulDir(cam.Target.Sub(cam.Position))
+					o.Mesh.outlineEdges(eye, dir, cam.Orthographic, func(a, b int) {
+						r.addLine(r.clipV[a], r.clipV[b], col, float32(edgeW)*px)
+					})
+				}
+			}
 		}
 	}
 	// Forget the textures not drawn any more
@@ -302,6 +335,7 @@ func (r *Renderer3D) draw(w, h int, px float32, scene *Scene3D, cam Camera) {
 			delete(r.tex, k)
 		}
 	}
+	r.cuts = r.cuts[:0]
 	vp := proj.Mul(view)
 	for _, l := range scene.Lines {
 		a, b := clipPoint(vp, l.A), clipPoint(vp, l.B)
@@ -371,6 +405,29 @@ func (r *Renderer3D) setupLights(scene *Scene3D, view Mat4) {
 	}
 }
 
+// setCuts sets the cutting planes of the scene for the object of the
+// model matrix, in its coordinates
+func (r *Renderer3D) setCuts(scene *Scene3D, model Mat4) {
+	r.cuts = r.cuts[:0]
+	for _, pl := range scene.ClipPlanes {
+		if len(r.cuts) == maxClipPlanes {
+			break
+		}
+		n := pl.Normal.Normalize()
+		if n == (Vec3{}) {
+			continue
+		}
+		// n·(L p + t) - n·q = (Lᵀ n)·p + n·(t - q)
+		t := Vec3{model[3], model[7], model[11]}
+		ln := Vec3{
+			model[0]*n.X + model[4]*n.Y + model[8]*n.Z,
+			model[1]*n.X + model[5]*n.Y + model[9]*n.Z,
+			model[2]*n.X + model[6]*n.Y + model[10]*n.Z,
+		}
+		r.cuts = append(r.cuts, [4]float64{ln.X, ln.Y, ln.Z, n.Dot(t.Sub(pl.Point))})
+	}
+}
+
 func clipPoint(m Mat4, p Vec3) clipVert {
 	x, y, z, w := m.mul4(p)
 	return clipVert{x: x, y: y, z: z, w: w}
@@ -395,6 +452,9 @@ func (r *Renderer3D) transformMesh(m *Mesh, mv, mvp Mat4, rm rMat) {
 			p := m.Positions[i]
 			cv := &r.clipV[i]
 			cv.x, cv.y, cv.z, cv.w = mvp.mul4(p)
+			for k, c := range r.cuts {
+				cv.cut[k] = c[0]*p.X + c[1]*p.Y + c[2]*p.Z + c[3]
+			}
 			if hasN && !rm.unlit {
 				nn := nm.MulDir(m.Normals[i])
 				cv.a[attrN], cv.a[attrN+1], cv.a[attrN+2] = float32(nn.X), float32(nn.Y), float32(nn.Z)
@@ -477,7 +537,7 @@ func nearDist(v *clipVert) float64 { return v.z + v.w }
 
 // assembleMesh makes the triangles of the mesh, its corners already in
 // r.clipV
-func (r *Renderer3D) assembleMesh(m *Mesh, mi int32, mat Material, translucent bool, nm Mat4) {
+func (r *Renderer3D) assembleMesh(m *Mesh, mi, back int32, mat Material, translucent bool, nm Mat4) {
 	n := len(m.Positions)
 	if cap(r.proj) < n {
 		r.proj = make([]int32, n)
@@ -493,6 +553,7 @@ func (r *Renderer3D) assembleMesh(m *Mesh, mi int32, mat Material, translucent b
 		}
 		return r.proj[i]
 	}
+tris:
 	for t := 0; t < m.TriangleCount(); t++ {
 		ia, ib, ic := m.triangle(t)
 		if ia >= n || ib >= n || ic >= n {
@@ -502,7 +563,18 @@ func (r *Renderer3D) assembleMesh(m *Mesh, mi int32, mat Material, translucent b
 		if outside(a, b, c) {
 			continue
 		}
-		if mat.Flat || nearDist(a) < 0 || nearDist(b) < 0 || nearDist(c) < 0 {
+		// Cut away all, or in part
+		cut := false
+		for k := range r.cuts {
+			da, db, dc := a.cut[k], b.cut[k], c.cut[k]
+			if da < 0 && db < 0 && dc < 0 {
+				continue tris
+			}
+			if da < 0 || db < 0 || dc < 0 {
+				cut = true
+			}
+		}
+		if cut || mat.Flat || nearDist(a) < 0 || nearDist(b) < 0 || nearDist(c) < 0 {
 			cv := [3]clipVert{*a, *b, *c}
 			if mat.Flat && !mat.Unlit {
 				// The normal of the face, in the camera's space
@@ -512,16 +584,16 @@ func (r *Renderer3D) assembleMesh(m *Mesh, mi int32, mat Material, translucent b
 					cv[k].a[attrN], cv[k].a[attrN+1], cv[k].a[attrN+2] = float32(fn.X), float32(fn.Y), float32(fn.Z)
 				}
 			}
-			r.addClipped(cv, mi, mat.DoubleSided, translucent)
+			r.addClipped(cv, mi, back, translucent)
 			continue
 		}
-		r.addTri([3]int32{vert(ia), vert(ib), vert(ic)}, mi, mat.DoubleSided, translucent)
+		r.addTri([3]int32{vert(ia), vert(ib), vert(ic)}, mi, back, translucent)
 	}
 }
 
-// addTri adds the triangle of the projected corners, unless it shows its
-// back and is not double sided
-func (r *Renderer3D) addTri(v [3]int32, mi int32, doubleSided, translucent bool) {
+// addTri adds the triangle of the projected corners; one that shows its
+// back is drawn with the material back, or left out if it is -1
+func (r *Renderer3D) addTri(v [3]int32, mi, back int32, translucent bool) {
 	a, b, c := &r.verts[v[0]], &r.verts[v[1]], &r.verts[v[2]]
 	area := (b.x-a.x)*(c.y-a.y) - (b.y-a.y)*(c.x-a.x)
 	if area == 0 || math.IsNaN(float64(area)) {
@@ -530,8 +602,11 @@ func (r *Renderer3D) addTri(v [3]int32, mi int32, doubleSided, translucent bool)
 	// y goes down the buffer: the front, counterclockwise in the scene,
 	// is clockwise here
 	flip := area > 0
-	if flip && !doubleSided {
-		return
+	if flip {
+		if back < 0 {
+			return
+		}
+		mi = back
 	}
 	t := rTri{v: v, mat: mi, flip: flip}
 	x0 := min(a.x, b.x, c.x)
@@ -553,23 +628,38 @@ func (r *Renderer3D) addTri(v [3]int32, mi int32, doubleSided, translucent bool)
 	}
 }
 
-// addClipped adds the triangle cut by the near plane: what is in front of
-// it, one or two triangles
-func (r *Renderer3D) addClipped(cv [3]clipVert, mi int32, doubleSided, translucent bool) {
-	var poly [4]clipVert
-	n := 0
-	for i := 0; i < 3; i++ {
-		p, q := &cv[i], &cv[(i+1)%3]
-		dp, dq := nearDist(p), nearDist(q)
-		if dp >= 0 {
-			poly[n] = *p
-			n++
+// addClipped adds the triangle cut by the near plane and by the cutting
+// planes: what is in front of them, a fan of triangles
+func (r *Renderer3D) addClipped(cv [3]clipVert, mi, back int32, translucent bool) {
+	// Each plane adds a corner at most: 3 + 1 + maxClipPlanes
+	var bufA, bufB [3 + 1 + maxClipPlanes]clipVert
+	poly := bufA[:0]
+	poly = append(poly, cv[:]...)
+	cutBy := func(dist func(*clipVert) float64) {
+		out := bufB[:0]
+		if &poly[0] == &bufB[0] {
+			out = bufA[:0]
 		}
-		if (dp >= 0) != (dq >= 0) {
-			poly[n] = lerpClip(p, q, dp/(dp-dq))
-			n++
+		for i := range poly {
+			p, q := &poly[i], &poly[(i+1)%len(poly)]
+			dp, dq := dist(p), dist(q)
+			if dp >= 0 {
+				out = append(out, *p)
+			}
+			if (dp >= 0) != (dq >= 0) {
+				out = append(out, lerpClip(p, q, dp/(dp-dq)))
+			}
 		}
+		poly = out
 	}
+	cutBy(nearDist)
+	for k := range r.cuts {
+		if len(poly) < 3 {
+			return
+		}
+		cutBy(func(v *clipVert) float64 { return v.cut[k] })
+	}
+	n := len(poly)
 	if n < 3 {
 		return
 	}
@@ -578,7 +668,7 @@ func (r *Renderer3D) addClipped(cv [3]clipVert, mi int32, doubleSided, transluce
 		r.verts = append(r.verts, r.project(&poly[i]))
 	}
 	for i := int32(1); i+1 < int32(n); i++ {
-		r.addTri([3]int32{base, base + i, base + i + 1}, mi, doubleSided, translucent)
+		r.addTri([3]int32{base, base + i, base + i + 1}, mi, back, translucent)
 	}
 }
 
@@ -592,6 +682,9 @@ func lerpClip(p, q *clipVert, t float64) clipVert {
 	tf := float32(t)
 	for k := range v.a {
 		v.a[k] = p.a[k] + (q.a[k]-p.a[k])*tf
+	}
+	for k := range v.cut {
+		v.cut[k] = p.cut[k] + (q.cut[k]-p.cut[k])*t
 	}
 	return v
 }
@@ -609,14 +702,19 @@ func (r *Renderer3D) lineMat() int32 {
 // facing the viewer, width samples wide, a little nearer than it is: the
 // edges of a surface and the lines on it do not sink into it
 func (r *Renderer3D) addLine(a, b clipVert, col [4]float32, width float32) {
-	da, db := nearDist(&a), nearDist(&b)
-	if da < 0 && db < 0 {
-		return
-	}
-	if da < 0 {
-		a = lerpClip(&a, &b, da/(da-db))
-	} else if db < 0 {
-		b = lerpClip(&b, &a, db/(db-da))
+	for k := -1; k < len(r.cuts); k++ {
+		da, db := nearDist(&a), nearDist(&b)
+		if k >= 0 {
+			da, db = a.cut[k], b.cut[k]
+		}
+		if da < 0 && db < 0 {
+			return
+		}
+		if da < 0 {
+			a = lerpClip(&a, &b, da/(da-db))
+		} else if db < 0 {
+			b = lerpClip(&b, &a, db/(db-da))
+		}
 	}
 	pa, pb := r.project(&a), r.project(&b)
 	dx, dy := pb.x-pa.x, pb.y-pa.y
@@ -652,8 +750,8 @@ func (r *Renderer3D) addLine(a, b clipVert, col [4]float32, width float32) {
 		r.verts = append(r.verts, bias(v))
 	}
 	translucent := col[3] < 1
-	r.addTri([3]int32{base, base + 1, base + 2}, mi, true, translucent)
-	r.addTri([3]int32{base, base + 2, base + 3}, mi, true, translucent)
+	r.addTri([3]int32{base, base + 1, base + 2}, mi, mi, translucent)
+	r.addTri([3]int32{base, base + 2, base + 3}, mi, mi, translucent)
 	r.stats.Lines++
 }
 

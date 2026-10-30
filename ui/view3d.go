@@ -54,6 +54,8 @@ type View3D struct {
 	drag                 view3DDrag
 	pickOnHover          bool
 	hover                *Object3D
+	gizmo                bool
+	gizmoEnds            [3]PointF // where the ends of the axes of the gizmo were drawn
 
 	// The picture of the last paint, drawn again while nothing it shows
 	// changed: the window repaints for the other widgets too
@@ -195,6 +197,99 @@ func (v *View3D) Hovered() *Object3D { return v.hover }
 func (v *View3D) SetOverlay(f func(cnv *Canvas)) {
 	v.overlay = f
 	v.Update()
+}
+
+// SetAxesGizmo shows the axes of the scene in the lower left corner, turned
+// as the view is: x red, y green, z blue. A click on the end of an axis
+// looks along it; a second click, from the other side.
+func (v *View3D) SetAxesGizmo(on bool) {
+	v.gizmo = on
+	v.Update()
+}
+
+// gizmoGeometry returns the center of the gizmo and the length of its axes
+func (v *View3D) gizmoGeometry() (cx, cy, length float64) {
+	return 42, float64(v.Height()) - 42, 28
+}
+
+func (v *View3D) paintGizmo(cnv *Canvas) {
+	cx, cy, length := v.gizmoGeometry()
+	view := v.Camera().ViewMatrix()
+	type axis struct {
+		dir   Vec3
+		col   color.RGBA
+		name  string
+		depth float64
+		end   PointF
+	}
+	axes := []axis{
+		{dir: Vec3{1, 0, 0}, col: color.RGBA{220, 60, 60, 255}, name: "X"},
+		{dir: Vec3{0, 1, 0}, col: color.RGBA{70, 170, 70, 255}, name: "Y"},
+		{dir: Vec3{0, 0, 1}, col: color.RGBA{60, 110, 230, 255}, name: "Z"},
+	}
+	for i := range axes {
+		d := view.MulDir(axes[i].dir)
+		axes[i].end = PointF{cx + d.X*length, cy - d.Y*length}
+		axes[i].depth = d.Z
+		v.gizmoEnds[i] = axes[i].end
+	}
+	// The far ones first
+	order := []int{0, 1, 2}
+	for i := 1; i < 3; i++ {
+		for k := i; k > 0 && axes[order[k]].depth < axes[order[k-1]].depth; k-- {
+			order[k], order[k-1] = order[k-1], order[k]
+		}
+	}
+	cnv.Save()
+	defer cnv.Restore()
+	cnv.SetFontSize(10)
+	cnv.SetFontBold(true)
+	cnv.SetHAlign(HAlignCenter)
+	cnv.SetVAlign(VAlignCenter)
+	for _, i := range order {
+		a := axes[i]
+		line := NewPath()
+		line.MoveTo(cx, cy)
+		line.LineTo(a.end.X, a.end.Y)
+		cnv.StrokePath(line, StrokeStyle{Width: 2, Cap: LineCapRound}, a.col)
+		cnv.FillCircle(a.end.X, a.end.Y, 8, a.col)
+		cnv.SetColor(color.RGBA{255, 255, 255, 255})
+		cnv.DrawText(int(math.Round(a.end.X))-8, int(math.Round(a.end.Y))-8, 16, 16, a.name)
+	}
+}
+
+// gizmoClick looks along the axis whose end of the gizmo is at the point;
+// false if none is
+func (v *View3D) gizmoClick(x, y int) bool {
+	if !v.gizmo {
+		return false
+	}
+	for i, e := range v.gizmoEnds {
+		if math.Hypot(float64(x)+0.5-e.X, float64(y)+0.5-e.Y) > 9 {
+			continue
+		}
+		yaw, pitch := v.yaw, v.pitch
+		switch i {
+		case 0:
+			yaw, pitch = math.Pi/2, 0
+		case 1:
+			yaw, pitch = 0, clampPitch(math.Pi/2)
+		case 2:
+			yaw, pitch = 0, 0
+		}
+		// Already looking along it: from the other side
+		if math.Abs(math.Remainder(v.yaw-yaw, 2*math.Pi)) < 1e-3 && math.Abs(v.pitch-pitch) < 1e-3 {
+			if i == 1 {
+				pitch = -pitch
+			} else {
+				yaw += math.Pi
+			}
+		}
+		v.yaw, v.pitch = yaw, pitch
+		v.viewChanged()
+		return true
+	}
+	return false
 }
 
 // SetAutoRotate turns the view around the target by speed radians a
@@ -374,6 +469,9 @@ func (v *View3D) paint(cnv *Canvas) {
 		v.overlay(cnv)
 		cnv.Restore()
 	}
+	if v.gizmo {
+		v.paintGizmo(cnv)
+	}
 }
 
 // copyPixels copies the picture to the rectangle of the image
@@ -459,7 +557,7 @@ func (v *View3D) ProcessMouseUp(button MouseButton, x int, y int, mods KeyModifi
 	if v.drag.active && button == v.drag.button {
 		moved := v.drag.moved
 		v.drag.active = false
-		if !moved && button == MouseButtonLeft {
+		if !moved && button == MouseButtonLeft && !v.gizmoClick(x, y) {
 			if hit, ok := v.PickAt(x, y); ok {
 				v.OnPick.Emit(hit)
 			}

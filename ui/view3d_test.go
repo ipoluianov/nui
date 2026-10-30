@@ -163,3 +163,44 @@ func TestView3DCache(t *testing.T) {
 		t.Fatalf("the shrunk box still covers %v", px)
 	}
 }
+
+// A click on an axis of the gizmo looks along it, a second one from the
+// other side
+func TestView3DGizmo(t *testing.T) {
+	view, w := newView3DForm(t)
+	view.SetAxesGizmo(true)
+	// The red axis X is drawn in the lower left corner
+	img := w.Screenshot()
+	at := uitest.At(view, 0, 0)
+	found := false
+	for y := view.Height() - 84; y < view.Height(); y++ {
+		for x := 0; x < 84; x++ {
+			if c := img.RGBAAt(at.X+x, at.Y+y); c.R > 200 && c.G < 80 && c.B < 80 {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Fatal("no red axis drawn")
+	}
+	view.SetView(ui.Vec3{}, 5, 0.3, 0.2)
+	w.Screenshot()
+	p := gizmoEnd(view, 0)
+	w.Click(uitest.At(view, int(p.X), int(p.Y)))
+	if _, _, yaw, pitch := view.View(); math.Abs(yaw-math.Pi/2) > 1e-9 || pitch != 0 {
+		t.Fatalf("X: yaw %v pitch %v", yaw, pitch)
+	}
+	w.Screenshot()
+	p = gizmoEnd(view, 0)
+	w.Click(uitest.At(view, int(p.X), int(p.Y)))
+	if _, _, yaw, _ := view.View(); math.Abs(yaw-3*math.Pi/2) > 1e-9 {
+		t.Fatalf("X again: yaw %v", yaw)
+	}
+}
+
+// gizmoEnd returns where the end of the axis is drawn, as the gizmo does
+func gizmoEnd(view *ui.View3D, axis int) ui.PointF {
+	dir := [3]ui.Vec3{{X: 1}, {Y: 1}, {Z: 1}}[axis]
+	d := view.Camera().ViewMatrix().MulDir(dir)
+	return ui.PointF{X: 42 + d.X*28, Y: float64(view.Height()) - 42 - d.Y*28}
+}

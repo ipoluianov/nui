@@ -132,6 +132,8 @@ const (
 	MouseCursorResizeHor  = platforms.MouseCursorResizeHor
 	MouseCursorResizeVer  = platforms.MouseCursorResizeVer
 	MouseCursorIBeam      = platforms.MouseCursorIBeam
+	MouseCursorCross      = platforms.MouseCursorCross
+	MouseCursorMove       = platforms.MouseCursorMove
 	MouseButtonLeft       = platforms.MouseButtonLeft
 	MouseButtonMiddle     = platforms.MouseButtonMiddle
 	MouseButtonRight      = platforms.MouseButtonRight

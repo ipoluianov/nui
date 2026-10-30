@@ -159,17 +159,39 @@ func (c *Canvas) strokePathXf(p *Path, style StrokeStyle, col color.Color) {
 	// Flattened at the density of the pixels: k of them per unit
 	fp := flatPaths.Get().(*flatPath)
 	defer flatPaths.Put(fp)
+	st := strokeStyleInPixels(style, k)
+	// From k per unit to the pixels
+	pm := ScalingMatrix(1/k, 1/k).Then(m)
+	// What is seen, in k per unit: the box of the clip taken back, with
+	// the reach of the line around it
+	cull, culled := [4]float64{}, false
+	if inv, ok := pm.Invert(); ok {
+		clip := c.clipRect().Intersect(c.rgba.Rect)
+		cull = [4]float64{math.Inf(1), math.Inf(1), math.Inf(-1), math.Inf(-1)}
+		for _, q := range [4]PointF{{float64(clip.Min.X), float64(clip.Min.Y)}, {float64(clip.Max.X), float64(clip.Min.Y)},
+			{float64(clip.Min.X), float64(clip.Max.Y)}, {float64(clip.Max.X), float64(clip.Max.Y)}} {
+			q = inv.ApplyPoint(q)
+			cull = [4]float64{min(cull[0], q.X), min(cull[1], q.Y), max(cull[2], q.X), max(cull[3], q.Y)}
+		}
+		// Two pixels taken back are at most this long
+		px := 2 * math.Sqrt(inv.A*inv.A+inv.B*inv.B+inv.C*inv.C+inv.D*inv.D)
+		margin := st.Width/2*st.MiterLimit + px
+		cull = [4]float64{cull[0] - margin, cull[1] - margin, cull[2] + margin, cull[3] + margin}
+		culled = true
+	}
+	fp.culling, fp.cull = culled, cull
 	p.flatten(fp, 0, 0, k)
 
 	pb := polyBuilders.Get().(*polyBuilder)
 	defer polyBuilders.Put(pb)
 	pb.reset()
-	st := strokeStyleInPixels(style, k)
 	for _, sub := range fp.subs {
-		strokeSubpath(pb, fp.pts[sub.from:sub.to], sub.closed, st)
+		if culled {
+			strokeSubpathCulled(pb, fp.pts[sub.from:sub.to], sub.closed, st, cull)
+		} else {
+			strokeSubpath(pb, fp.pts[sub.from:sub.to], sub.closed, st)
+		}
 	}
-	// From k per unit to the pixels
-	pm := ScalingMatrix(1/k, 1/k).Then(m)
 	for i, pt := range pb.pts {
 		pb.pts[i] = pm.ApplyPoint(pt)
 	}

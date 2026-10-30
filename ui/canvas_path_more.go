@@ -217,6 +217,10 @@ func (p *Path) AddPath(q *Path) {
 			p.QuadTo(op.p[0].X, op.p[0].Y, op.p[1].X, op.p[1].Y)
 		case pathCubicTo:
 			p.CubicTo(op.p[0].X, op.p[0].Y, op.p[1].X, op.p[1].Y, op.p[2].X, op.p[2].Y)
+		case pathArc:
+			// Its start is the current point, as when it was added
+			p.ops = append(p.ops, op)
+			p.cur = arcPoint(op.p[0], op.p[1], op.p[2], op.a[0]+op.a[1])
 		case pathClose:
 			p.Close()
 		}

@@ -137,6 +137,10 @@ func svgPathData(p *Path, ox, oy float64) string {
 			b.WriteString("Q" + pt(op.p[0]) + " " + pt(op.p[1]))
 		case pathCubicTo:
 			b.WriteString("C" + pt(op.p[0]) + " " + pt(op.p[1]) + " " + pt(op.p[2]))
+		case pathArc:
+			arcCubics(op, func(c1, c2, e PointF) {
+				b.WriteString("C" + pt(c1) + " " + pt(c2) + " " + pt(e))
+			})
 		case pathClose:
 			b.WriteString("Z")
 		}

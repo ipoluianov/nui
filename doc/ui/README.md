@@ -62,7 +62,9 @@ Short reference for `ui` controls. Code snippets are intentionally minimal—see
 - [Chart](content/chart.md)
 - [TimeChart](content/timechart.md)
 - [Canvas: paths, transforms, gradients, patterns, shadows, layers, SVG](content/canvas.md)
-- [3D: scenes, models (OBJ, STL), surfaces, point clouds, View3D](content/3d.md)
+- [3D: scenes, models (OBJ, STL), surfaces, point clouds, sections, extrusions, View3D](content/3d.md)
+- [View2D: a drawing in its own units, zoom, pan, grid, box selection; SpatialIndex](content/view2d.md)
+- [Building CAD programs with nui](content/cad.md)
 - [ImageBox](content/imagebox.md)
 - [ZoomView and ScrollBar](content/zoomview.md)
 

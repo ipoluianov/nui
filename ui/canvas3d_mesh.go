@@ -36,6 +36,11 @@ type Mesh struct {
 	edges     []int
 	creases   []int
 	edgesFrom int // len(Indices) they were made of
+	// The other edges between two triangles, and the planes of the
+	// triangles: the outline seen from a point is made of those between a
+	// triangle facing it and one facing away
+	smooth []meshSmoothEdge
+	faces  []meshFace
 	// The bounds, made when first needed
 	boundsOK bool
 	lo, hi   Vec3
@@ -201,9 +206,11 @@ func (m *Mesh) wireEdges(all bool) []int {
 		n      Vec3
 		count  int
 		crease bool
+		f0, f1 int32
 	}
 	found := make(map[pair]int, m.TriangleCount()*2)
 	var edges []edge
+	m.faces = make([]meshFace, m.TriangleCount())
 	creaseCos := math.Cos(30 * math.Pi / 180)
 	for t := 0; t < m.TriangleCount(); t++ {
 		i := [3]int{}
@@ -213,6 +220,7 @@ func (m *Mesh) wireEdges(all bool) []int {
 		}
 		p0, p1, p2 := m.Positions[i[0]], m.Positions[i[1]], m.Positions[i[2]]
 		fn := p1.Sub(p0).Cross(p2.Sub(p0)).Normalize()
+		m.faces[t] = meshFace{p0, fn}
 		for k := 0; k < 3; k++ {
 			a, b := i[k], i[(k+1)%3]
 			pa, pb := m.Positions[a], m.Positions[b]
@@ -221,20 +229,23 @@ func (m *Mesh) wireEdges(all bool) []int {
 			}
 			if e, ok := found[pair{pa, pb}]; ok {
 				edges[e].count++
+				edges[e].f1 = int32(t)
 				if fn.Dot(edges[e].n) < creaseCos {
 					edges[e].crease = true
 				}
 				continue
 			}
 			found[pair{pa, pb}] = len(edges)
-			edges = append(edges, edge{a: a, b: b, n: fn, count: 1})
+			edges = append(edges, edge{a: a, b: b, n: fn, count: 1, f0: int32(t), f1: -1})
 		}
 	}
-	m.edges, m.creases = make([]int, 0, len(edges)*2), nil
+	m.edges, m.creases, m.smooth = make([]int, 0, len(edges)*2), nil, nil
 	for _, e := range edges {
 		m.edges = append(m.edges, e.a, e.b)
 		if e.count == 1 || e.crease {
 			m.creases = append(m.creases, e.a, e.b)
+		} else if e.count == 2 {
+			m.smooth = append(m.smooth, meshSmoothEdge{e.a, e.b, e.f0, e.f1})
 		}
 	}
 	m.edgesFrom = key
@@ -242,6 +253,35 @@ func (m *Mesh) wireEdges(all bool) []int {
 		return m.edges
 	}
 	return m.creases
+}
+
+type meshSmoothEdge struct {
+	a, b   int
+	f0, f1 int32
+}
+
+type meshFace struct {
+	p, n Vec3 // a corner and the normal
+}
+
+// outlineEdges calls f with the corners of the smooth edges on the outline
+// of the mesh seen from the eye (in the mesh's coordinates), or along the
+// direction dir when the view is orthographic: the edges between a
+// triangle facing the eye and one facing away. The edges must be made
+// (wireEdges).
+func (m *Mesh) outlineEdges(eye, dir Vec3, ortho bool, f func(a, b int)) {
+	facing := func(i int32) bool {
+		fc := &m.faces[i]
+		if ortho {
+			return fc.n.Dot(dir) < 0
+		}
+		return fc.n.Dot(eye.Sub(fc.p)) > 0
+	}
+	for _, e := range m.smooth {
+		if facing(e.f0) != facing(e.f1) {
+			f(e.a, e.b)
+		}
+	}
 }
 
 // The shapes. All are centered at 0, 0, 0, with normals and UVs.

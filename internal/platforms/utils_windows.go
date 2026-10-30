@@ -115,11 +115,13 @@ const (
 	c_IMAGE_ICON      = 1
 	c_LR_DEFAULTCOLOR = 0x0000
 
-	c_IDC_ARROW  = uintptr(32512)
-	c_IDC_HAND   = uintptr(32649)
-	c_IDC_SIZEWE = uintptr(32644)
-	c_IDC_SIZENS = uintptr(32645)
-	c_IDC_IBEAM  = uintptr(32513)
+	c_IDC_ARROW   = uintptr(32512)
+	c_IDC_HAND    = uintptr(32649)
+	c_IDC_SIZEWE  = uintptr(32644)
+	c_IDC_SIZENS  = uintptr(32645)
+	c_IDC_IBEAM   = uintptr(32513)
+	c_IDC_CROSS   = uintptr(32515)
+	c_IDC_SIZEALL = uintptr(32646)
 
 	c_CS_DBLCLKS = 0x0008
 	c_CS_OWNDC   = 0x0020
@@ -865,6 +867,10 @@ func loadMouseCursor(cursor MouseCursor) uintptr {
 		cursorID = c_IDC_SIZENS
 	case MouseCursorIBeam:
 		cursorID = c_IDC_IBEAM
+	case MouseCursorCross:
+		cursorID = c_IDC_CROSS
+	case MouseCursorMove:
+		cursorID = c_IDC_SIZEALL
 	default:
 		return 0
 	}

@@ -7,7 +7,7 @@ so applications only import `ui`.
 type Key          // key code; key.String() -> "Enter", "F1", "A"
 type KeyModifiers // struct{ Shift, Ctrl, Alt, Cmd bool }; mods.String() -> "Shift Ctrl"
 type MouseButton  // ui.MouseButtonLeft / Middle / Right
-type MouseCursor  // ui.MouseCursorArrow / Pointer / ResizeHor / ResizeVer / IBeam / NotDefined
+type MouseCursor  // ui.MouseCursorArrow / Pointer / ResizeHor / ResizeVer / IBeam / Cross / Move / NotDefined
 ```
 
 ## Usage

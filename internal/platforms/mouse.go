@@ -9,6 +9,8 @@ const (
 	MouseCursorResizeHor  MouseCursor = 3
 	MouseCursorResizeVer  MouseCursor = 4
 	MouseCursorIBeam      MouseCursor = 5
+	MouseCursorCross      MouseCursor = 6 // a thin cross: drawing, picking points
+	MouseCursorMove       MouseCursor = 7 // arrows to four sides: moving, panning
 )
 
 type MouseButton int

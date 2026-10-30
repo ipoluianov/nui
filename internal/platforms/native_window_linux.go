@@ -1215,6 +1215,7 @@ func xCursorShape(mouseCursor MouseCursor) uint32 {
 		CursorIBeam = 152
 		CursorHand  = 60
 		CursorBlank = 0
+		CursorFleur = 52
 
 		CursorResizeVertical   = 116 // XC_sb_v_double_arrow
 		CursorResizeHorizontal = 108 // XC_sb_h_double_arrow
@@ -1232,6 +1233,10 @@ func xCursorShape(mouseCursor MouseCursor) uint32 {
 		cursorShape = CursorResizeVertical
 	case MouseCursorIBeam:
 		cursorShape = CursorIBeam
+	case MouseCursorCross:
+		cursorShape = CursorCross
+	case MouseCursorMove:
+		cursorShape = CursorFleur
 	}
 	return cursorShape
 }

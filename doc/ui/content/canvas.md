@@ -53,6 +53,13 @@ cnv.StrokePath(p, ui.StrokeStyle{Width: 2, Join: ui.LineJoinRound, Dash: []float
 `StrokeStyle` sets the width, the joins (`ui.LineJoinMiter`, `Round`,
 `Bevel`), the ends (`ui.LineCapButt`, `Round`, `Square`), the miter limit and
 the dashes. A translucent line that crosses itself is blended once.
+`NonScaling: true` keeps the width and the dashes in pixels under the
+canvas' transform: the path is transformed, the line is not - the lines of
+a drawing stay as thick at any zoom (SVG's
+`vector-effect="non-scaling-stroke"`).
+
+Arcs, circles and ellipses are kept as arcs, not as curves near them: they
+are exact at any scale and under any transform.
 
 Shortcuts: `FillCircle`, `DrawCircle`, `FillPolygon`, `DrawPolyline`.
 
@@ -97,6 +104,24 @@ cnv.Restore()
 - `StrokeContains(x, y, width)` — whether the point is on the line;
 - `Transform(m)`, `Clone()`, `CurrentPoint()`.
 
+### Text as outlines
+
+`p.Text(x, y, text, font, size)` adds the outlines of the letters to the
+path, the baseline starting at `(x, y)`; `p.TextAligned(x, y, text, font,
+size, hAlign, vAlign)` aligns them to the point. Unlike `DrawText`, which
+draws pictures of the letters at the screen's size, such text is sharp at
+any scale, turns and slants with the transform, can be filled with a paint
+or stroked, and is written to SVG as curves: the text of a drawing, a map,
+a gauge. `ui.MeasureTextOutline(text, font, size)` returns its width, the
+ascent and the descent. Kerning and the fallback fonts are used; a bold the
+family lacks is not synthesized.
+
+```go
+label := ui.NewPath()
+label.TextAligned(0, 0, "Ø40 H7", ui.FontFamilySans, 3.5, ui.HAlignCenter, ui.VAlignBottom)
+cnv.FillPath(label, ink)
+```
+
 ## Transforms
 
 The canvas has a 2D affine transform, kept by `Save` and `Restore` as the
@@ -128,6 +153,22 @@ whole-pixel methods are pixel-sharp. Under a turn or a stretch they are
 antialiased shapes. The clip stays a rectangle of the canvas. `Blur`,
 `DrawShadow`, `FloodFill`, `Clear`, `PixelAt` and `AdjustPixels` work on the
 pixels of the canvas and are not transformed.
+
+### Large coordinates
+
+A drawing zoomed far in has coordinates of millions of pixels around a
+view of a thousand. The canvas keeps them exact and quick:
+
+- the coordinates are `float64` until each polygon is cut to the pixels it
+  covers;
+- a curve or an arc too long to be flattened at once is split, and its
+  parts out of view are taken by their chords: what is seen is within a
+  twentieth of a pixel, however large the radius;
+- a dashed line is cut to the view before it is dashed: a line of a
+  billion pixels costs as much as one across the view.
+
+A circle of a radius of 10⁹ pixels, seen in part, is drawn in about a
+millisecond, its edge where it should be.
 
 ## Paints
 
@@ -240,4 +281,6 @@ costs on a 2014 desktop CPU (Core i5-4460):
 | `StrokePath` of 1920 points, width 1.5 | 1.8–2.3 ms |
 
 To keep a frame fast, reuse `Path`s (`Reset` keeps their memory) and draw
-what does not change into an image once (`NewImageCanvas`).
+what does not change into an image once (`NewImageCanvas`). Many shapes of
+the same style are quicker as one path: a call per layer of a drawing, not
+per line. See [view2d.md](view2d.md) for views of large drawings.

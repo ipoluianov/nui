@@ -19,6 +19,8 @@ const (
 	MouseCursorResizeHor  MouseCursor = 3
 	MouseCursorResizeVer  MouseCursor = 4
 	MouseCursorIBeam      MouseCursor = 5
+	MouseCursorCross      MouseCursor = 6 // drawing, picking points
+	MouseCursorMove       MouseCursor = 7 // moving, panning
 )
 ```
 

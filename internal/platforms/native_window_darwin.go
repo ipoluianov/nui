@@ -239,6 +239,10 @@ func macCursorType(cursor MouseCursor) int {
 		return 4
 	case MouseCursorIBeam:
 		return 5
+	case MouseCursorCross:
+		return 6
+	case MouseCursorMove:
+		return 7
 	}
 	return 0
 }

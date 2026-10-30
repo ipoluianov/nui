@@ -185,6 +185,8 @@ var (
 	selResizeLeftRightCursor = objc.RegisterName("resizeLeftRightCursor")
 	selResizeUpDownCursor    = objc.RegisterName("resizeUpDownCursor")
 	selIBeamCursor           = objc.RegisterName("IBeamCursor")
+	selCrosshairCursor       = objc.RegisterName("crosshairCursor")
+	selOpenHandCursor        = objc.RegisterName("openHandCursor")
 	selSet                   = objc.RegisterName("set")
 
 	selInitWithBitmapDataPlanes = objc.RegisterName("initWithBitmapDataPlanes:pixelsWide:pixelsHigh:bitsPerSample:samplesPerPixel:hasAlpha:isPlanar:colorSpaceName:bytesPerRow:bitsPerPixel:")
@@ -1276,6 +1278,10 @@ func setMacCursor(cursorType int) {
 		cursor = objc.ID(clsNSCursor).Send(selResizeUpDownCursor)
 	case 5:
 		cursor = objc.ID(clsNSCursor).Send(selIBeamCursor)
+	case 6:
+		cursor = objc.ID(clsNSCursor).Send(selCrosshairCursor)
+	case 7:
+		cursor = objc.ID(clsNSCursor).Send(selOpenHandCursor)
 	default:
 		cursor = objc.ID(clsNSCursor).Send(selArrowCursor)
 	}

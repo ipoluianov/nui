@@ -8,6 +8,7 @@ import (
 	"math"
 
 	"github.com/fogleman/gg"
+	"github.com/ipoluianov/nui/examples/cad"
 	"github.com/ipoluianov/nui/examples/calculator"
 	"github.com/ipoluianov/nui/examples/canvasdemo"
 	"github.com/ipoluianov/nui/examples/chartgallery"
@@ -73,6 +74,9 @@ var Apps = []App{
 	{"viewer3d", "3D Viewer",
 		"3D models, surfaces and point clouds: turn, zoom, pick, OBJ and STL",
 		appIcon("#5E35B1", markCube), viewer3d.NewForm},
+	{"cad", "CAD",
+		"A drawing with layers, snaps and dimensions; the part in 3D, cut",
+		appIcon("#37474F", markDrafting), cad.NewForm},
 }
 
 // FindApp returns the application with the name, or nil.
@@ -108,7 +112,7 @@ const launcherColumns = 2
 func newLauncherForm() *ui.Form {
 	form := ui.NewForm()
 	form.SetTitle("nui examples")
-	form.SetSize(1040, 560)
+	form.SetSize(1040, 600)
 	panel := form.Panel()
 
 	list := panel.AddPanel(0, 0)
@@ -247,6 +251,21 @@ func markCube(dc *gg.Context) {
 	dc.LineTo(13, 5.2)
 	dc.MoveTo(8, 8)
 	dc.LineTo(8, 13.5)
+	dc.Stroke()
+}
+
+func markDrafting(dc *gg.Context) {
+	// A set square and a circle with its center lines
+	dc.MoveTo(3, 13)
+	dc.LineTo(3, 3.5)
+	dc.LineTo(12.5, 13)
+	dc.ClosePath()
+	dc.Stroke()
+	dc.DrawCircle(11, 5, 2.5)
+	dc.Stroke()
+	dc.SetLineWidth(0.6)
+	dc.DrawLine(7.5, 5, 14.5, 5)
+	dc.DrawLine(11, 1.5, 11, 8.5)
 	dc.Stroke()
 }
 

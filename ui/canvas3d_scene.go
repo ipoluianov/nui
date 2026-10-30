@@ -132,6 +132,38 @@ type Scene3D struct {
 	// Background is the color behind the scene; transparent shows what was
 	// drawn under it
 	Background color.RGBA
+	// ClipPlanes cut the objects, a section view: of each object, only
+	// what is on the side its normal points to is drawn and picked (up to
+	// six planes). The lines, the points and the labels of the scene are
+	// not cut.
+	ClipPlanes []Plane3D
+	// SectionColor colors the inside of the objects seen through the cuts;
+	// zero is the color of each object, darker
+	SectionColor color.RGBA
+}
+
+// Plane3D is the plane through Point square to Normal
+type Plane3D struct {
+	Point, Normal Vec3
+}
+
+// Distance returns how far the point is from the plane, positive on the
+// side the normal points to
+func (p Plane3D) Distance(q Vec3) float64 {
+	return q.Sub(p.Point).Dot(p.Normal.Normalize())
+}
+
+// clipped reports whether the point of the scene is cut away
+func (s *Scene3D) clipped(p Vec3) bool {
+	for i, pl := range s.ClipPlanes {
+		if i == maxClipPlanes {
+			break
+		}
+		if pl.Normal != (Vec3{}) && pl.Distance(p) < 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // NewScene3D returns an empty scene
@@ -318,7 +350,7 @@ func (s *Scene3D) Pick(ray Ray3) (hit Hit3D, ok bool) {
 			}
 			p := m.MulPoint(local.At(lt))
 			d := p.Sub(ray.Origin).Dot(ray.Dir)
-			if d <= 0 || d >= best {
+			if d <= 0 || d >= best || s.clipped(p) {
 				continue
 			}
 			n := m.normalMatrix().MulDir(pb.Sub(pa).Cross(pc.Sub(pa))).Normalize()
@@ -563,5 +595,11 @@ func (s *Scene3D) signature() (sig uint64, ok bool) {
 	}
 	f(s.Ambient)
 	col(s.Background)
+	u(uint64(len(s.ClipPlanes)))
+	for _, p := range s.ClipPlanes {
+		vec(p.Point)
+		vec(p.Normal)
+	}
+	col(s.SectionColor)
 	return h.Sum64(), true
 }
