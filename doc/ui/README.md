@@ -61,7 +61,8 @@ Short reference for `ui` controls. Code snippets are intentionally minimal—see
 - [Charts: lines, bars, pies, scatter, candles, sparklines; axes, gestures, export](content/charts.md)
 - [Chart](content/chart.md)
 - [TimeChart](content/timechart.md)
-- [Canvas: paths, gradients, markers, turned text, SVG](content/canvas.md)
+- [Canvas: paths, transforms, gradients, patterns, shadows, layers, SVG](content/canvas.md)
+- [3D: scenes, models (OBJ, STL), surfaces, point clouds, View3D](content/3d.md)
 - [ImageBox](content/imagebox.md)
 - [ZoomView and ScrollBar](content/zoomview.md)
 

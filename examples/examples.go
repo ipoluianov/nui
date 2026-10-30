@@ -9,6 +9,7 @@ import (
 
 	"github.com/fogleman/gg"
 	"github.com/ipoluianov/nui/examples/calculator"
+	"github.com/ipoluianov/nui/examples/canvasdemo"
 	"github.com/ipoluianov/nui/examples/chartgallery"
 	"github.com/ipoluianov/nui/examples/contacts"
 	"github.com/ipoluianov/nui/examples/converter"
@@ -19,6 +20,7 @@ import (
 	"github.com/ipoluianov/nui/examples/paint"
 	"github.com/ipoluianov/nui/examples/plotter"
 	"github.com/ipoluianov/nui/examples/tasks"
+	"github.com/ipoluianov/nui/examples/viewer3d"
 	"github.com/ipoluianov/nui/ui"
 )
 
@@ -65,6 +67,12 @@ var Apps = []App{
 	{"chartgallery", "Chart Gallery",
 		"Every kind of chart, the gestures, export to PNG, SVG and CSV",
 		appIcon("#6D4C41", markWave), chartgallery.NewForm},
+	{"canvas", "Canvas",
+		"2D drawing: transforms, SVG paths, gradients, shadows, layers",
+		appIcon("#00838F", markBrush), canvasdemo.NewForm},
+	{"viewer3d", "3D Viewer",
+		"3D models, surfaces and point clouds: turn, zoom, pick, OBJ and STL",
+		appIcon("#5E35B1", markCube), viewer3d.NewForm},
 }
 
 // FindApp returns the application with the name, or nil.
@@ -212,6 +220,23 @@ func markArrows(dc *gg.Context) {
 	dc.DrawLine(10, 4, 12, 6)
 	dc.DrawLine(4, 10, 12, 10)
 	dc.DrawLine(4, 10, 6, 12)
+	dc.Stroke()
+}
+
+func markCube(dc *gg.Context) {
+	// A cube seen from a corner
+	dc.MoveTo(8, 2.5)
+	dc.LineTo(13, 5.2)
+	dc.LineTo(13, 10.8)
+	dc.LineTo(8, 13.5)
+	dc.LineTo(3, 10.8)
+	dc.LineTo(3, 5.2)
+	dc.ClosePath()
+	dc.MoveTo(3, 5.2)
+	dc.LineTo(8, 8)
+	dc.LineTo(13, 5.2)
+	dc.MoveTo(8, 8)
+	dc.LineTo(8, 13.5)
 	dc.Stroke()
 }
 

@@ -24,6 +24,9 @@ type SVGRecorder struct {
 	nextID        int
 	lastClip      string
 	open          bool
+	// paintXf is the transform of the paint being recorded: its
+	// coordinates are those of the drawing methods
+	paintXf *Matrix
 }
 
 // NewSVGRecorder makes a recorder of a picture of the logical size
@@ -95,6 +98,14 @@ func (c *Canvas) origin() (float64, float64) {
 	return float64(c.state.translateX) / c.scale, float64(c.state.translateY) / c.scale
 }
 
+// svgNum4 writes a number of a matrix, with more digits than a coordinate
+func svgNum4(v float64) string {
+	if math.IsNaN(v) || math.IsInf(v, 0) {
+		return "0"
+	}
+	return strconv.FormatFloat(math.Round(v*1e4)/1e4, 'f', -1, 64)
+}
+
 func svgNum(v float64) string {
 	if math.IsNaN(v) || math.IsInf(v, 0) {
 		return "0"
@@ -136,13 +147,34 @@ func svgPathData(p *Path, ox, oy float64) string {
 func (r *SVGRecorder) fillPath(c *Canvas, p *Path, col color.Color) {
 	r.clip(c)
 	ox, oy := c.origin()
-	fmt.Fprintf(&r.body, `<path d="%s" %s/>`+"\n", svgPathData(p, ox, oy), svgColor("fill", col))
+	fmt.Fprintf(&r.body, `<path d="%s" %s%s/>`+"\n", svgPathData(p, ox, oy), svgColor("fill", col), svgFillRule(p))
 }
 
 func (r *SVGRecorder) fillPathPaint(c *Canvas, p *Path, paint Paint) {
 	r.clip(c)
 	ox, oy := c.origin()
 	fill := ""
+	// The coordinates of a paint under a transform stay its own; the
+	// gradient or the pattern is transformed to the picture
+	gx, gy, gxf := ox, oy, ""
+	if r.paintXf != nil {
+		m := r.paintXf.Then(TranslationMatrix(ox, oy))
+		gx, gy = 0, 0
+		gxf = fmt.Sprintf(`matrix(%s %s %s %s %s %s)`, svgNum4(m.A), svgNum4(m.B), svgNum4(m.C), svgNum4(m.D), svgNum(m.E), svgNum(m.F))
+	}
+	gradXf := ""
+	if gxf != "" {
+		gradXf = ` gradientTransform="` + gxf + `"`
+	}
+	spread := func(s GradientSpread) string {
+		switch s {
+		case SpreadRepeat:
+			return ` spreadMethod="repeat"`
+		case SpreadReflect:
+			return ` spreadMethod="reflect"`
+		}
+		return ""
+	}
 	stops := func(st []GradientStop) string {
 		var b strings.Builder
 		for _, s := range st {
@@ -154,13 +186,13 @@ func (r *SVGRecorder) fillPathPaint(c *Canvas, p *Path, paint Paint) {
 	switch g := paint.(type) {
 	case LinearGradient:
 		id := r.id("g")
-		fmt.Fprintf(&r.defs, `<linearGradient id="%s" gradientUnits="userSpaceOnUse" x1="%s" y1="%s" x2="%s" y2="%s">%s</linearGradient>`+"\n",
-			id, svgNum(g.X1+ox), svgNum(g.Y1+oy), svgNum(g.X2+ox), svgNum(g.Y2+oy), stops(g.Stops))
+		fmt.Fprintf(&r.defs, `<linearGradient id="%s" gradientUnits="userSpaceOnUse" x1="%s" y1="%s" x2="%s" y2="%s"%s>%s</linearGradient>`+"\n",
+			id, svgNum(g.X1+gx), svgNum(g.Y1+gy), svgNum(g.X2+gx), svgNum(g.Y2+gy), gradXf+spread(g.Spread), stops(g.Stops))
 		fill = `fill="url(#` + id + `)"`
 	case RadialGradient:
 		id := r.id("g")
-		fmt.Fprintf(&r.defs, `<radialGradient id="%s" gradientUnits="userSpaceOnUse" cx="%s" cy="%s" r="%s">%s</radialGradient>`+"\n",
-			id, svgNum(g.CX+ox), svgNum(g.CY+oy), svgNum(g.R), stops(g.Stops))
+		fmt.Fprintf(&r.defs, `<radialGradient id="%s" gradientUnits="userSpaceOnUse" cx="%s" cy="%s" r="%s"%s>%s</radialGradient>`+"\n",
+			id, svgNum(g.CX+gx), svgNum(g.CY+gy), svgNum(g.R), gradXf+spread(g.Spread), stops(g.Stops))
 		fill = `fill="url(#` + id + `)"`
 	case HatchPaint:
 		id := r.id("h")
@@ -176,8 +208,8 @@ func (r *SVGRecorder) fillPathPaint(c *Canvas, p *Path, paint Paint) {
 			bg = fmt.Sprintf(`<rect width="%s" height="%s" %s/>`, svgNum(spacing), svgNum(spacing), svgColor("fill", g.Background))
 		}
 		// Horizontal stripes turned by the angle: up to the right on the screen
-		fmt.Fprintf(&r.defs, `<pattern id="%s" patternUnits="userSpaceOnUse" width="%s" height="%s" patternTransform="rotate(%s)">%s<rect y="%s" width="%s" height="%s" %s/></pattern>`+"\n",
-			id, svgNum(spacing), svgNum(spacing), svgNum(-g.Angle*180/math.Pi), bg,
+		fmt.Fprintf(&r.defs, `<pattern id="%s" patternUnits="userSpaceOnUse" width="%s" height="%s" patternTransform="%srotate(%s)">%s<rect y="%s" width="%s" height="%s" %s/></pattern>`+"\n",
+			id, svgNum(spacing), svgNum(spacing), gxf+" ", svgNum(-g.Angle*180/math.Pi), bg,
 			svgNum((spacing-width)/2), svgNum(spacing), svgNum(width), svgColor("fill", g.Color))
 		fill = `fill="url(#` + id + `)"`
 	default:
@@ -188,7 +220,7 @@ func (r *SVGRecorder) fillPathPaint(c *Canvas, p *Path, paint Paint) {
 		}
 		fill = svgColor("fill", paint.ColorAt((minX+maxX)/2, (minY+maxY)/2))
 	}
-	fmt.Fprintf(&r.body, `<path d="%s" %s/>`+"\n", svgPathData(p, ox, oy), fill)
+	fmt.Fprintf(&r.body, `<path d="%s" %s%s/>`+"\n", svgPathData(p, ox, oy), fill, svgFillRule(p))
 }
 
 func (r *SVGRecorder) strokePath(c *Canvas, p *Path, style StrokeStyle, col color.Color) {
@@ -293,4 +325,13 @@ func (r *SVGRecorder) text(c *Canvas, text string, x, y, lineH, angle, ax, ay fl
 	}
 	fmt.Fprintf(&r.body, `<text x="%s" y="%s" %s %s%s>%s</text>`+"\n",
 		svgNum(x+ox), svgNum(y+oy+lineH*0.78), c.svgFont(), svgColor("fill", c.state.col), tr, svgEscape(text))
+}
+
+// svgFillRule returns the fill-rule attribute of the path, if it is not
+// the default
+func svgFillRule(p *Path) string {
+	if p.fillRule == FillRuleEvenOdd {
+		return ` fill-rule="evenodd"`
+	}
+	return ""
 }

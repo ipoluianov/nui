@@ -32,6 +32,11 @@ type canvasState struct {
 	fontSize   float64
 	fontFamily string
 	underline  bool
+
+	// The transform of the drawing coordinates (SetTransform); hasXf is
+	// false for the identity, which takes the paths of the code untouched
+	xf    Matrix
+	hasXf bool
 }
 
 type Canvas struct {
@@ -45,6 +50,8 @@ type Canvas struct {
 	scale float64
 	// rec records the shapes as SVG too (SetRecorder)
 	rec *SVGRecorder
+	// The groups of BeginLayer not ended yet
+	layers []canvasLayer
 }
 
 type VAlign int
@@ -212,6 +219,7 @@ func (c *Canvas) SetVAlign(vAlign VAlign) {
 }
 
 func (c *Canvas) SetDirectTranslateAndClip(x, y, w, h int) {
+	c.ResetTransform()
 	c.state.logicalX = x
 	c.state.logicalY = y
 	c.state.translateX = c.scaled(x)
@@ -311,8 +319,10 @@ func blend8(dst, src, alpha uint32) uint8 {
 }
 
 // mixPixelAt blends the straight 8-bit color (see straightRGBA8) over the
-// pixel at the offset i of the image's Pix; the pixel becomes opaque. Every
-// blending of the canvas but of the text and of the images goes here.
+// pixel at the offset i of the image's Pix, which is premultiplied, as
+// draw.Over does: an opaque pixel stays opaque, a transparent one (of an
+// image drawn off the screen) takes the alpha. Every blending of the canvas
+// but of the text and of the images goes here.
 func (c *Canvas) mixPixelAt(i int, r, g, b, alpha uint32) {
 	if alpha == 0 {
 		return
@@ -325,7 +335,9 @@ func (c *Canvas) mixPixelAt(i int, r, g, b, alpha uint32) {
 	pix[0] = blend8(uint32(pix[0]), r, alpha)
 	pix[1] = blend8(uint32(pix[1]), g, alpha)
 	pix[2] = blend8(uint32(pix[2]), b, alpha)
-	pix[3] = 255
+	if pix[3] != 255 {
+		pix[3] = blend8(uint32(pix[3]), 255, alpha)
+	}
 }
 
 // DrawLine draws the line of the logical width from (x1, y1) to (x2, y2). A
@@ -334,6 +346,10 @@ func (c *Canvas) mixPixelAt(i int, r, g, b, alpha uint32) {
 // between the centers of its end pixels.
 func (c *Canvas) DrawLine(x1 int, y1 int, x2 int, y2 int, width int, col color.Color) {
 	if c.clipEmpty() {
+		return
+	}
+	if c.state.hasXf {
+		c.lineXf(float64(x1), float64(y1), float64(x2), float64(y2), float64(width), col)
 		return
 	}
 	if c.rec != nil {
@@ -391,6 +407,10 @@ func (c *Canvas) scriptBounds() image.Rectangle {
 // for a chart that scrolls smoothly.
 func (c *Canvas) DrawLineF(x1, y1, x2, y2 float64, col color.Color) {
 	if c.clipEmpty() {
+		return
+	}
+	if c.state.hasXf {
+		c.lineXf(x1, y1, x2, y2, 1, col)
 		return
 	}
 	x1, y1 = c.pixelCenter(x1, y1)
@@ -949,6 +969,10 @@ func CohenSutherland(x1, y1, x2, y2, left, top, right, bottom int) (int, int, in
 }
 
 func (c *Canvas) FillRect(x int, y int, width int, height int, colr color.Color) {
+	if c.state.hasXf {
+		c.fillRectXf(float64(x), float64(y), float64(width), float64(height), colr)
+		return
+	}
 	if c.rec != nil {
 		c.rec.rect(c, float64(x), float64(y), float64(width), float64(height), colr, false)
 	}
@@ -1029,16 +1053,35 @@ func (c *Canvas) fillRectPixels(x int, y int, width int, height int, colr color.
 		// Blended as by MixPixel, pixel by pixel; the rectangle is within
 		// the clip and the image already
 		r, g, b, alpha := straightRGBA8(colr)
+		if alpha == 0 {
+			return
+		}
+		// blend8 with the source's part computed once
+		sr, sg, sb, ia := r*alpha+128, g*alpha+128, b*alpha+128, 255-alpha
 		for yy := y; yy < y+height; yy++ {
 			offset := c.rgba.PixOffset(x, yy)
-			for xx := 0; xx < width; xx++ {
-				c.mixPixelAt(offset+xx*4, r, g, b, alpha)
+			row := c.rgba.Pix[offset : offset+width*4 : offset+width*4]
+			for i := 0; i < len(row); i += 4 {
+				px := row[i : i+4 : i+4]
+				v := sr + uint32(px[0])*ia
+				px[0] = uint8((v + v>>8) >> 8)
+				v = sg + uint32(px[1])*ia
+				px[1] = uint8((v + v>>8) >> 8)
+				v = sb + uint32(px[2])*ia
+				px[2] = uint8((v + v>>8) >> 8)
+				if px[3] != 255 {
+					px[3] = blend8(uint32(px[3]), 255, alpha)
+				}
 			}
 		}
 	}
 }
 
 func (c *Canvas) DrawRect(x int, y int, width int, height int) {
+	if c.state.hasXf {
+		c.strokeRectXf(float64(x), float64(y), float64(width), float64(height), 0, c.state.col)
+		return
+	}
 	if c.rec != nil {
 		c.rec.rect(c, float64(x), float64(y), float64(width), float64(height), c.state.col, true)
 	}
@@ -1060,6 +1103,10 @@ func (c *Canvas) DrawRect(x int, y int, width int, height int) {
 // DrawRoundedRect draws the outline of a rounded rectangle in the current
 // color, a logical pixel wide, anti-aliased, within the clip
 func (c *Canvas) DrawRoundedRect(x int, y int, width int, height int, radius int) {
+	if c.state.hasXf {
+		c.strokeRectXf(float64(x), float64(y), float64(width), float64(height), float64(radius)-0.5, c.state.col)
+		return
+	}
 	px, py, pw, ph := c.pixelRect(x, y, width, height)
 	c.fillRoundedPixels(px, py, pw, ph, float64(radius)*c.scale, c.lineWidth(1), c.state.col, c.clipRect())
 }
@@ -1067,6 +1114,10 @@ func (c *Canvas) DrawRoundedRect(x int, y int, width int, height int, radius int
 // FillRoundedRect fills a rounded rectangle in the current color,
 // anti-aliased, within the clip
 func (c *Canvas) FillRoundedRect(x int, y int, width int, height int, radius int) {
+	if c.state.hasXf {
+		c.fillRoundedXf(float64(x), float64(y), float64(width), float64(height), float64(radius), c.state.col)
+		return
+	}
 	px, py, pw, ph := c.pixelRect(x, y, width, height)
 	c.fillRoundedPixels(px, py, pw, ph, float64(radius)*c.scale, 0, c.state.col, c.clipRect())
 }
@@ -1081,6 +1132,14 @@ func (c *Canvas) FillTriangle(x1, y1, x2, y2, x3, y3 int, colr color.Color) {
 // not of the whole image: the arrows of the combo boxes and the num boxes
 // are drawn on every frame.
 func (c *Canvas) fillPolygon(pts [][2]float64, colr color.Color) {
+	if c.state.hasXf {
+		poly := make([]PointF, len(pts))
+		for i, p := range pts {
+			poly[i] = PointF{p[0], p[1]}
+		}
+		c.FillPolygon(poly, colr)
+		return
+	}
 	px := make([][2]float64, len(pts))
 	for i, p := range pts {
 		px[i] = [2]float64{float64(c.state.translateX) + p[0]*c.scale, float64(c.state.translateY) + p[1]*c.scale}
@@ -1089,6 +1148,11 @@ func (c *Canvas) fillPolygon(pts [][2]float64, colr color.Color) {
 }
 
 func (c *Canvas) DrawImage(x int, y int, img image.Image) {
+	if c.state.hasXf {
+		b := img.Bounds()
+		c.drawImageXf(float64(x), float64(y), float64(b.Dx()), float64(b.Dy()), img, b, true)
+		return
+	}
 	if c.scale != 1 {
 		c.drawImageScaled(x, y, img)
 		return
@@ -1180,6 +1244,16 @@ func (c *Canvas) ClipH() int {
 }
 
 func (c *Canvas) DrawText(x int, y int, width int, height int, text string) {
+	if c.state.hasXf {
+		c.drawTextXf(x, y, width, height, text)
+		return
+	}
+	c.drawTextLines(x, y, width, height, text, true)
+}
+
+// drawTextLines is DrawText without a transform; record writes the text to
+// the SVG recorder, if there is one
+func (c *Canvas) drawTextLines(x int, y int, width int, height int, text string, record bool) {
 	lines := textLines(text)
 
 	fontFamily := c.state.fontFamily
@@ -1241,7 +1315,7 @@ func (c *Canvas) DrawText(x int, y int, width int, height int, text string) {
 		//c.DrawText(xx, yOffset+y, str, fontFamily, fontSize, colr, underline)
 		//c.DrawText(xx, yOffset+y, str, fontFamily, fontSize, colr, underline)
 
-		if c.rec != nil {
+		if c.rec != nil && record {
 			tx := xx
 			if hAlign != HAlignLeft && textWidth == 0 {
 				tx = 0
@@ -1275,6 +1349,10 @@ func (c *Canvas) DrawText(x int, y int, width int, height int, text string) {
 func (c *Canvas) DrawImageRect(x, y, width, height int, img image.Image, src image.Rectangle, smooth bool) {
 	src = src.Intersect(img.Bounds())
 	if width <= 0 || height <= 0 || src.Empty() {
+		return
+	}
+	if c.state.hasXf {
+		c.drawImageXf(float64(x), float64(y), float64(width), float64(height), img, src, smooth)
 		return
 	}
 	px, py, pw, ph := c.pixelRect(x, y, width, height)

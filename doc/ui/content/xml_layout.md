@@ -63,6 +63,7 @@ Widgets (no child elements):
 | `<linechart>` | `values` (`"3,5,4,7"`), `title`, `xtitle`, `ytitle` | |
 | `<barchart>` | `items` (`"Jan:120|Feb:95"`), `horizontal`, `stacked`, `title`, `xtitle`, `ytitle` | |
 | `<piechart>` | `items` (`"Linux:60|Windows:30"`), `donut` (the hole, `0.5`), `title` | |
+| `<view3d>` | `model` (an `.obj` or `.stl` file), `shape` (`box`, `sphere`, `cylinder`, `cone`, `torus`, `plane`), `color` (`"#4080e0"`), `wireframe`, `axes`, `grid`, `ortho`, `autorotate` (radians a second) — see [3d.md](3d.md) | |
 | `<hspacer>`, `<vspacer>`, `<space>` | | |
 | `<widget>` | `id`: an application widget from `widgets` | |
 

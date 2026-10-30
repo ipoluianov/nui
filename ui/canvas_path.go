@@ -34,7 +34,29 @@ type Path struct {
 	// The current point and the start of the current subpath
 	cur, start PointF
 	hasCur     bool
+	fillRule   FillRule
 }
+
+// FillRule is how Canvas.FillPath decides what is inside a path whose
+// subpaths overlap or which crosses itself
+type FillRule int
+
+const (
+	// FillRuleNonZero fills a point that the path winds around more times
+	// one way than the other: a subpath drawn the other way round inside
+	// another one makes a hole, one drawn the same way does not
+	FillRuleNonZero FillRule = iota
+	// FillRuleEvenOdd fills a point that a ray from it crosses the path an
+	// odd number of times: every subpath inside another makes a hole,
+	// whatever its direction (SVG fill-rule="evenodd")
+	FillRuleEvenOdd
+)
+
+// SetFillRule sets how the path is filled where it overlaps itself
+func (p *Path) SetFillRule(rule FillRule) { p.fillRule = rule }
+
+// FillRule returns how the path is filled where it overlaps itself
+func (p *Path) FillRule() FillRule { return p.fillRule }
 
 type pathOpKind uint8
 
@@ -56,10 +78,12 @@ func NewPath() *Path {
 	return &Path{}
 }
 
-// Reset empties the path, keeping its memory for the next shape
+// Reset empties the path, keeping its memory for the next shape; the fill
+// rule goes back to FillRuleNonZero
 func (p *Path) Reset() {
 	p.ops = p.ops[:0]
 	p.hasCur = false
+	p.fillRule = FillRuleNonZero
 }
 
 // Empty reports whether the path has nothing to draw
@@ -415,6 +439,10 @@ func (c *Canvas) FillPath(p *Path, col color.Color) {
 	if a == 0 {
 		return
 	}
+	if c.state.hasXf {
+		c.withPathXf(p, func(tp *Path) { c.FillPath(tp, col) })
+		return
+	}
 	if c.rec != nil {
 		c.rec.fillPath(c, p, col)
 	}
@@ -438,13 +466,40 @@ func (c *Canvas) FillPathPaint(p *Path, paint Paint) {
 	if paint == nil {
 		return
 	}
+	colorAt := fastPaint(paint)
+	if c.state.hasXf {
+		// The paint is in the drawing coordinates: each pixel takes the
+		// color of the point it comes from
+		xf := c.state.xf
+		inv, ok := xf.Invert()
+		if !ok {
+			return
+		}
+		at := colorAt
+		colorAt = func(x, y float64) color.RGBA { return at(inv.Apply(x, y)) }
+		c.withPathXf(p, func(tp *Path) {
+			if c.rec != nil {
+				c.rec.paintXf = &xf
+				c.rec.fillPathPaint(c, tp, paint)
+				c.rec.paintXf = nil
+			}
+			c.fillPathColors(tp, colorAt)
+		})
+		return
+	}
 	if c.rec != nil {
 		c.rec.fillPathPaint(c, p, paint)
 	}
+	c.fillPathColors(p, colorAt)
+}
+
+// fillPathColors fills the path with the colors of the logical points of
+// the canvas colorAt gives
+func (c *Canvas) fillPathColors(p *Path, colorAt func(x, y float64) color.RGBA) {
 	tx, ty, s := float64(c.state.translateX), float64(c.state.translateY), c.scale
 	c.fillPathWith(p, func(i, m uint32, px, py int) {
 		// The logical point at the center of the pixel
-		col := paint.ColorAt((float64(px)+0.5-tx)/s, (float64(py)+0.5-ty)/s)
+		col := colorAt((float64(px)+0.5-tx)/s, (float64(py)+0.5-ty)/s)
 		c.mixPixelAt(int(i), uint32(col.R), uint32(col.G), uint32(col.B), (uint32(col.A)*m+127)/255)
 	})
 }
@@ -463,6 +518,7 @@ func (c *Canvas) fillPathWith(p *Path, blend func(i, m uint32, px, py int)) {
 	pb := polyBuilders.Get().(*polyBuilder)
 	defer polyBuilders.Put(pb)
 	pb.reset()
+	pb.evenOdd = p.fillRule == FillRuleEvenOdd
 	for _, sub := range fp.subs {
 		pb.addRaw(fp.pts[sub.from:sub.to])
 	}
@@ -475,6 +531,10 @@ func (c *Canvas) fillPathWith(p *Path, blend func(i, m uint32, px, py int)) {
 func (c *Canvas) StrokePath(p *Path, style StrokeStyle, col color.Color) {
 	r, g, b, a := straightRGBA8(col)
 	if a == 0 || c.clipEmpty() || len(p.ops) == 0 {
+		return
+	}
+	if c.state.hasXf {
+		c.strokePathXf(p, style, col)
 		return
 	}
 	if c.rec != nil {
@@ -547,6 +607,8 @@ type polyBuilder struct {
 	// maxX, maxY)
 	culling bool
 	cull    [4]float64
+	// evenOdd fills by FillRuleEvenOdd
+	evenOdd bool
 	// The scratch for dashes and for the clipping of polygons
 	dash, clipA, clipB []PointF
 	// The bounds of the polygons (minX, minY, maxX, maxY), the polygons of
@@ -563,6 +625,7 @@ func (pb *polyBuilder) reset() {
 	pb.pts = pb.pts[:0]
 	pb.ends = pb.ends[:0]
 	pb.culling = false
+	pb.evenOdd = false
 }
 
 // addRaw adds the polygon as it goes: a filled path keeps the direction of
@@ -720,7 +783,10 @@ func boxPixels(box [4]float64) image.Rectangle {
 func (c *Canvas) rasterizeRect(pb *polyBuilder, b image.Rectangle, only []int, blend func(i, m uint32, px, py int)) {
 	ras := rasterizers.Get().(*rasterizer)
 	defer rasterizers.Put(ras)
-	z := ras.reset(b.Dx(), b.Dy())
+	var z pathSink = ras.reset(b.Dx(), b.Dy())
+	if pb.evenOdd {
+		z = ras.eo.reset(b.Dx(), b.Dy())
+	}
 	ox, oy := float64(b.Min.X), float64(b.Min.Y)
 	// Clipped to the rectangle with a margin: the rasterizer walks every row
 	// between the ends of a line, those far above it too
@@ -759,8 +825,12 @@ func (c *Canvas) rasterizeRect(pb *polyBuilder, b image.Rectangle, only []int, b
 		return
 	}
 	mask := ras.mask(b.Dx(), b.Dy())
-	z.DrawOp = draw.Src
-	z.Draw(mask, mask.Rect, image.Opaque, image.Point{})
+	if pb.evenOdd {
+		ras.eo.accumulate(mask)
+	} else {
+		ras.z.DrawOp = draw.Src
+		ras.z.Draw(mask, mask.Rect, image.Opaque, image.Point{})
+	}
 	for yy := 0; yy < b.Dy(); yy++ {
 		row := mask.Pix[yy*mask.Stride : yy*mask.Stride+b.Dx()]
 		offset := c.rgba.PixOffset(b.Min.X, b.Min.Y+yy)
@@ -846,7 +916,16 @@ func clipPolygon(pts []PointF, ox, oy float64, edges [4]float64, a, b *[]PointF)
 // fills and strokes many of them in every frame
 type rasterizer struct {
 	z     vector.Rasterizer
+	eo    evenOddRasterizer
 	alpha image.Alpha
+}
+
+// pathSink takes the lines of a polygon: the rasterizer of x/image/vector
+// or the even-odd one
+type pathSink interface {
+	MoveTo(x, y float32)
+	LineTo(x, y float32)
+	ClosePath()
 }
 
 var rasterizers = sync.Pool{New: func() any { return &rasterizer{} }}

@@ -4,6 +4,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"image/color"
 	"io"
 	"reflect"
 	"slices"
@@ -351,6 +352,48 @@ func init() {
 			attrs: chartXMLAttrs("items horizontal stacked title xtitle ytitle", func(w Widgeter, k, v string) { w.(*BarChart).ProcessPropChange(k, v) })},
 		"piechart": {make: func() Widgeter { return NewPieChart() }, children: "none",
 			attrs: chartXMLAttrs("items donut title", func(w Widgeter, k, v string) { w.(*PieChart).ProcessPropChange(k, v) })},
+		// A 3D view: <view3d model="part.stl" color="#4080e0" axes="true"/>,
+		// <view3d shape="torus" autorotate="0.5"/>
+		"view3d": {make: func() Widgeter { return NewView3D(NewScene3D()) }, children: "none", attrs: map[string]xmlAttr{
+			"model": func(w Widgeter, s string) error {
+				m, err := LoadMeshFile(s)
+				if err != nil {
+					return err
+				}
+				m.Center(2)
+				w.(*View3D).setXMLMesh(m)
+				return nil
+			},
+			"shape": func(w Widgeter, s string) error {
+				m := NewShapeMesh(s)
+				if m == nil {
+					return fmt.Errorf("unknown shape %q", s)
+				}
+				w.(*View3D).setXMLMesh(m)
+				return nil
+			},
+			"color": func(w Widgeter, s string) error {
+				c, ok := ParseHexColor(s)
+				if !ok {
+					return fmt.Errorf("%q is not a color", s)
+				}
+				w.(*View3D).xmlObject().Material.Color = c
+				return nil
+			},
+			"wireframe": boolAttr(func(w Widgeter, v bool) { w.(*View3D).xmlObject().Material.Wireframe = v }),
+			"axes": boolAttr(func(w Widgeter, v bool) {
+				if v {
+					w.(*View3D).Scene().AddAxes(1.5)
+				}
+			}),
+			"grid": boolAttr(func(w Widgeter, v bool) {
+				if v {
+					w.(*View3D).Scene().AddGrid(4, 0.5, color.RGBA{128, 128, 128, 255})
+				}
+			}),
+			"ortho":      boolAttr(func(w Widgeter, v bool) { w.(*View3D).SetOrthographic(v) }),
+			"autorotate": floatAttr(func(w Widgeter, v float64) { w.(*View3D).SetAutoRotate(v) }),
+		}},
 		// <widget id="chart"/>: a widget made by the application, from the
 		// map given to SetLayout
 		"widget": {children: "none"},

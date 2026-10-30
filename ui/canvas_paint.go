@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"image"
 	"image/color"
 	"math"
 )
@@ -20,6 +21,37 @@ type GradientStop struct {
 type LinearGradient struct {
 	X1, Y1, X2, Y2 float64
 	Stops          []GradientStop
+	// Spread is what is past the ends: the end colors, or the gradient
+	// repeated or mirrored
+	Spread GradientSpread
+}
+
+// GradientSpread is how a gradient goes on past its ends
+type GradientSpread int
+
+const (
+	// SpreadPad keeps the color of the end stop (SVG spreadMethod="pad")
+	SpreadPad GradientSpread = iota
+	// SpreadRepeat starts the gradient again: stripes
+	SpreadRepeat
+	// SpreadReflect goes back and forth along it
+	SpreadReflect
+)
+
+// spreadT returns where in 0..1 the point t along the gradient takes its
+// color
+func spreadT(t float64, spread GradientSpread) float64 {
+	switch spread {
+	case SpreadRepeat:
+		return t - math.Floor(t)
+	case SpreadReflect:
+		t = math.Mod(math.Abs(t), 2)
+		if t > 1 {
+			t = 2 - t
+		}
+		return t
+	}
+	return t
 }
 
 // ColorAt implements Paint
@@ -30,7 +62,7 @@ func (g LinearGradient) ColorAt(x, y float64) color.RGBA {
 	if l2 > 0 {
 		t = ((x-g.X1)*dx + (y-g.Y1)*dy) / l2
 	}
-	return gradientColor(g.Stops, t)
+	return gradientColor(g.Stops, spreadT(t, g.Spread))
 }
 
 // RadialGradient is a Paint whose color changes from the center (CX, CY)
@@ -38,6 +70,8 @@ func (g LinearGradient) ColorAt(x, y float64) color.RGBA {
 type RadialGradient struct {
 	CX, CY, R float64
 	Stops     []GradientStop
+	// Spread is what is past the circle, as of LinearGradient
+	Spread GradientSpread
 }
 
 // ColorAt implements Paint
@@ -46,7 +80,71 @@ func (g RadialGradient) ColorAt(x, y float64) color.RGBA {
 	if g.R > 0 {
 		t = math.Hypot(x-g.CX, y-g.CY) / g.R
 	}
-	return gradientColor(g.Stops, t)
+	return gradientColor(g.Stops, spreadT(t, g.Spread))
+}
+
+// ConicGradient is a Paint whose color changes around the center (CX, CY):
+// the stop at 0 at the angle Angle in radians (0 - to the right), going
+// clockwise on the screen to 1 a turn later. For color wheels, gauges,
+// the sweep of a radar.
+type ConicGradient struct {
+	CX, CY, Angle float64
+	Stops         []GradientStop
+}
+
+// ColorAt implements Paint
+func (g ConicGradient) ColorAt(x, y float64) color.RGBA {
+	return gradientColor(g.Stops, conicT(x-g.CX, y-g.CY, g.Angle))
+}
+
+func conicT(dx, dy, angle float64) float64 {
+	t := (math.Atan2(dy, dx) - angle) / (2 * math.Pi)
+	return t - math.Floor(t)
+}
+
+// ImagePattern is a Paint of an image: its pixel (i, j) (from its
+// Bounds().Min) at the logical point (X + i*Scale, Y + j*Scale), repeated
+// in both directions when Repeat is set, transparent around it when not.
+// Smooth interpolates the pixels.
+type ImagePattern struct {
+	Image  image.Image
+	X, Y   float64
+	Scale  float64 // 0 is 1
+	Repeat bool
+	Smooth bool
+}
+
+// ColorAt implements Paint
+func (p ImagePattern) ColorAt(x, y float64) color.RGBA {
+	return p.sampler()(x, y)
+}
+
+// sampler returns ColorAt with what it needs made once
+func (p ImagePattern) sampler() func(x, y float64) color.RGBA {
+	if p.Image == nil {
+		return func(float64, float64) color.RGBA { return color.RGBA{} }
+	}
+	b := p.Image.Bounds()
+	if b.Empty() {
+		return func(float64, float64) color.RGBA { return color.RGBA{} }
+	}
+	scale := p.Scale
+	if scale <= 0 {
+		scale = 1
+	}
+	sample := imageSampler(p.Image, b, p.Smooth)
+	w, h := float64(b.Dx()), float64(b.Dy())
+	return func(x, y float64) color.RGBA {
+		u, v := (x-p.X)/scale, (y-p.Y)/scale
+		if p.Repeat {
+			u -= math.Floor(u/w) * w
+			v -= math.Floor(v/h) * h
+		} else if u < 0 || v < 0 || u >= w || v >= h {
+			return color.RGBA{}
+		}
+		r, g, bl, a := sample(u+float64(b.Min.X), v+float64(b.Min.Y))
+		return color.RGBA{uint8(r), uint8(g), uint8(bl), uint8(a)}
+	}
 }
 
 // gradientColor returns the color of the stops at t, mixed between the two
@@ -129,4 +227,94 @@ func (h HatchPaint) ColorAt(x, y float64) color.RGBA {
 		return h.Background
 	}
 	return mixRGBA(h.Background, h.Color, coverage)
+}
+
+// gradientLUTSize is how many colors a gradient is computed at before a
+// fill: a step is a 1/1024 of the gradient, under a level of a color
+const gradientLUTSize = 1024
+
+// gradientLUT is the colors of the stops at gradientLUTSize points from the
+// first stop's offset to the last one's
+type gradientLUT struct {
+	lo, hi      float64
+	k           float64 // gradientLUTSize / (hi - lo)
+	first, last color.RGBA
+	colors      [gradientLUTSize + 1]color.RGBA
+}
+
+func newGradientLUT(stops []GradientStop) *gradientLUT {
+	l := &gradientLUT{}
+	if len(stops) == 0 {
+		return l
+	}
+	l.lo, l.hi = stops[0].Offset, stops[0].Offset
+	for _, st := range stops {
+		l.hi = max(l.hi, st.Offset)
+	}
+	if l.hi > l.lo {
+		l.k = gradientLUTSize / (l.hi - l.lo)
+	}
+	l.first = gradientColor(stops, l.lo)
+	l.last = gradientColor(stops, math.Inf(1))
+	for i := range l.colors {
+		l.colors[i] = gradientColor(stops, l.lo+(l.hi-l.lo)*float64(i)/gradientLUTSize)
+	}
+	return l
+}
+
+func (l *gradientLUT) at(t float64) color.RGBA {
+	if !(t > l.lo) { // NaN too
+		return l.first
+	}
+	if t >= l.hi {
+		return l.last
+	}
+	return l.colors[min(int((t-l.lo)*l.k+0.5), gradientLUTSize)]
+}
+
+// fastPaint returns the paint's ColorAt; of the gradients of nui, made
+// with their colors computed once, not mixed again at every pixel
+func fastPaint(paint Paint) func(x, y float64) color.RGBA {
+	switch g := paint.(type) {
+	case LinearGradient:
+		if len(g.Stops) < 2 {
+			break
+		}
+		lut := newGradientLUT(g.Stops)
+		dx, dy := g.X2-g.X1, g.Y2-g.Y1
+		l2 := dx*dx + dy*dy
+		if l2 <= 0 {
+			break
+		}
+		kx, ky := dx/l2, dy/l2
+		if g.Spread != SpreadPad {
+			return func(x, y float64) color.RGBA {
+				return lut.at(spreadT((x-g.X1)*kx+(y-g.Y1)*ky, g.Spread))
+			}
+		}
+		return func(x, y float64) color.RGBA {
+			return lut.at((x-g.X1)*kx + (y-g.Y1)*ky)
+		}
+	case RadialGradient:
+		if len(g.Stops) < 2 || g.R <= 0 {
+			break
+		}
+		lut := newGradientLUT(g.Stops)
+		k := 1 / g.R
+		return func(x, y float64) color.RGBA {
+			dx, dy := x-g.CX, y-g.CY
+			return lut.at(spreadT(math.Sqrt(dx*dx+dy*dy)*k, g.Spread))
+		}
+	case ConicGradient:
+		if len(g.Stops) < 2 {
+			break
+		}
+		lut := newGradientLUT(g.Stops)
+		return func(x, y float64) color.RGBA {
+			return lut.at(conicT(x-g.CX, y-g.CY, g.Angle))
+		}
+	case ImagePattern:
+		return g.sampler()
+	}
+	return paint.ColorAt
 }

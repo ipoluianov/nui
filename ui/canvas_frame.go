@@ -3,8 +3,10 @@ package ui
 import (
 	"image"
 	"image/color"
+	"image/draw"
 	"math"
 	"slices"
+	"sync"
 
 	"golang.org/x/image/vector"
 )
@@ -13,6 +15,10 @@ import (
 // the color given (FillRoundedRect fills with the current color).
 func (c *Canvas) FillRoundedRectAA(x, y, width, height, radius int, col color.RGBA) {
 	if width <= 0 || height <= 0 {
+		return
+	}
+	if c.state.hasXf {
+		c.fillRoundedXf(float64(x), float64(y), float64(width), float64(height), float64(radius), col)
 		return
 	}
 	x, y, width, height = c.pixelRect(x, y, width, height)
@@ -36,9 +42,10 @@ func (c *Canvas) fillRoundedRectAAPixels(x, y, width, height, radius int, col co
 	c.fillRectPixels(x+radius, y+height-radius, width-radius*2, radius, col)
 
 	// The corners: each pixel covered as much as the quarter circle covers it
+	cover := cornerCoverages(radius)
 	for cy := 0; cy < radius; cy++ {
 		for cx := 0; cx < radius; cx++ {
-			coverage := cornerCoverage(cx, cy, radius)
+			coverage := cover[cy*radius+cx]
 			if coverage == 0 {
 				continue
 			}
@@ -78,6 +85,28 @@ func cornerCoverage(cx, cy, radius int) float64 {
 	return float64(inside) / (samples * samples)
 }
 
+// cornerCache keeps the coverages of the corners by their radius: every
+// frame of every control is drawn with one of a few radii
+var cornerCache sync.Map // int -> []float64
+
+// cornerCoverages returns cornerCoverage of every pixel of the corner
+// square of the radius, row by row
+func cornerCoverages(radius int) []float64 {
+	if v, ok := cornerCache.Load(radius); ok {
+		return v.([]float64)
+	}
+	cover := make([]float64, radius*radius)
+	for cy := 0; cy < radius; cy++ {
+		for cx := 0; cx < radius; cx++ {
+			cover[cy*radius+cx] = cornerCoverage(cx, cy, radius)
+		}
+	}
+	if radius <= 256 {
+		cornerCache.Store(radius, cover)
+	}
+	return cover
+}
+
 // blendPixel blends the straight (not premultiplied) color into the pixel
 // (x, y) of the image, inside the clip rectangle only.
 func (c *Canvas) blendPixel(x, y int, col color.RGBA) {
@@ -87,11 +116,8 @@ func (c *Canvas) blendPixel(x, y int, col color.RGBA) {
 	if !(image.Point{x, y}).In(c.rgba.Rect) {
 		return
 	}
-	if col.A == 255 {
-		c.rgba.SetRGBA(x, y, col)
-		return
-	}
-	c.MixPixel(x, y, col)
+	// As MixPixel, without boxing the color into an interface
+	c.mixPixelAt(c.rgba.PixOffset(x, y), uint32(col.R), uint32(col.G), uint32(col.B), uint32(col.A))
 }
 
 // fillRoundedPixels fills, anti-aliased, the rectangle x, y, w, h in pixels
@@ -108,24 +134,86 @@ func (c *Canvas) fillRoundedPixels(x, y, w, h int, radius float64, thickness int
 	if b.Empty() {
 		return
 	}
-	z := vector.NewRasterizer(b.Dx(), b.Dy())
-	ox, oy := float64(x-b.Min.X), float64(y-b.Min.Y)
+	outline := thickness > 0 && w > thickness*2 && h > thickness*2
 	t := float64(thickness)
-	if thickness > 0 && w > thickness*2 && h > thickness*2 {
-		roundedRectPath(z, ox, oy, float64(w), float64(h), radius+t/2, false)
-		// The inner part the other way round: it is taken out
-		roundedRectPath(z, ox+t, oy+t, float64(w)-t*2, float64(h)-t*2, radius-t/2, true)
-	} else {
-		roundedRectPath(z, ox, oy, float64(w), float64(h), radius, false)
+	// The outline of the shape, and of the hole of an outline, made once
+	var outerBuf, innerBuf [4 * 33][2]float64
+	outerPts := roundedRectPoints(outerBuf[:0], float64(x), float64(y), float64(w), float64(h), radius+t/2*b2f(outline))
+	var innerPts [][2]float64
+	if outline {
+		innerPts = roundedRectPoints(innerBuf[:0], float64(x)+t, float64(y)+t, float64(w)-t*2, float64(h)-t*2, radius-t/2)
+		slices.Reverse(innerPts) // the other way round: it is taken out
 	}
-	c.fillRasterized(z, b, col)
+	part := func(r image.Rectangle) {
+		r = r.Intersect(b)
+		if r.Empty() {
+			return
+		}
+		ras := rasterizers.Get().(*rasterizer)
+		defer rasterizers.Put(ras)
+		z := ras.reset(r.Dx(), r.Dy())
+		addPoints(z, outerPts, float64(r.Min.X), float64(r.Min.Y))
+		addPoints(z, innerPts, float64(r.Min.X), float64(r.Min.Y))
+		c.fillRasterized(ras, r, col)
+	}
+	fill := func(r image.Rectangle) {
+		if r = r.Intersect(b); !r.Empty() {
+			c.fillRectPixels(r.Min.X, r.Min.Y, r.Dx(), r.Dy(), col)
+		}
+	}
+	// Only the corners are rasterized: between them the shape is whole
+	// pixels, rectangles filled directly, as a button is drawn on every
+	// frame
+	outer := max(0, min(radius+t/2*b2f(outline), float64(w)/2, float64(h)/2))
+	band := max(int(math.Ceil(outer))+1, thickness+1)
+	if w <= band*2 || h <= band*2 {
+		part(image.Rect(x, y, x+w, y+h))
+		return
+	}
+	x2, y2 := x+w, y+h
+	part(image.Rect(x, y, x+band, y+band))
+	part(image.Rect(x2-band, y, x2, y+band))
+	part(image.Rect(x, y2-band, x+band, y2))
+	part(image.Rect(x2-band, y2-band, x2, y2))
+	if outline {
+		fill(image.Rect(x+band, y, x2-band, y+thickness))
+		fill(image.Rect(x+band, y2-thickness, x2-band, y2))
+		fill(image.Rect(x, y+band, x+thickness, y2-band))
+		fill(image.Rect(x2-thickness, y+band, x2, y2-band))
+		return
+	}
+	fill(image.Rect(x+band, y, x2-band, y2))
+	fill(image.Rect(x, y+band, x+band, y2-band))
+	fill(image.Rect(x2-band, y+band, x2, y2-band))
+}
+
+// b2f returns 1 for true, 0 for false
+func b2f(v bool) float64 {
+	if v {
+		return 1
+	}
+	return 0
+}
+
+// addPoints adds the closed polygon, moved by (-ox, -oy), to the rasterizer
+func addPoints(z *vector.Rasterizer, pts [][2]float64, ox, oy float64) {
+	if len(pts) == 0 {
+		return
+	}
+	z.MoveTo(float32(pts[0][0]-ox), float32(pts[0][1]-oy))
+	for _, p := range pts[1:] {
+		z.LineTo(float32(p[0]-ox), float32(p[1]-oy))
+	}
+	z.ClosePath()
 }
 
 // fillRasterized blends the color over the pixels of b by how much the
-// shape added to z covers each: z is b's size, its origin at b.Min
-func (c *Canvas) fillRasterized(z *vector.Rasterizer, b image.Rectangle, col color.Color) {
-	mask := image.NewAlpha(image.Rect(0, 0, b.Dx(), b.Dy()))
-	z.Draw(mask, mask.Rect, image.Opaque, image.Point{})
+// shape added to the rasterizer covers each: it is b's size, its origin
+// at b.Min
+func (c *Canvas) fillRasterized(ras *rasterizer, b image.Rectangle, col color.Color) {
+	mask := ras.mask(b.Dx(), b.Dy())
+	ras.z.DrawOp = draw.Src
+	ras.z.Draw(mask, mask.Rect, image.Opaque, image.Point{})
 
 	r, g, bl, a := straightRGBA8(col)
 	for yy := 0; yy < b.Dy(); yy++ {
@@ -155,14 +243,16 @@ func (c *Canvas) fillPolygonPixels(pts [][2]float64, col color.Color) {
 	if b.Empty() {
 		return
 	}
-	z := vector.NewRasterizer(b.Dx(), b.Dy())
+	ras := rasterizers.Get().(*rasterizer)
+	defer rasterizers.Put(ras)
+	z := ras.reset(b.Dx(), b.Dy())
 	ox, oy := float64(b.Min.X), float64(b.Min.Y)
 	z.MoveTo(float32(pts[0][0]-ox), float32(pts[0][1]-oy))
 	for _, p := range pts[1:] {
 		z.LineTo(float32(p[0]-ox), float32(p[1]-oy))
 	}
 	z.ClosePath()
-	c.fillRasterized(z, b, col)
+	c.fillRasterized(ras, b, col)
 }
 
 // drawMark draws a stroke of a mark (a check, a dash) of the logical width,
@@ -205,7 +295,8 @@ func (c *Canvas) drawWideLine(x1, y1, x2, y2 float64, width float64, col color.C
 	angle := math.Atan2(by-ay, bx-ax)
 	r := width / 2
 	steps := min(4+int(width), 16)
-	pts := make([][2]float64, 0, (steps+1)*2)
+	var buf [34][2]float64
+	pts := buf[:0]
 	for i := 0; i <= steps; i++ { // around the end
 		a := angle - math.Pi/2 + math.Pi*float64(i)/float64(steps)
 		pts = append(pts, [2]float64{bx + r*math.Cos(a), by + r*math.Sin(a)})
@@ -217,36 +308,58 @@ func (c *Canvas) drawWideLine(x1, y1, x2, y2 float64, width float64, col color.C
 	c.fillPolygonPixels(pts, col)
 }
 
-// roundedRectPath adds the rectangle with rounded corners to the path of
-// the rasterizer, clockwise or, reversed, counterclockwise. The radius is
-// kept within half of the sides; the arcs are made of short lines.
-func roundedRectPath(z *vector.Rasterizer, x, y, w, h, radius float64, reversed bool) {
+// quarterTrigs are the cosines and sines of steps+1 angles from 0 to 90
+// degrees, by the steps
+var quarterTrigs [33][][2]float64
+var quarterTrigsOnce sync.Once
+
+func quarterTrig(steps int) [][2]float64 {
+	quarterTrigsOnce.Do(func() {
+		for n := 1; n < len(quarterTrigs); n++ {
+			t := make([][2]float64, n+1)
+			for i := range t {
+				angle := 90 * float64(i) / float64(n) * math.Pi / 180
+				t[i] = [2]float64{math.Cos(angle), math.Sin(angle)}
+			}
+			quarterTrigs[n] = t
+		}
+	})
+	return quarterTrigs[steps]
+}
+
+// roundedRectPoints appends the outline of the rectangle with rounded
+// corners to pts, clockwise on the screen. The radius is kept within half
+// of the sides; the arcs are made of short lines.
+func roundedRectPoints(pts [][2]float64, x, y, w, h, radius float64) [][2]float64 {
 	radius = max(0, min(radius, w/2, h/2))
 	steps := min(4+int(radius)/2, 32)
-	var pts [][2]float64
 	corner := func(cx, cy, from float64) {
 		if radius == 0 {
 			pts = append(pts, [2]float64{cx, cy})
 			return
 		}
+		// The quarter from the angle from, a multiple of 90 degrees: the
+		// cosines and sines of the quarter from 0, turned
+		trig := quarterTrig(steps)
 		for i := 0; i <= steps; i++ {
-			angle := (from + 90*float64(i)/float64(steps)) * math.Pi / 180
-			pts = append(pts, [2]float64{cx + radius*math.Cos(angle), cy + radius*math.Sin(angle)})
+			cs, sn := trig[i][0], trig[i][1]
+			switch from {
+			case -90:
+				cs, sn = sn, -cs
+			case 90:
+				cs, sn = -sn, cs
+			case 180:
+				cs, sn = -cs, -sn
+			}
+			pts = append(pts, [2]float64{cx + radius*cs, cy + radius*sn})
 		}
 	}
-	// Clockwise on the screen (y down): from the top left corner's end
+	// From the top left corner's end
 	corner(x+w-radius, y+radius, -90) // top right
 	corner(x+w-radius, y+h-radius, 0) // bottom right
 	corner(x+radius, y+h-radius, 90)  // bottom left
 	corner(x+radius, y+radius, 180)   // top left
-	if reversed {
-		slices.Reverse(pts)
-	}
-	z.MoveTo(float32(pts[0][0]), float32(pts[0][1]))
-	for _, p := range pts[1:] {
-		z.LineTo(float32(p[0]), float32(p[1]))
-	}
-	z.ClosePath()
+	return pts
 }
 
 // clipRect returns the clip in pixels of the image

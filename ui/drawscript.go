@@ -205,5 +205,7 @@ func (c *DrawScript) mixPixel(img *image.RGBA, x int, y int, rgba [4]uint32, int
 	for i := range 3 {
 		pix[i] = blend8(uint32(pix[i]), rgba[i], alpha)
 	}
-	pix[3] = 255
+	if pix[3] != 255 {
+		pix[3] = blend8(uint32(pix[3]), 255, alpha)
+	}
 }
