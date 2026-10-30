@@ -22,3 +22,9 @@ func TestAppsBuild(t *testing.T) {
 		})
 	}
 }
+
+// The launcher lays its applications out in columns without a panic
+func TestLauncherBuilds(t *testing.T) {
+	form := newLauncherForm()
+	form.UpdateLayout()
+}

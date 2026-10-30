@@ -95,20 +95,32 @@ func RunApp(app *App) {
 // Run runs the launcher: a window with the list of the applications. Each
 // opens in its own window; several can be open at once.
 func Run() {
+	form := newLauncherForm()
+	form.Show()
+	form.Exec()
+}
+
+// launcherColumns is the count of the columns of the launcher's list
+const launcherColumns = 2
+
+// newLauncherForm returns the window of the launcher: the applications in
+// columns, filled row by row, and the settings below
+func newLauncherForm() *ui.Form {
 	form := ui.NewForm()
 	form.SetTitle("nui examples")
-	form.SetSize(640, 720)
+	form.SetSize(1040, 560)
 	panel := form.Panel()
 
 	list := panel.AddPanel(0, 0)
 	list.SetCellPadding(6)
 	for i, app := range Apps {
 		open := func() { app.NewForm().Show() }
+		row, col := i/launcherColumns, (i%launcherColumns)*2
 		btn := ui.NewToolButton(app.Icon, "Open "+app.Title, open)
 		btn.SetFlat(true)
-		list.AddWidget(i, 0, btn)
+		list.AddWidget(row, col, btn)
 
-		text := list.AddPanel(i, 1)
+		text := list.AddPanel(row, col+1)
 		text.SetPanelPadding(0)
 		title := ui.NewLink(app.Title, open)
 		text.AddWidget(0, 0, title)
@@ -146,9 +158,7 @@ func Run() {
 	})
 	settings.AddWidget(0, 1, font)
 	settings.AddHSpacer(0, 2)
-
-	form.Show()
-	form.Exec()
+	return form
 }
 
 // The application icons: a colored rounded square with a white mark.
