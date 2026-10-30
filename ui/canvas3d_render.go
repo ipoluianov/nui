@@ -27,6 +27,7 @@ type Renderer3D struct {
 	w, h  int // the size of the buffers, in samples
 	color []uint8
 	depth []float32
+	fill  [4]uint8 // the background, premultiplied: the buffers are cleared to it
 
 	verts  []rVertex
 	tris   []rTri
@@ -233,14 +234,8 @@ func (r *Renderer3D) draw(w, h int, px float32, scene *Scene3D, cam Camera) {
 	r.depth = r.depth[:w*h]
 	bg := scene.Background
 	a := uint32(bg.A)
-	fill := [4]uint8{uint8((uint32(bg.R)*a + 127) / 255), uint8((uint32(bg.G)*a + 127) / 255), uint8((uint32(bg.B)*a + 127) / 255), bg.A}
-	for i := 0; i < len(r.color); i += 4 {
-		copy(r.color[i:i+4], fill[:])
-	}
-	inf := float32(math.Inf(1))
-	for i := range r.depth {
-		r.depth[i] = inf
-	}
+	// The buffers are cleared by rasterize, each band on its worker
+	r.fill = [4]uint8{uint8((uint32(bg.R)*a + 127) / 255), uint8((uint32(bg.G)*a + 127) / 255), uint8((uint32(bg.B)*a + 127) / 255), bg.A}
 
 	r.verts, r.tris, r.trans, r.points, r.mats = r.verts[:0], r.tris[:0], r.trans[:0], r.points[:0], r.mats[:0]
 	r.lineMi = -1
@@ -794,6 +789,7 @@ func (r *Renderer3D) rasterize() {
 					return
 				}
 				y0, y1 := int32(b*bandH), int32(min((b+1)*bandH, r.h)-1)
+				r.clearRows(int(y0), int(y1))
 				// The depth of the opaque surfaces first, then each pixel is
 				// lit once, by the surface seen there: the hidden ones cost
 				// no light. The textured ones may have holes, so they are
@@ -824,6 +820,21 @@ func (r *Renderer3D) rasterize() {
 		}()
 	}
 	wg.Wait()
+}
+
+// clearRows clears the rows y0..y1 of the buffers: the background, the
+// depth infinite
+func (r *Renderer3D) clearRows(y0, y1 int) {
+	col := r.color[y0*r.w*4 : (y1+1)*r.w*4]
+	copy(col, r.fill[:])
+	for n := 4; n < len(col); n *= 2 {
+		copy(col[n:], col[:n])
+	}
+	depth := r.depth[y0*r.w : (y1+1)*r.w]
+	depth[0] = float32(math.Inf(1))
+	for n := 1; n < len(depth); n *= 2 {
+		copy(depth[n:], depth[:n])
+	}
 }
 
 // The passes of rasterTri
