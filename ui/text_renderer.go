@@ -357,7 +357,7 @@ func charPositions(fontFamily string, fontSize float64, text string) ([]int, err
 	}
 	stringLenInRunes := len([]rune(text))
 
-	positions := make([]int, stringLenInRunes+1) // на 1 больше, чтобы последняя позиция = ширине всей строки
+	positions := make([]int, stringLenInRunes+1) // one more: the last position is the width of the whole string
 
 	ensureFallbackFonts(text)
 	err := withFace(fontFamily, fontSize, func(face font.Face) {

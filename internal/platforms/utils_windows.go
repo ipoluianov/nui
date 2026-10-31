@@ -912,7 +912,7 @@ func createHICONFromRGBA(img *image.RGBA) syscall.Handle {
 			b := img.Pix[i+2]
 			a := img.Pix[i+3]
 
-			// Windows ожидает BGRA
+			// Windows expects BGRA
 			pixels = append(pixels, b, g, r, a)
 		}
 	}*/
@@ -942,7 +942,7 @@ func setDarkMode(hwnd uintptr, enable bool) {
 		useDark = 1
 	}
 
-	// Сначала пробуем с 20
+	// First with attribute 20
 	ret, _, _ := procDwmSetWindowAttribute.Call(
 		hwnd,
 		uintptr(c_DWMWA_USE_IMMERSIVE_DARK_MODE),
@@ -950,7 +950,7 @@ func setDarkMode(hwnd uintptr, enable bool) {
 		unsafe.Sizeof(useDark),
 	)
 
-	// Если не сработало — пробуем 19
+	// If that failed, with 19 (older Windows 10)
 	if ret != 0 {
 		procDwmSetWindowAttribute.Call(
 			hwnd,
@@ -964,7 +964,7 @@ func setDarkMode(hwnd uintptr, enable bool) {
 const (
 	VK_SHIFT   = 0x10
 	VK_CONTROL = 0x11
-	VK_MENU    = 0x12 // Это клавиша ALT
+	VK_MENU    = 0x12 // the Alt key
 )
 
 // currentModifierState is the state of the keys right now (GetAsyncKeyState),

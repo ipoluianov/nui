@@ -2737,7 +2737,7 @@ func (c *Widget) makeColumnsInfo(fullWidth int, cells map[gridCell][]Widgeter) (
 func (c *Widget) makeRowsInfo(fullHeight int, cells map[gridCell][]Widgeter) (map[int]*ContainerGridRowInfo, int, int, int) {
 	cellPadding := c.GetPropInt("spacing", 2)
 
-	// Определяем минимальный и максимальный индекс строк
+	// The smallest and the largest index of the rows and columns
 	minX := MaxInt
 	minY := MaxInt
 	maxX := MinInt
@@ -2757,18 +2757,18 @@ func (c *Widget) makeRowsInfo(fullHeight int, cells map[gridCell][]Widgeter) (ma
 		}
 	}
 
-	// Подготовка
+	// Preparing
 	rowsInfo := make(map[int]*ContainerGridRowInfo)
 	hasExpandableRows := false
 
-	// Главный цикл по строкам
+	// The main loop over the rows
 	lines := occupiedLines(cells)
 	for _, y := range lines.rows {
 		var rowInfo ContainerGridRowInfo
-		rowInfo.minHeight = MinInt // Минимальная высота строки пока 0
-		rowInfo.maxHeight = MaxInt // Максимальная высота строки пока ... максимум
-		rowInfo.expandable = false // Пока думаем, что строка не мажорная
-		found := false             // Признак того, что вообще есть в строке контролы
+		rowInfo.minHeight = MinInt // No minimum height of the row yet
+		rowInfo.maxHeight = MaxInt // No maximum height of the row yet
+		rowInfo.expandable = false // Not expandable until a widget makes it so
+		found := false             // Whether the row has any widgets at all
 
 		// If any widget in the row is expandable, set the expandable flag for the row
 		for _, x := range lines.rowCols[y] {

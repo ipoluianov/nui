@@ -1,63 +1,63 @@
-# Что проверить вручную
+# Manual checks
 
-Пункты, которые автоматические тесты не покрывают: нужны настоящая система, мышь, клавиатура, монитор, принтер. У каждого пункта: что сделать, что должно получиться и, если уже проверялось, на чём.
+What the automatic tests do not cover: it needs a real system, a mouse, a keyboard, a monitor, a printer. Each item says what to do, what must come out and, when it was checked already, on what.
 
-Как отчитываться: снять пункт, если всё правильно, или записать, что получилось. Версию ОС и масштаб экрана указать один раз в начале раздела.
+Reporting: remove an item when all is right, or write down what came out. Give the version of the system and the scale of the screen once, at the start of a section.
 
-Программы проверки (удалить вместе с этим файлом, когда пункты кончатся):
-- [cmd/fontcheck](../cmd/fontcheck/main.go): начертания и ширины шрифтов, `-system` — интерфейс системным шрифтом;
-- [cmd/clipcheck](../cmd/clipcheck/main.go): буфер обмена между двумя копиями, `-copy` и `-paste`;
-- [cmd/dragcheck](../cmd/dragcheck/main.go): перетаскивание файлов из окна и в окно.
+Programs for the checks (delete them with this file when the items are done):
+- [cmd/fontcheck](../cmd/fontcheck/main.go): the styles and widths of fonts; `-system` draws the interface with the system font;
+- [cmd/clipcheck](../cmd/clipcheck/main.go): the clipboard between two copies, `-copy` and `-paste`;
+- [cmd/dragcheck](../cmd/dragcheck/main.go): dragging files out of a window and into it.
 
 ---
 
-## Частичная перерисовка (все ОС)
+## Partial repaint (all systems)
 
-Кадр перерисовывает поверх прошлого только прямоугольники изменившихся виджетов (см. [testing.md](testing.md#partial-repaint)). Запускать примеры с `NUI_CHECK_REPAINT=1` и смотреть в консоль: каждая строка `nui: repaint check: …` — ошибка, в ней область и виджеты.
+A frame repaints only the rectangles of the widgets that changed, over the last one (see [testing.md](testing.md#partial-repaint)). Run the examples with `NUI_CHECK_REPAINT=1` and watch the console: each line `nui: repaint check: …` is a bug, with the area and the widgets.
 
-Проверено автоматически, без расхождений: macOS 27.0.1 Retina (`TestRepaintMonkey`, viewer3d в окне); Linux Debian 13 KDE X11 (все примеры в настоящих окнах через XTest при `NUI_SCALE` 1, 1,5 и 2; перекрытие, сворачивание и ресайз — снимки совпадают пиксель в пиксель).
+Checked automatically, with no difference: macOS 27.0.1 Retina (`TestRepaintMonkey`, viewer3d in a window); Linux Debian 13 KDE X11 (all the examples in real windows through XTest at `NUI_SCALE` 1, 1.5 and 2; covering, iconifying and resizing give the same picture to the pixel).
 
-- **Следов старой картинки нет** (Windows; на macOS и Linux — мышью вручную). В лаунчере, gallery, notepad, contacts, cad, chartgallery, viewer3d, monitor водить мышью, крутить колесо, перетаскивать, открывать меню и списки, менять размер окна, сворачивать, перекрывать другим окном. В консоли нет `repaint check`, на экране нет следов подсветки, курсора, перекрестья, подсказок.
-- **Фон окна** (Windows, macOS; Linux — светлая тема). Край окна при ресайзе и пустая форма — цвета фона темы, в светлой и тёмной.
-- **Окно после перекрытия и сворачивания** рисуется целиком (Windows, macOS).
-- **Масштабы 125–200 %** (Windows; Linux — глазами): при наведении на кнопки и списки по краям подсвеченных элементов не остаётся полос в пиксель.
+- **No traces of an old picture** (Windows; on macOS and Linux, with the mouse by hand). In the launcher, gallery, notepad, contacts, cad, chartgallery, viewer3d, monitor: move the mouse, turn the wheel, drag, open menus and lists, resize the window, iconify it, cover it with another window. No `repaint check` in the console, no traces of a hover, a caret, a crosshair, a tooltip on the screen.
+- **The background of the window** (Windows, macOS; Linux in the light theme). The edge of a window being resized and an empty form are of the background color of the theme, light and dark.
+- **The window after being covered and iconified** is painted whole (Windows, macOS).
+- **Scales 125-200 %** (Windows; Linux by eye): hovering over buttons and lists leaves no stripes of a pixel at the edges of the highlighted items.
 
-## Текст и шрифты
+## Text and fonts
 
-- **Курсор в TextBox** (Linux и Windows при 125, 150 и 200 %; macOS Retina проверен). Щелчок между буквами ставит курсор ровно в промежуток; выделение мышью закрашивает ровно выделенные буквы; курсор в конце длинной строки стоит вплотную за последним символом. В начале, середине и конце строки.
-- **Иероглифы в жирном тексте** (macOS; Windows 100 % проверен по скриншоту). `中文` в жирных строках `fontcheck` жирные, на той же базовой линии, что и латиница.
-- **Первое появление жирного без задержки** (все ОС). При первом показе окна нет заметной паузы: каждое начертание распаковывается при первом использовании, около 9 мс на Noto Sans.
-- **Windows: Noto Sans, установленный в систему.** GDI видит два шрифта с одним именем: встроенный, загруженный в память, и системный. Жирный и курсив `fontcheck` по-прежнему настоящие: `native-regular` у `notosans:bold` заметно меньше 39 (синтезированный жирный шире ровно на 1 px на символ), курсив рукописный («д» как «g», «т» как «m»).
-- **Windows: масштаб 150 % и 200 %.** То же, что выше: жирный и курсив настоящие, курсив 40 px не обрезан.
+- **The caret in a TextBox** (Linux and Windows at 125, 150 and 200 %; macOS Retina checked). A click between letters puts the caret right in the gap; a mouse selection covers exactly the letters selected; the caret at the end of a long line is right after the last character. At the start, the middle and the end of a line.
+- **Chinese in bold text** (macOS; Windows at 100 % checked by a screenshot). `中文` in the bold lines of `fontcheck` is bold and on the baseline of the Latin letters.
+- **No delay at the first bold text** (all systems). No pause is seen when a window is first shown: each style is unpacked when first used, about 9 ms for Noto Sans.
+- **Windows: Noto Sans installed in the system.** GDI sees two fonts of one name: the built-in one loaded in memory, and the system one. Bold and italic in `fontcheck` stay real: `native-regular` of `notosans:bold` is well below 39 (a synthesized bold is wider by exactly 1 px a character), the italic is cursive (the Cyrillic «д» looks like «g», «т» like «m»).
+- **Windows: scales 150 % and 200 %.** As above: bold and italic are real, the italic at 40 px is not cut off.
 
-## Окна
+## Windows
 
-- **`RememberState`** (Windows и Linux). Развернуть окно, закрыть крестиком, открыть — окно развёрнуто, «Восстановить» — прежнее место и размер. Windows, один монитор — проверено. С двумя мониторами: закрыть окно на втором, отключить его, открыть — окно на первом.
-- **macOS: фон у каждого окна свой.** Две формы с разными `SetBackgroundColor`: при ресайзе каждая заливается своим цветом. Окно на весь внешний монитор 5K или 6K: изображение не обрезано справа и снизу.
-- **macOS: второй монитор с другим масштабом** (Retina и обычный). Окно notepad перетащить на другой экран: текст чёткий, курсор в конце строки на месте; окно открывается на том мониторе, где закрыто.
-- **macOS: печать через CUPS.** `Printers()` возвращает принтеры из «Системные настройки → Принтеры» и принтер по умолчанию. Печать на настоящий принтер или в PDF через виртуальный принтер работает. Без принтеров — понятная ошибка, а не падение.
+- **`RememberState`** (Windows and Linux). Maximize a window, close it with the close button, open it: it is maximized, and Restore gives the last place and size. Windows with one monitor is checked. With two monitors: close the window on the second, unplug it, open: the window is on the first.
+- **macOS: a background of each window.** Two forms with different `SetBackgroundColor`: each is filled with its own color while resized. A window over a whole external 5K or 6K monitor: the picture is not cut off at the right and the bottom.
+- **macOS: a second monitor of another scale** (Retina and ordinary). Drag the window of notepad to the other screen: the text is sharp, the caret at the end of a line is in place; the window opens on the monitor where it was closed.
+- **macOS: printing through CUPS.** `Printers()` returns the printers of System Settings → Printers and the default one. Printing to a real printer, or to PDF through a virtual printer, works. Without printers there is a clear error, not a crash.
 
 ## Linux
 
-- **Перетаскивание файлов из окна в Dolphin, Nautilus, Thunar** (`dragcheck`): файлы копируются, курсор над окном менеджера показывает, что бросить можно. Окно менеджера вложено в рамку оконного менеджера, цель ищется вглубь по `XdndAware`; между окнами nui на Xvfb это проверено.
-- **KDE, масштаб 200 %** (Настройки → Экран → Масштаб, `Xft.dpi` 192): окна nui того же размера, что и у других программ, текст чёткий.
-- **GNOME на X11, 200 %:** то же.
-- **Дробный масштаб 125 % и 150 %:** рамки виджетов не «плывут» на полпикселя, меню и подсказки открываются у курсора.
-- **Два монитора с разным масштабом:** у X11 масштаб один на весь экран, на мониторе 100 % окна крупнее. Это ожидаемо, проверить, что ничего не ломается.
+- **Dragging files out of a window into Dolphin, Nautilus, Thunar** (`dragcheck`): the files are copied, the cursor over the file manager shows that a drop is accepted. The window of the manager is inside the frame of the window manager, and the target is looked for deeper by `XdndAware`; between windows of nui on Xvfb this is checked.
+- **KDE at 200 %** (System Settings → Display → Scale, `Xft.dpi` 192): the windows of nui are of the size of other programs', the text is sharp.
+- **GNOME on X11 at 200 %:** the same.
+- **Fractional scales 125 % and 150 %:** the frames of the widgets do not drift by half a pixel, menus and tooltips open at the cursor.
+- **Two monitors of different scales:** X11 has one scale for the whole screen, so on a monitor of 100 % the windows are larger. That is expected; check that nothing breaks.
 
-## Методы ввода
+## Input methods
 
-**Windows** (Microsoft Pinyin или Microsoft IME). Печатать в однострочном и многострочном TextBox; многострочный прокручен вниз, у формы есть главное меню.
-- **Окно набора** (подчёркнутый текст) стоит у курсора, а не в левом верхнем углу экрана.
-- **Окно кандидатов** стоит под строкой с курсором и не закрывает её.
-- **При масштабе 150 %** окна стоят там же, а не в 1,5 раза дальше от угла окна.
+**Windows** (Microsoft Pinyin or Microsoft IME). Type in a single-line and a multiline TextBox; the multiline one scrolled down, the form with a menu bar.
+- **The composition window** (the underlined text) is at the caret, not at the top left corner of the screen.
+- **The candidate window** is under the line with the caret and does not cover it.
+- **At 150 %** the windows stay in the same places, not 1.5 times farther from the corner of the window.
 
-**macOS** (`go run . notepad`, Edit → Find для однострочного поля):
-- **Китайский (Pinyin):** окно кандидатов у курсора; выбранные иероглифы вставляются; Esc отменяет набор без вставки; Backspace во время набора стирает в наборе, а не в тексте.
-- **Японский (Kotoeri), корейский:** то же.
+**macOS** (`go run . notepad`, Edit → Find for a single-line box):
+- **Chinese (Pinyin):** the candidate window at the caret; the characters chosen are inserted; Esc cancels the composition without inserting; Backspace during the composition deletes in the composition, not in the text.
+- **Japanese (Kotoeri), Korean:** the same.
 
-## Доступность: Linux, настоящий экранный диктор
+## Accessibility: Linux, a real screen reader
 
-- **Orca** (Super+Alt+S в GNOME или `orca` в терминале), notepad из примеров: при запуске читается заголовок окна; Tab по полям читает имя и роль; флажок читается с состоянием; в списке и дереве стрелки читают элементы; в меню читаются пункты.
-- **Accerciser** показывает дерево приложения, у объектов работают действия (Interface Viewer → Action).
-- **Без экранного диктора** мост не запускается: на шине доступности нет объектов nui, нет задержки при старте.
+- **Orca** (Super+Alt+S in GNOME, or `orca` in a terminal), notepad of the examples: the title of the window is read at the start; Tab over the fields reads the name and the role; a checkbox is read with its state; in a list and a tree the arrows read the items; the items of menus are read.
+- **Accerciser** shows the tree of the application, the actions of the objects work (Interface Viewer → Action).
+- **Without a screen reader** the bridge does not start: no objects of nui on the accessibility bus, no delay at the start.
