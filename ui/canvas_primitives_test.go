@@ -166,7 +166,7 @@ func TestDrawLineStaysInClip(t *testing.T) {
 	for _, scale := range []float64{1, 1.5, 2} {
 		cnv, img := newScaledTestCanvas(40, 40, scale)
 		cnv.TranslateAndClip(10, 10, 10, 10)
-		clip := image.Rect(cnv.ClipX(), cnv.ClipY(), cnv.ClipX()+cnv.ClipW(), cnv.ClipY()+cnv.ClipH())
+		clip := cnv.ClipRect()
 		for _, l := range [][5]int{
 			{10, -5, 10, 15, 1}, // vertical, just right of the clip
 			{-5, 10, 15, 10, 1}, // horizontal, just below
@@ -513,6 +513,27 @@ func TestDrawWideLineAnyAngle(t *testing.T) {
 					t.Fatalf("w %d, %d°, length %d: covers %.1f pixels, want about %.1f", w, deg, length, covered, want)
 				}
 			}
+		}
+	}
+}
+
+// In a frame that repaints a part of the window ClipRect is the clip cut
+// to the part, and PixelOrigin stays where the whole frame has it
+func TestClipRectOfPart(t *testing.T) {
+	for _, scale := range []float64{1, 1.25, 1.5, 2} {
+		cnv, _ := newScaledTestCanvas(100, 100, scale)
+		cnv.TranslateAndClip(13, 7, 50, 40)
+		origin, clip := cnv.PixelOrigin(), cnv.ClipRect()
+		if origin != clip.Min {
+			t.Errorf("scale %g: origin %v, clip %v", scale, origin, clip)
+		}
+		part := image.Rect(clip.Min.X+1, clip.Min.Y+20, clip.Max.X+30, clip.Max.Y+30)
+		cnv.setPart(part)
+		if got := cnv.PixelOrigin(); got != origin {
+			t.Errorf("scale %g: origin %v in the part, %v in the whole frame", scale, got, origin)
+		}
+		if got, want := cnv.ClipRect(), clip.Intersect(part); got != want {
+			t.Errorf("scale %g: clip %v in the part, want %v", scale, got, want)
 		}
 	}
 }

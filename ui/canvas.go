@@ -1324,21 +1324,49 @@ func (c *Canvas) TranslatedY() int {
 	return c.state.logicalY
 }
 
-// ClipX, ClipY, ClipW and ClipH return the clip rectangle in pixels of the image
+// PixelOrigin returns the pixel of RGBA where the current origin, the
+// logical (0, 0), lands: a logical point (x, y) takes the pixels from
+// PixelOrigin plus (x, y) times Scale, rounded. It is for what writes the
+// pixels of RGBA itself. A transform of SetTransform or Concat is not in it.
+func (c *Canvas) PixelOrigin() image.Point {
+	return image.Point{X: c.state.translateX, Y: c.state.translateY}
+}
+
+// ClipRect returns the pixels of RGBA a paint may write: those of the clip,
+// and in a frame that repaints only a part of the window those of the
+// part. The pixels past it are of other widgets, kept from the last frame.
+// It is a bound and not a place: what is drawn is placed from PixelOrigin,
+// the edge of ClipRect is where a part of the frame starts.
+func (c *Canvas) ClipRect() image.Rectangle {
+	return c.clipRect().Intersect(c.rgba.Rect)
+}
+
+// ClipX returns the left of ClipRect.
+//
+// Deprecated: use ClipRect.
 func (c *Canvas) ClipX() int {
-	return c.clipRect().Min.X
+	return c.ClipRect().Min.X
 }
 
+// ClipY returns the top of ClipRect.
+//
+// Deprecated: use ClipRect.
 func (c *Canvas) ClipY() int {
-	return c.clipRect().Min.Y
+	return c.ClipRect().Min.Y
 }
 
+// ClipW returns the width of ClipRect.
+//
+// Deprecated: use ClipRect.
 func (c *Canvas) ClipW() int {
-	return c.clipRect().Dx()
+	return c.ClipRect().Dx()
 }
 
+// ClipH returns the height of ClipRect.
+//
+// Deprecated: use ClipRect.
 func (c *Canvas) ClipH() int {
-	return c.clipRect().Dy()
+	return c.ClipRect().Dy()
 }
 
 func (c *Canvas) DrawText(x int, y int, width int, height int, text string) {

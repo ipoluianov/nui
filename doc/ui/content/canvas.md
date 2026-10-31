@@ -325,6 +325,27 @@ cnv.EndLayer()
   bucket of a paint program;
 - `Clear(color)` — set every pixel of the clip, its alpha too.
 
+A painter of its own writes the pixels of `RGBA()` itself, for an image
+copied as is or a scene rendered by other code. Two things place it:
+
+- `PixelOrigin()` is the pixel where the logical (0, 0) lands: a logical
+  point is at `PixelOrigin()` plus the point times `Scale()`;
+- `ClipRect()` is the pixels it may write. In a frame that repaints only a
+  part of the window that is the part, the rest of the image holds the
+  pixels of other widgets. It is a bound, not a place: the drawing starts
+  at `PixelOrigin()` wherever the part starts.
+
+```go
+w.SetOnPaint(func(cnv *ui.Canvas) {
+	dst, at := cnv.RGBA(), cnv.PixelOrigin()
+	r := scene.Rect.Add(at).Intersect(cnv.ClipRect())
+	draw.Draw(dst, r, scene, r.Min.Sub(at), draw.Src)
+})
+```
+
+Under a transform of the canvas the logical point is not there; draw such
+a picture with `DrawImage`.
+
 ## Drawing off the screen
 
 `ui.NewImageCanvas(w, h, scale)` returns a canvas on a new transparent
@@ -373,7 +394,10 @@ the canvas, or recorded as SVG, the drawing is painted directly. Putting a
 kept picture of 800 × 600 on the canvas takes about 0.6 ms. (A `View2D`
 keeps its picture so itself, and moves it when the view is dragged.)
 
-The window is painted whole on every frame; with the expensive parts kept,
+A frame of a mouse move, a wheel or a timer paints only the widgets that
+called `Update`, over the last frame, and only their rectangles (a layout,
+a click, a key paint the whole window): a painter is clipped to the part of the window
+repainted, and `ClipBounds()` is that part. With the expensive parts kept,
 a frame is the copy of their pictures and the drawing of the rest.
 
 ## Markers
