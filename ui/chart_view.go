@@ -88,9 +88,6 @@ type ChartView struct {
 	// The layout of the last paint
 	plotLeft, plotRight float64
 	lastPlotW           float64
-	// relaid is set when a paint asked for another, the width of its plot
-	// not the one it was laid out for
-	relaid              bool
 	laidOut             bool
 	selHeader, selClose chartRect
 	selCloseHover       bool
@@ -382,9 +379,6 @@ func (c *ChartView) paint(cnv *Canvas) {
 		estW = math.Max(2, right-left-60)
 	}
 	measure := func(s string) float64 { return chartTextWidth(cnv, s) }
-	for _, ax := range c.xAxes() {
-		c.layoutTicks(ax, cnv, estW, lineH, measure)
-	}
 	// Which pane draws the labels of each horizontal axis: the lowest one
 	// for an axis at the bottom, the highest for one at the top
 	bottomAxis, topAxis := map[*ChartAxis]*ChartPane{}, map[*ChartAxis]*ChartPane{}
@@ -401,89 +395,97 @@ func (c *ChartView) paint(cnv *Canvas) {
 		}
 	}
 
-	// Vertical layout: each pane's share of the height, less the legend
-	// strip above it and the horizontal axes of the panes that draw them
+	// The layout is for a width of the plot: the ticks and the data are,
+	// and the thickness of the axes depends on them. It is worked out for
+	// the width of the last paint, then again for the width it came to,
+	// until the two agree: a paint draws what the next one would, so a
+	// frame that repaints a part of the window draws the pixels of the
+	// whole. A width that does not settle is left after a few passes.
 	const gap = 8.0
-	avail := bottom - top - gap*float64(len(c.panes)-1)
-	totalWeight := 0.0
-	reserved := 0.0
-	for _, p := range c.panes {
-		totalWeight += p.weight
-		reserved += c.paneReserved(p, cnv, lineH, legend, bottomAxis, topAxis)
-	}
-	share := avail - reserved
-	if share < 20*float64(len(c.panes)) {
-		c.laidOut = false
-		return
-	}
-	y := top
-	for _, p := range c.panes {
-		p.legendH = 0
-		if legend == ChartLegendTop && len(p.series) > 0 && !p.noAxes() {
-			p.legendH = lineH + 6
+	var plotL, plotR, plotW float64
+	for pass := 0; ; pass++ {
+		for _, ax := range c.xAxes() {
+			c.layoutTicks(ax, cnv, estW, lineH, measure)
 		}
-		p.legendY = y
-		y += p.legendH
-		if pp, ok := topAxis[p.xAxis]; ok && pp == p {
-			y += p.xAxis.thickness(cnv, lineH)
-		}
-		p.y = y
-		p.h = math.Floor(share * p.weight / totalWeight)
-		y += p.h
-		if pp, ok := bottomAxis[p.xAxis]; ok && pp == p {
-			y += p.xAxis.thickness(cnv, lineH)
-		}
-		y += gap
-	}
 
-	// The data of the visible range, with the width of the last paint, and
-	// the vertical axes fitted to it
-	for _, p := range c.panes {
-		p.x, p.w = left, estW
-		c.xAxisGeometry(p.xAxis, left, estW)
-		c.fitYAxes(p, cnv, lineH, measure)
-	}
+		// Vertical layout: each pane's share of the height, less the legend
+		// strip above it and the horizontal axes of the panes that draw them
+		avail := bottom - top - gap*float64(len(c.panes)-1)
+		totalWeight := 0.0
+		reserved := 0.0
+		for _, p := range c.panes {
+			totalWeight += p.weight
+			reserved += c.paneReserved(p, cnv, lineH, legend, bottomAxis, topAxis)
+		}
+		share := avail - reserved
+		if share < 20*float64(len(c.panes)) {
+			c.laidOut = false
+			return
+		}
+		y := top
+		for _, p := range c.panes {
+			p.legendH = 0
+			if legend == ChartLegendTop && len(p.series) > 0 && !p.noAxes() {
+				p.legendH = lineH + 6
+			}
+			p.legendY = y
+			y += p.legendH
+			if pp, ok := topAxis[p.xAxis]; ok && pp == p {
+				y += p.xAxis.thickness(cnv, lineH)
+			}
+			p.y = y
+			p.h = math.Floor(share * p.weight / totalWeight)
+			y += p.h
+			if pp, ok := bottomAxis[p.xAxis]; ok && pp == p {
+				y += p.xAxis.thickness(cnv, lineH)
+			}
+			y += gap
+		}
 
-	// Horizontal layout: the axes on the left and on the right of all the
-	// panes line up, so do their plots
-	leftW, rightW := 0.0, 0.0
-	for _, p := range c.panes {
-		if p.noAxes() {
-			continue
+		// The data of the visible range, with the width estimated, and the
+		// vertical axes fitted to it
+		for _, p := range c.panes {
+			p.x, p.w = left, estW
+			c.xAxisGeometry(p.xAxis, left, estW)
+			c.fitYAxes(p, cnv, lineH, measure)
 		}
-		l, r := 0.0, 0.0
-		for _, a := range p.axes {
-			t := a.thickness(cnv, lineH)
-			if a.position == ChartAxisRight {
-				r += t
-			} else if a.position == ChartAxisLeft {
-				l += t
+
+		// Horizontal layout: the axes on the left and on the right of all the
+		// panes line up, so do their plots
+		leftW, rightW := 0.0, 0.0
+		for _, p := range c.panes {
+			if p.noAxes() {
+				continue
 			}
-		}
-		for _, s := range p.series {
-			if d, ok := s.(chartOutside); ok && s.Visible() {
-				r += d.outsideWidth(cnv)
+			l, r := 0.0, 0.0
+			for _, a := range p.axes {
+				t := a.thickness(cnv, lineH)
+				if a.position == ChartAxisRight {
+					r += t
+				} else if a.position == ChartAxisLeft {
+					l += t
+				}
 			}
+			for _, s := range p.series {
+				if d, ok := s.(chartOutside); ok && s.Visible() {
+					r += d.outsideWidth(cnv)
+				}
+			}
+			leftW, rightW = math.Max(leftW, l), math.Max(rightW, r)
 		}
-		leftW, rightW = math.Max(leftW, l), math.Max(rightW, r)
-	}
-	plotL := math.Round(left + leftW)
-	plotR := math.Round(right - math.Max(rightW, 8))
-	if plotR-plotL < 20 {
-		c.laidOut = false
-		return
+		plotL = math.Round(left + leftW)
+		plotR = math.Round(right - math.Max(rightW, 8))
+		if plotR-plotL < 20 {
+			c.laidOut = false
+			return
+		}
+		plotW = plotR - plotL
+		if plotW == estW || pass == 2 {
+			break
+		}
+		estW = plotW
 	}
 	c.plotLeft, c.plotRight = plotL, plotR
-	plotW := plotR - plotL
-	// The ticks and the data were for the width of the last paint: another
-	// one, of this width, draws them right. Once: a width that changes on
-	// every paint is left as it is.
-	if plotW != estW && !c.relaid {
-		c.relaid = true
-		c.Update()
-	} else {
-		c.relaid = false
-	}
 	c.lastPlotW = plotW
 	for _, ax := range c.xAxes() {
 		c.xAxisGeometry(ax, plotL, plotW)
@@ -510,8 +512,8 @@ func (c *ChartView) paint(cnv *Canvas) {
 			a.bandY, a.bandH = p.y, p.h
 		}
 	}
-	// The data again when the plot is much wider or narrower than guessed
-	if math.Abs(plotW-estW) > estW*0.1 {
+	// The data again for the width of the plot, when it did not settle
+	if plotW != estW {
 		for _, p := range c.panes {
 			c.fitYAxes(p, cnv, lineH, measure)
 		}
