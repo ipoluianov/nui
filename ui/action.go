@@ -2,6 +2,7 @@ package ui
 
 import (
 	"image"
+	"slices"
 	"sync"
 	"time"
 )
@@ -30,6 +31,7 @@ type Action struct {
 	checkable   bool
 	checked     bool
 	run         func()
+	shown       int // items of it in open forms (see show)
 
 	// OnTriggered: the action ran (after its function)
 	OnTriggered Signal[*Action]
@@ -111,9 +113,6 @@ func (a *Action) SetEnabled(enabled bool) *Action {
 // again before a menu opens and every few tenths of a second
 func (a *Action) SetEnabledFunc(f func() bool) *Action {
 	a.enabledFunc = f
-	if f != nil {
-		registerDynamicAction(a)
-	}
 	a.Update()
 	return a
 }
@@ -167,22 +166,42 @@ func (a *Action) Trigger() {
 	a.OnTriggered.Emit(a)
 }
 
-// The actions with an enabled function, asked again from time to time
+// The actions shown by items in open forms: their enabled functions are
+// asked again from time to time. An action whose items are all gone (their
+// forms closed) is not kept here, nor asked.
 var (
 	dynamicActionsMu   sync.Mutex
 	dynamicActions     []*Action
 	lastActionsUpdated time.Time
 )
 
-func registerDynamicAction(a *Action) {
+// show counts an item of the action shown (+1) or gone (-1)
+func (a *Action) show(delta int) {
 	dynamicActionsMu.Lock()
 	defer dynamicActionsMu.Unlock()
-	for _, o := range dynamicActions {
-		if o == a {
-			return
-		}
+	a.shown += delta
+	switch {
+	case a.shown == 1 && delta > 0:
+		dynamicActions = append(dynamicActions, a)
+	case a.shown == 0:
+		dynamicActions = slices.DeleteFunc(dynamicActions, func(o *Action) bool { return o == a })
 	}
-	dynamicActions = append(dynamicActions, a)
+}
+
+// linkItem makes the item w follow the action with sync while w is in an
+// open form (see Widget.linkWhileShown): an action kept longer than the
+// item's form doesn't keep it
+func (a *Action) linkItem(w *Widget, sync func(*Action)) {
+	w.linkWhileShown(func() func() {
+		a.show(1)
+		a.Update()
+		sync(a)
+		conn := a.OnChanged.Connect(sync)
+		return func() {
+			conn.Disconnect()
+			a.show(-1)
+		}
+	})
 }
 
 // updateDynamicActions asks the enabled functions, at most every 150 ms;
@@ -214,7 +233,7 @@ func (c *ContextMenu) AddAction(a *Action) *ContextMenuItem {
 		item.SetEnabled(a.enabled)
 	}
 	sync(a)
-	a.OnChanged.Connect(sync)
+	a.linkItem(&item.Widget, sync)
 	return item
 }
 

@@ -23,6 +23,12 @@ type TimePicker struct {
 	typed         int
 	hoverSpin     int // -1 none, 0 up, 1 down
 	onTimeChanged func()
+
+	// OnTimeChanged: the time changed, by the user or by SetTime; the data
+	// is the time since midnight (Duration)
+	OnTimeChanged Signal[time.Duration]
+	// OnActivated: the user changed the time
+	OnActivated Signal[time.Duration]
 }
 
 var timePickerMax = [3]int{23, 59, 59}
@@ -66,11 +72,16 @@ func NewTimePicker() *TimePicker {
 // SetTime sets the time without calling SetOnTimeChanged's function; the
 // values are kept in their ranges.
 func (c *TimePicker) SetTime(hour, minute, second int) {
-	c.values = [3]int{clampInt(hour, 0, 23), clampInt(minute, 0, 59), clampInt(second, 0, 59)}
+	values := [3]int{clampInt(hour, 0, 23), clampInt(minute, 0, 59), clampInt(second, 0, 59)}
 	if !c.showSeconds {
-		c.values[2] = 0
+		values[2] = 0
 	}
+	if values == c.values {
+		return
+	}
+	c.values = values
 	c.form.Update()
+	c.OnTimeChanged.Emit(c.Duration())
 }
 
 func (c *TimePicker) Hour() int   { return c.values[0] }
@@ -129,9 +140,11 @@ func (c *TimePicker) setValue(seg, v int) {
 	}
 	c.values[seg] = v
 	c.form.Update()
+	c.OnTimeChanged.Emit(c.Duration())
 	if c.onTimeChanged != nil {
 		c.onTimeChanged()
 	}
+	c.OnActivated.Emit(c.Duration())
 }
 
 // stepSegment changes the current segment by delta, wrapping around.

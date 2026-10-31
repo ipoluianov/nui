@@ -22,19 +22,29 @@ const (
 	toolButtonSize  = 30
 )
 
-const welcomeText = `Welcome to Notepad!
+// welcomeText is the first text, with the shortcuts as this system shows
+// them (⌘O on macOS, Ctrl+O elsewhere)
+func welcomeText() string {
+	return fmt.Sprintf(`Welcome to Notepad!
 
 This is a small text editor built with nui. Try it out:
 
-  - File > Open (Ctrl+O), or drop a text file onto the window
-  - Edit > Find (Ctrl+F), then F3 to find the next match
-  - Edit > Go To Line (Ctrl+G)
-  - View > Bigger / Smaller (Ctrl+= / Ctrl+-) changes the font size
+  - File > Open (%s), or drop a text file onto the window
+  - Edit > Find (%s), then F3 to find the next match
+  - Edit > Go To Line (%s)
+  - View > Bigger / Smaller (%s / %s) changes the font size
   - F5 inserts the current date and time
 
 Changes are not lost by accident: New, Open and closing the window
 ask to save them first.
-`
+`, keys("Mod+O"), keys("Mod+F"), keys("Mod+G"), keys("Mod+Plus"), keys("Mod+Minus"))
+}
+
+// keys is the shortcut as menus show it on this system
+func keys(shortcut string) string {
+	s, _ := ui.ParseShortcut(shortcut)
+	return s.String()
+}
 
 // notepad is the state of the editor window
 type notepad struct {
@@ -112,7 +122,7 @@ func newNotepad() *notepad {
 		return false
 	}
 
-	n.setDocument("", welcomeText)
+	n.setDocument("", welcomeText())
 	n.text.Focus()
 	return n
 }
@@ -201,14 +211,14 @@ func (n *notepad) buildToolbar() *ui.Panel {
 		col++
 	}
 
-	tool("New (Ctrl+N)", n.newDocument, icons.New)
-	tool("Open (Ctrl+O)", n.open, icons.Folder)
-	tool("Save (Ctrl+S)", func() { n.save(nil) }, icons.Save)
+	tool("New ("+keys("Mod+N")+")", n.newDocument, icons.New)
+	tool("Open ("+keys("Mod+O")+")", n.open, icons.Folder)
+	tool("Save ("+keys("Mod+S")+")", func() { n.save(nil) }, icons.Save)
 	separator()
-	tool("Undo (Ctrl+Z)", n.editAction(n.text.Undo), icons.Undo)
-	tool("Redo (Ctrl+Y)", n.editAction(n.text.Redo), icons.Redo)
+	tool("Undo ("+keys("Mod+Z")+")", n.editAction(n.text.Undo), icons.Undo)
+	tool("Redo ("+keys("Mod+Y")+")", n.editAction(n.text.Redo), icons.Redo)
 	separator()
-	tool("Find (Ctrl+F)", n.showFind, icons.Search)
+	tool("Find ("+keys("Mod+F")+")", n.showFind, icons.Search)
 	toolbar.AddHSpacer(0, col)
 	return toolbar
 }

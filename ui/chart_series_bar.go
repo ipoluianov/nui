@@ -161,10 +161,7 @@ func (s *BarSeries) shown(i int) float64 {
 func (s *BarSeries) SetSource(src ChartSource) *BarSeries {
 	s.source = src
 	s.memory, _ = src.(*ChartMemorySource)
-	if s.memory != nil && s.pane != nil && s.pane.view != nil {
-		view := s.pane.view
-		s.memory.watch(func() { view.RequestRepaint() })
-	}
+	s.ChartSeriesBase.watch(s.memory)
 	s.update()
 	return s
 }

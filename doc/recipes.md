@@ -358,7 +358,7 @@ func ToggleTheme(settings *ui.Settings) {
 }
 ```
 
-The open forms repaint themselves. What the application colored itself, e.g. its icons, it recolors in `ui.OnThemeChanged` ([theme.md](ui/content/theme.md)).
+The open forms repaint themselves. What the application colored itself, e.g. its icons, it recolors in `ui.OnThemeChanged`, connected with `ConnectWhileShown` so a closed form isn't kept ([theme.md](ui/content/theme.md), [signals.md](signals.md)).
 
 ## Translations
 

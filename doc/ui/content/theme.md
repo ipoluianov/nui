@@ -21,10 +21,10 @@ p := ui.CurrentPalette()
 cnv.FillRect(0, 0, w, h, p.Base)
 ```
 
-`ui.OnThemeChanged` is emitted after a theme is applied: connect a handler to recolor what the application colored itself, e.g. its icons.
+`ui.OnThemeChanged` is emitted after a theme is applied: connect a handler to recolor what the application colored itself, e.g. its icons. The signal outlives the forms: a form connects with `ConnectWhileShown`, so once closed it is neither kept nor called ([signals.md](../../signals.md#how-long-a-handler-lives)).
 
 ```go
-ui.OnThemeChanged.Connect(func(dark bool) { saveAction.SetIcon(saveIcon(dark)) })
+ui.OnThemeChanged.ConnectWhileShown(form.Panel(), func(dark bool) { saveAction.SetIcon(saveIcon(dark)) })
 ```
 
 ## Font size

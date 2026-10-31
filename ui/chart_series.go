@@ -141,9 +141,44 @@ type ChartSeriesBase struct {
 	// paletteSet: the palette color was chosen, not given in the order of
 	// adding
 	paletteSet bool
+	// watching is the memory source that repaints the chart watchView,
+	// unwatch stops it
+	watching  *ChartMemorySource
+	watchView *ChartView
+	unwatch   func()
 }
 
 func (b *ChartSeriesBase) base() *ChartSeriesBase { return b }
+
+// watch makes a change of the memory source m repaint the chart of the
+// series, from any goroutine, while the chart is shown (see
+// Widget.linkWhileShown); nil, or a series not in a chart, stops it
+func (b *ChartSeriesBase) watch(m *ChartMemorySource) {
+	var view *ChartView
+	if b.pane != nil {
+		view = b.pane.view
+	}
+	if m == b.watching && view == b.watchView && b.unwatch != nil {
+		return
+	}
+	b.stopWatching()
+	if m == nil || view == nil {
+		return
+	}
+	b.watching, b.watchView = m, view
+	b.unwatch = view.linkWhileShown(func() func() {
+		view.RequestRepaint() // what changed meanwhile
+		return m.watch(func() { view.RequestRepaint() })
+	})
+}
+
+// stopWatching stops the repaints of watch
+func (b *ChartSeriesBase) stopWatching() {
+	if b.unwatch != nil {
+		b.unwatch()
+	}
+	b.watching, b.watchView, b.unwatch = nil, nil, nil
+}
 
 // Name returns the name of the series, shown in the legend and the tooltip
 func (b *ChartSeriesBase) Name() string { return b.name }

@@ -162,26 +162,40 @@ func init() {
 	allwidgets = make(map[string]Widgeter)
 }
 
+// The registry holds the widgets of the open forms: a widget in it has its
+// links made (see Widget.linkWhileShown), one taken out has them undone.
+// The links are made out of the lock: they may reach other widgets.
+
 func registerWidget(w Widgeter) {
 	allwidgetsMtx.Lock()
 	allwidgets[w.Id()] = w
 	allwidgetsMtx.Unlock()
+	w.widgetBase().setLinked(true)
 }
 
 func unregisterWidget(id string) {
 	allwidgetsMtx.Lock()
+	w := allwidgets[id]
 	delete(allwidgets, id)
 	allwidgetsMtx.Unlock()
+	if w != nil {
+		w.widgetBase().setLinked(false)
+	}
 }
 
 // unregisterFormWidgets removes the widgets of the form from the registry
 func unregisterFormWidgets(form *Form) {
+	var removed []Widgeter
 	allwidgetsMtx.Lock()
-	defer allwidgetsMtx.Unlock()
 	for id, w := range allwidgets {
 		if w.Form() == form {
 			delete(allwidgets, id)
+			removed = append(removed, w)
 		}
+	}
+	allwidgetsMtx.Unlock()
+	for _, w := range removed {
+		w.widgetBase().setLinked(false)
 	}
 }
 

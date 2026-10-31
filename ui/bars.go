@@ -74,7 +74,7 @@ func (c *ToolBar) AddAction(a *Action) Widgeter {
 			}
 		}
 		sync(a)
-		a.OnChanged.Connect(sync)
+		a.linkItem(&b.Widget, sync)
 		return c.Add(b)
 	}
 	b := NewToolButton(a.icon, a.Tooltip(), a.Trigger)
@@ -87,7 +87,7 @@ func (c *ToolBar) AddAction(a *Action) Widgeter {
 		b.SetChecked(a.checkable && a.checked)
 	}
 	sync(a)
-	a.OnChanged.Connect(sync)
+	a.linkItem(&b.Widget, sync)
 	return c.Add(b)
 }
 

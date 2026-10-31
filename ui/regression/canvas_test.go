@@ -68,3 +68,55 @@ func TestDrawTextNewline(t *testing.T) {
 		t.Error(`"\n" doesn't break the line`)
 	}
 }
+
+// An ImageBox takes the size of a sub-image from its bounds, wherever they
+// start, and scales it into the box keeping its proportions
+func TestImageBoxSubImage(t *testing.T) {
+	full := image.NewRGBA(image.Rect(0, 0, 100, 100))
+	red := color.RGBA{220, 0, 0, 255}
+	for y := 50; y < 70; y++ {
+		for x := 40; x < 80; x++ {
+			full.SetRGBA(x, y, red)
+		}
+	}
+	sub := full.SubImage(image.Rect(40, 50, 80, 70)) // 40×20, red
+
+	box := ui.NewImageBox()
+	box.SetImage(sub)
+	if box.MinWidth() != 40 || box.MinHeight() != 20 {
+		t.Errorf("size %d×%d, want 40×20", box.MinWidth(), box.MinHeight())
+	}
+
+	form := newForm(200, 200)
+	fit := ui.NewImageBox()
+	fit.SetScaling(ui.ImageBoxScaleAdjustImageKeepAspectRatio)
+	fit.SetImage(sub)
+	fit.SetXExpandable(true)
+	fit.SetYExpandable(true)
+	form.Panel().AddWidget(0, 0, fit)
+	w := uitest.Show(t, form)
+	img := w.Screenshot()
+	// The box's middle is red, above and below the 2:1 picture is not
+	x0, y0 := fit.X()+fit.Width()/2, fit.Y()+fit.Height()/2
+	if got := img.RGBAAt(x0, y0); got != red {
+		t.Errorf("middle %v", got)
+	}
+	if got := img.RGBAAt(x0, fit.Y()+3); got == red {
+		t.Error("the picture stretched to the top")
+	}
+}
+
+// FitToView right after SetImage, before the view has a size, fits the
+// image once the view is laid out
+func TestZoomViewFitBeforeLayout(t *testing.T) {
+	view := ui.NewZoomView()
+	view.SetImage(image.NewRGBA(image.Rect(0, 0, 800, 400)))
+	view.FitToView()
+	form := newForm(400, 300)
+	form.Panel().AddWidget(0, 0, view)
+	uitest.Show(t, form).Screenshot() // painted
+	want := min(float64(view.Width())/800, float64(view.Height())/400)
+	if z := view.Zoom(); z != want {
+		t.Errorf("zoom %g, want %g", z, want)
+	}
+}

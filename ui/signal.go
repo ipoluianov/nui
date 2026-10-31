@@ -18,6 +18,10 @@ package ui
 // OnActivated (and the like: OnTextEdited) only on a change the user made,
 // so a handler that sets the value itself doesn't call itself.
 //
+// A handler keeps what it refers to while connected. Handlers of a form
+// connected to its own widgets go with the form; to a signal that lives
+// longer, a form connects with ConnectWhileShown.
+//
 // The older SetOn... setters still work and keep their own behaviour: each
 // sets one handler, a new one replaces it.
 
@@ -53,14 +57,34 @@ func (s *Signal[T]) Connect(f func(T)) Connection {
 	s.handlers = append(s.handlers, h)
 	return Connection{disconnect: func() {
 		h.removed = true
+		h.f = nil // what the handler refers to is let go at once
 		for i, o := range s.handlers {
 			if o == h {
-				// A new slice: an Emit in progress keeps its own
-				s.handlers = append(s.handlers[:i:i], s.handlers[i+1:]...)
+				// A new array: an Emit in progress keeps its own, and the
+				// old one, still holding h, isn't kept by an empty slice
+				var handlers []*signalHandler[T]
+				if len(s.handlers) > 1 {
+					handlers = make([]*signalHandler[T], 0, len(s.handlers)-1)
+					handlers = append(append(handlers, s.handlers[:i]...), s.handlers[i+1:]...)
+				}
+				s.handlers = handlers
 				return
 			}
 		}
 	}}
+}
+
+// ConnectWhileShown connects f while the widget w is in an open form: from
+// now, or when w gets into one; undone when the form closes or w leaves it,
+// made again when the form is shown again. For a signal that outlives the
+// form - ui.OnThemeChanged, a model's, another window's - so the closed
+// form is neither kept in memory nor called. Disconnect removes it for good.
+func (s *Signal[T]) ConnectWhileShown(w Widgeter, f func(T)) Connection {
+	if f == nil || w == nil {
+		return Connection{}
+	}
+	remove := w.widgetBase().linkWhileShown(func() func() { return s.Connect(f).Disconnect })
+	return Connection{disconnect: remove}
 }
 
 // Emit calls the handlers with v, in the order they were connected. A

@@ -61,8 +61,6 @@ type LineSeries struct {
 	ChartSeriesBase
 	source ChartSource
 	memory *ChartMemorySource
-	// watched: the memory source repaints the chart
-	watched bool
 
 	shape      ChartLineShape
 	width      float64
@@ -103,11 +101,10 @@ func (s *LineSeries) SetSource(src ChartSource) *LineSeries {
 	s.source = src
 	if m, ok := src.(*ChartMemorySource); ok {
 		s.memory = m
-		s.watched = false
-		s.watchMemory()
 	} else {
 		s.memory = nil
 	}
+	s.watchMemory()
 	s.update()
 	return s
 }
@@ -121,7 +118,6 @@ func (s *LineSeries) mem() *ChartMemorySource {
 	if s.memory == nil {
 		s.memory = NewChartMemorySource()
 		s.source = s.memory
-		s.watched = false
 	}
 	s.watchMemory()
 	return s.memory
@@ -130,12 +126,7 @@ func (s *LineSeries) mem() *ChartMemorySource {
 // watchMemory makes a change of the memory source repaint the chart: from
 // any goroutine
 func (s *LineSeries) watchMemory() {
-	if s.watched || s.memory == nil || s.pane == nil || s.pane.view == nil {
-		return
-	}
-	s.watched = true
-	view := s.pane.view
-	s.memory.watch(func() { view.RequestRepaint() })
+	s.watch(s.memory)
 }
 
 // AddValues adds the values at the next x: 0, 1, 2... after the last one

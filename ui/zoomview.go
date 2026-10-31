@@ -39,6 +39,7 @@ type ZoomView struct {
 	panning        bool
 	panX, panY     int     // where the drag started, in the view
 	panOffX, panOY float64 // the offset when it started
+	fitPending     bool    // FitToView before the view had a size
 }
 
 // ZoomPaint is the content of a ZoomView to paint, see SetPainter: the
@@ -127,6 +128,7 @@ func (c *ZoomView) SetZoom(zoom float64) {
 
 // ZoomAt zooms keeping the content point at the view's point x, y where it is
 func (c *ZoomView) ZoomAt(zoom float64, x, y int) {
+	c.fitPending = false // a zoom asked for later than the fit
 	zoom = math.Max(c.minZoom, math.Min(c.maxZoom, zoom))
 	cx, cy := c.ToContent(x, y)
 	changed := zoom != c.zoom
@@ -140,9 +142,13 @@ func (c *ZoomView) ZoomAt(zoom float64, x, y int) {
 	}
 }
 
-// FitToView zooms the whole content into the view and centers it
+// FitToView zooms the whole content into the view and centers it; called
+// before the view has a size, it does so when the view gets one
 func (c *ZoomView) FitToView() {
-	if c.contentW <= 0 || c.contentH <= 0 || c.Width() <= 0 || c.Height() <= 0 {
+	if c.form == nil || c.contentW <= 0 || c.contentH <= 0 || c.Width() <= 0 || c.Height() <= 0 {
+		// Before the view is laid out (not in a form yet, the size not
+		// its own): at the first paint, laid out then
+		c.fitPending = true
 		return
 	}
 	c.SetZoom(math.Min(float64(c.Width())/c.contentW, float64(c.Height())/c.contentH))
@@ -190,6 +196,9 @@ func (c *ZoomView) clampOffset() {
 }
 
 func (c *ZoomView) draw(cnv *Canvas) {
+	if c.fitPending {
+		c.FitToView()
+	}
 	c.clampOffset()
 	if c.img != nil {
 		x, y := c.ToView(0, 0)

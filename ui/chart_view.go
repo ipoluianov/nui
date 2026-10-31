@@ -202,6 +202,9 @@ func (c *ChartView) RemovePane(p *ChartPane) {
 	for i, o := range c.panes {
 		if o == p {
 			c.panes = append(c.panes[:i:i], c.panes[i+1:]...)
+			for _, s := range p.series {
+				s.base().stopWatching()
+			}
 			c.Update()
 			return
 		}

@@ -326,10 +326,7 @@ func (p *ChartPane) AddDigital(name string) *DigitalSeries {
 }
 
 func (s *DigitalSeries) watch() {
-	if s.memory != nil && s.pane != nil && s.pane.view != nil {
-		view := s.pane.view
-		s.memory.watch(func() { view.RequestRepaint() })
-	}
+	s.ChartSeriesBase.watch(s.memory)
 }
 
 // AddState adds the value of the signal from x on: 0 and 1 for a binary

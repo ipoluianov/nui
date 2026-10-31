@@ -25,12 +25,13 @@ A short set of rules the signatures do not show and that must not be broken. For
 
 ## Events
 
-In detail: [events.md](ui/content/events.md).
+In detail: [signals.md](signals.md) (using them), [events.md](ui/content/events.md) (the list).
 
 - **Signals:** `w.OnSomething.Connect(f)`. Any number of handlers, the data comes as the argument.
 - **`On…Changed` fires on every change of the value**, by the code too (`SetText`, `SetChecked`, `SetSelectedIndex`…), and only when the value did change.
 - **`OnActivated` (and `OnTextEdited`) fires on an action of the user only.** A handler that sets the value itself does not call itself through them.
 - **The signals of input** (`OnKeyDown`, `OnMouseDown`…) come before the widget's own handling; `Handled = true` cancels it.
+- **A signal that outlives the form** (`ui.OnThemeChanged`, a shared model, another window): connect with `ConnectWhileShown(widget, f)`, or the closed form stays in memory and is called. Signals of the form's own widgets need nothing.
 - **The old `SetOn…`** keep one handler, each call replaces the last. `CurrentEvent()` is deprecated.
 
 ## Windows and dialogs

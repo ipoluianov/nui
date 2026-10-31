@@ -2,6 +2,7 @@ package ui
 
 import (
 	"math"
+	"slices"
 	"sort"
 	"sync"
 )
@@ -72,7 +73,9 @@ type ChartSourceExtent interface {
 }
 
 // ChartSourceVersion is implemented by a source whose data changes: the
-// version grows with every change, so the chart knows what it drew is old
+// version grows with every change, e.g. for a cache of what an application
+// computes from the data. A chart doesn't need it: a memory source repaints
+// its charts itself.
 type ChartSourceVersion interface {
 	Version() uint64
 }
@@ -92,7 +95,7 @@ type ChartMemorySource struct {
 	maxPoints int
 	version   uint64
 	// The widgets to repaint on a change, see watch
-	watchers []func()
+	watchers []*func()
 
 	// cache is the result of the last GetData: a repaint for the pointer
 	// asks for the same again
@@ -355,11 +358,19 @@ func (s *ChartMemorySource) Version() uint64 {
 	return s.version
 }
 
-// watch makes the source call f after every change; the chart repaints so
-func (s *ChartMemorySource) watch(f func()) {
+// watch makes the source call f after every change, until the function
+// returned is called; the chart repaints so
+func (s *ChartMemorySource) watch(f func()) (remove func()) {
+	w := &f
 	s.mtx.Lock()
-	s.watchers = append(s.watchers, f)
+	s.watchers = append(s.watchers, w)
 	s.mtx.Unlock()
+	return func() {
+		s.mtx.Lock()
+		// A new slice: a changed in progress keeps its own
+		s.watchers = slices.DeleteFunc(slices.Clone(s.watchers), func(o *func()) bool { return o == w })
+		s.mtx.Unlock()
+	}
 }
 
 func (s *ChartMemorySource) changed() {
@@ -367,7 +378,7 @@ func (s *ChartMemorySource) changed() {
 	watchers := s.watchers
 	s.mtx.RUnlock()
 	for _, f := range watchers {
-		f()
+		(*f)()
 	}
 }
 

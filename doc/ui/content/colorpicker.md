@@ -13,15 +13,15 @@ new color; **Escape returns to the color the panel was opened with**.
 ```go
 picker := ui.NewColorPicker()
 picker.SetColor(ui.ColorFromHex("#1E88E5"))
-picker.SetOnColorChanged(func(col color.RGBA) {
+picker.OnColorChanged.Connect(func(col color.RGBA) {
 	preview.SetBackgroundColor(col) // live, also while dragging
 })
 ```
 
 ## API
 
-- `Color() color.RGBA` / `SetColor(color.Color)` - `SetColor` doesn't call `SetOnColorChanged`'s function.
-- `SetOnColorChanged(func(col color.RGBA))` - every change made by the user, including while dragging and on Escape.
+- `Color() color.RGBA` / `SetColor(color.Color)`.
+- `OnColorChanged` - any change: the user's (also while dragging and on Escape) and `SetColor`'s; `OnActivated` - the user's only. The old `SetOnColorChanged(f)` gets the user's changes only.
 - `SetAlphaEnabled(bool)` / `AlphaEnabled()` - without it colors are opaque and the code has 6 digits.
 - `SetPalette([]color.RGBA)` / `Palette()` - `nil` hides the palette; the default is `ui.DefaultColorPickerPalette`.
 - `OpenPopup()`, `ClosePopup()`, `IsPopupOpen()`

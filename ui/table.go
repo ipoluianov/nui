@@ -27,8 +27,8 @@ type Table struct {
 	OnColumnClick Signal[int]
 
 	// model, if set, holds the cells (see SetModel)
-	model     ItemModel
-	modelConn Connection
+	model       ItemModel
+	unlinkModel func() // the link to the model's notifications
 
 	// Content of the table
 	headerRowsCount  int
@@ -2425,10 +2425,17 @@ func (c *Table) handlesKey(key Key, mods KeyModifiers) bool {
 // changing another model, call RefreshModel. SetModel(nil) returns to the
 // table's own cells.
 func (c *Table) SetModel(model ItemModel) {
-	c.modelConn.Disconnect()
+	if c.unlinkModel != nil {
+		c.unlinkModel()
+		c.unlinkModel = nil
+	}
 	c.model = model
 	if n, ok := model.(ModelNotifier); ok {
-		c.modelConn = n.ModelChanged().Connect(func(struct{}) { c.RefreshModel() })
+		// While the table is shown: a model kept longer doesn't keep it
+		c.unlinkModel = c.linkWhileShown(func() func() {
+			c.RefreshModel()
+			return n.ModelChanged().Connect(func(struct{}) { c.RefreshModel() }).Disconnect
+		})
 	}
 	c.RefreshModel()
 }

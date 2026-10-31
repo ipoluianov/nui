@@ -2,13 +2,12 @@ package ui
 
 import (
 	"image"
-
-	"github.com/nfnt/resize"
 )
 
 type ImageBox struct {
 	Widget
 	image   image.Image
+	mip     *MipImage // the image drawn scaled: smooth when much smaller
 	scaling ImageBoxScale
 }
 
@@ -36,10 +35,16 @@ func (c *ImageBox) Image() image.Image {
 	return c.image
 }
 
+// SetImage sets the image; after its pixels change, set it again
 func (c *ImageBox) SetImage(img image.Image) {
 	c.image = img
+	c.mip = nil
+	if img != nil {
+		c.mip = NewMipImage(img)
+	}
 	c.updateInnerSize()
 	c.form.UpdateLayout()
+	c.Update()
 }
 
 func (c *ImageBox) Scaling() ImageBoxScale {
@@ -53,47 +58,32 @@ func (c *ImageBox) SetScaling(scaling ImageBoxScale) {
 	c.scaling = scaling
 	c.updateInnerSize()
 	c.form.UpdateLayout()
+	c.Update()
 }
 
 func (c *ImageBox) draw(cnv *Canvas) {
 	if c.image == nil {
 		return
 	}
-
-	if c.scaling == ImageBoxScaleNoScaleImageInLeftTop || c.scaling == ImageBoxScaleNoScaleAdjustBox {
-		//b := c.img.Bounds()
+	b := c.image.Bounds()
+	w, h := b.Dx(), b.Dy()
+	if w <= 0 || h <= 0 {
+		return
+	}
+	switch c.scaling {
+	case ImageBoxScaleNoScaleImageInLeftTop, ImageBoxScaleNoScaleAdjustBox:
 		cnv.DrawImage(0, 0, c.image)
-	}
-
-	if c.scaling == ImageBoxScaleNoScaleImageInCenter {
-		b := c.image.Bounds()
-		offsetX := (c.Width() - b.Max.X) / 2
-		offsetY := (c.Height() - b.Max.Y) / 2
-		cnv.DrawImage(offsetX, offsetY, c.image)
-	}
-
-	if c.scaling == ImageBoxScaleStretchImage {
-		image := resize.Resize(uint(c.Width()), uint(c.Height()), c.image, resize.Bicubic)
-		cnv.DrawImage(0, 0, image)
-	}
-
-	if c.scaling == ImageBoxScaleAdjustImageKeepAspectRatio {
-		b := c.image.Bounds()
-		aspRatioImg := float64(b.Max.X) / float64(b.Max.Y)
-		aspRationWidget := float64(c.Width()) / float64(c.Height())
-		if aspRatioImg > aspRationWidget {
-			image := resize.Resize(uint(c.Width()), 0, c.image, resize.Bicubic)
-			b := image.Bounds()
-			offsetX := (c.Width() - b.Max.X) / 2
-			offsetY := (c.Height() - b.Max.Y) / 2
-			cnv.DrawImage(offsetX, offsetY, image)
-		} else {
-			image := resize.Resize(0, uint(c.Height()), c.image, resize.Bicubic)
-			b := image.Bounds()
-			offsetX := (c.Width() - b.Max.X) / 2
-			offsetY := (c.Height() - b.Max.Y) / 2
-			cnv.DrawImage(offsetX, offsetY, image)
+	case ImageBoxScaleNoScaleImageInCenter:
+		cnv.DrawImage((c.Width()-w)/2, (c.Height()-h)/2, c.image)
+	case ImageBoxScaleStretchImage:
+		cnv.DrawImageRect(0, 0, c.Width(), c.Height(), c.mip, b, true)
+	case ImageBoxScaleAdjustImageKeepAspectRatio:
+		// The largest size of the image's proportions that fits, centered
+		dw, dh := c.Width(), c.Width()*h/w
+		if dh > c.Height() {
+			dw, dh = c.Height()*w/h, c.Height()
 		}
+		cnv.DrawImageRect((c.Width()-dw)/2, (c.Height()-dh)/2, dw, dh, c.mip, b, true)
 	}
 }
 
@@ -119,7 +109,7 @@ func (c *ImageBox) MinWidth() int {
 		if c.image == nil {
 			return 0
 		}
-		return c.image.Bounds().Max.X
+		return c.image.Bounds().Dx()
 	}
 	return c.Widget.MinWidth()
 }
@@ -129,7 +119,7 @@ func (c *ImageBox) MinHeight() int {
 		if c.image == nil {
 			return 0
 		}
-		return c.image.Bounds().Max.Y
+		return c.image.Bounds().Dy()
 	}
 	return c.Widget.MinHeight()
 }
@@ -139,7 +129,7 @@ func (c *ImageBox) MaxWidth() int {
 		if c.image == nil {
 			return 0
 		}
-		return c.image.Bounds().Max.X
+		return c.image.Bounds().Dx()
 	}
 	return c.Widget.MaxWidth()
 }
@@ -149,7 +139,7 @@ func (c *ImageBox) MaxHeight() int {
 		if c.image == nil {
 			return 0
 		}
-		return c.image.Bounds().Max.Y
+		return c.image.Bounds().Dy()
 	}
 	return c.Widget.MaxHeight()
 }

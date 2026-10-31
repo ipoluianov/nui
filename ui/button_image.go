@@ -38,6 +38,14 @@ func (c *ButtonImage) initButtonImage(img image.Image) {
 	c.SetOnPaint(c.draw)
 	c.SetOnMouseDown(c.buttonProcessMouseDown)
 	c.SetOnMouseUp(c.buttonProcessMouseUp)
+	// Focused, it is pressed by Enter and Space, as a Button
+	c.SetOnKeyDown(func(key Key, mods KeyModifiers) bool {
+		if key != KeyEnter && key != KeySpace {
+			return false
+		}
+		c.Press()
+		return true
+	})
 }
 
 func (c *ButtonImage) Image() image.Image {

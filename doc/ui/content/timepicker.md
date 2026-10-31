@@ -5,7 +5,7 @@ A time of day, 24-hour, edited in segments: `HH:MM` or `HH:MM:SS`.
 ```go
 start := ui.NewTimePicker()
 start.SetTime(9, 30, 0)
-start.SetOnTimeChanged(func() { meeting.Start = start.Duration() })
+start.OnActivated.Connect(func(d time.Duration) { meeting.Start = d }) // the user changed it
 ```
 
 | Input | Action |
@@ -17,6 +17,7 @@ start.SetOnTimeChanged(func() { meeting.Start = start.Duration() })
 | `:` `.` space | next segment |
 | Home / End, Backspace / Delete | the minimum / maximum, 0 |
 
-- `SetTime(h, m, s)` (doesn't call the callback; the values are clamped, seconds are 0 without `SetShowSeconds(true)`), `Hour()`, `Minute()`, `Second()`, `Text()`
+- `OnTimeChanged` (any change, `SetTime` too) and `OnActivated` (the user's): the time since midnight.
+- `SetTime(h, m, s)` (the values are clamped, seconds are 0 without `SetShowSeconds(true)`), `Hour()`, `Minute()`, `Second()`, `Text()`
 - `Duration()` / `SetDuration(d)` - the time since midnight.
-- `SetShowSeconds(bool)`, `SetOnTimeChanged(func())` - called when the user changes the time.
+- `SetShowSeconds(bool)`; the old `SetOnTimeChanged(func())` - called when the user changes the time.

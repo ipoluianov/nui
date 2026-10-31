@@ -21,6 +21,11 @@ type DatePicker struct {
 
 	popup         *datePickerPopup
 	onDateChanged func(date time.Time)
+
+	// OnDateChanged: the date changed, by the user or by SetDate
+	OnDateChanged Signal[time.Time]
+	// OnActivated: the user chose a date in the calendar
+	OnActivated Signal[time.Time]
 }
 
 func NewDatePicker() *DatePicker {
@@ -51,8 +56,13 @@ func (c *DatePicker) Date() time.Time {
 // SetDate sets the date (kept within the limits) without calling
 // SetOnDateChanged's function.
 func (c *DatePicker) SetDate(date time.Time) {
-	c.date = c.clamp(DateOnly(date))
-	c.form.Update()
+	date = c.clamp(DateOnly(date))
+	if date.Equal(c.date) {
+		return
+	}
+	c.date = date
+	c.Update()
+	c.OnDateChanged.Emit(date)
 }
 
 // SetMinDate and SetMaxDate limit the dates; a zero time removes the limit.
@@ -82,7 +92,8 @@ func (c *DatePicker) Text() string {
 	return c.date.Format(layout)
 }
 
-// SetOnDateChanged sets the function called when the user chooses another date.
+// SetOnDateChanged sets the function called when the user chooses another
+// date (not on SetDate; see OnDateChanged for both).
 func (c *DatePicker) SetOnDateChanged(f func(date time.Time)) {
 	c.onDateChanged = f
 }
@@ -107,10 +118,12 @@ func (c *DatePicker) changeDate(d time.Time) {
 		return
 	}
 	c.date = d
-	c.form.Update()
+	c.Update()
+	c.OnDateChanged.Emit(d)
 	if c.onDateChanged != nil {
 		c.onDateChanged(d)
 	}
+	c.OnActivated.Emit(d)
 }
 
 // OpenPopup drops the calendar down, with the keyboard focus in it.

@@ -221,3 +221,21 @@ func TestAnchors(t *testing.T) {
 		t.Errorf("all edges: %dx%d", stretched.Width(), stretched.Height())
 	}
 }
+
+// A Space takes the size of SetSize, and of SetMinSize too
+func TestSpaceSize(t *testing.T) {
+	form := newForm(300, 200)
+	fixed := ui.NewSpace()
+	fixed.SetSize(40, 30)
+	min := ui.NewSpace()
+	min.SetMinSize(25, 15)
+	below := ui.NewLabel("x")
+	form.Panel().AddWidget(0, 0, fixed)
+	form.Panel().AddWidget(1, 0, min)
+	form.Panel().AddWidget(2, 0, below)
+	form.Panel().AddVSpacer(3, 0)
+	uitest.Show(t, form)
+	if fixed.Height() != 30 || min.Height() != 15 || min.Width() != 25 {
+		t.Errorf("fixed %d×%d, min %d×%d", fixed.Width(), fixed.Height(), min.Width(), min.Height())
+	}
+}

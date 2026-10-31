@@ -4,6 +4,7 @@ For applications:
 
 - [recipes.md](recipes.md): common tasks in short code (the main window, dialogs, background work, tables, translations, the tray, tests).
 - [ui/](ui/README.md): forms, widgets, canvas, charts: a page for each (package `ui`, plus `ui/i18n` and `ui/uitest`).
+- [signals.md](signals.md): signals: connecting, Changed and Activated, input and `Handled`, signals of your own, the lifetime of handlers.
 - [rules.md](rules.md): what the signatures do not show: the UI thread, repaint, events, dialogs, widgets of your own.
 - [testing.md](testing.md): tests of forms without a display, golden pictures, screenshots before and after, benchmarks.
 

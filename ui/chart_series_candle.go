@@ -47,10 +47,7 @@ func (s *CandleSeries) SetSource(src ChartSource) *CandleSeries {
 }
 
 func (s *CandleSeries) watch() {
-	if s.memory != nil && s.pane != nil && s.pane.view != nil {
-		view := s.pane.view
-		s.memory.watch(func() { view.RequestRepaint() })
-	}
+	s.ChartSeriesBase.watch(s.memory)
 }
 
 // Source returns the source of the candles

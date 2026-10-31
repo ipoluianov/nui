@@ -10,6 +10,8 @@ func NewSpace() *Space {
 	c.SetPanelPadding(0)
 	c.SetCellPadding(0)
 	c.SetTypeName("Space")
+	c.Widget.SetMinSize(0, 0)
+	c.Widget.SetMaxSize(0, 0)
 	return &c
 }
 
@@ -30,18 +32,21 @@ func (c *Space) SetSize(width, height int) {
 	c.Widget.SetSize(width, height)
 }
 
+// The size of a space is its limits (SetSize, SetMinSize, SetMaxSize): no
+// content; the largest is at least the smallest
+
 func (c *Space) MinWidth() int {
-	return c.GetPropInt("width", 0)
+	return c.minWidth
 }
 
 func (c *Space) MinHeight() int {
-	return c.GetPropInt("height", 0)
+	return c.minHeight
 }
 
 func (c *Space) MaxWidth() int {
-	return c.GetPropInt("width", 0)
+	return max(c.maxWidth, c.minWidth)
 }
 
 func (c *Space) MaxHeight() int {
-	return c.GetPropInt("height", 0)
+	return max(c.maxHeight, c.minHeight)
 }

@@ -15,15 +15,6 @@ are in [platform-checks.md](platform-checks.md).
 - Word wrap and folding of blocks in TextBox.
 - Dock panels floating in windows of their own, and dragged by the mouse.
 - Public `ElideText` and `WrapText`.
-- Signals (`ui.Signal`) of ColorPicker, DatePicker, Calendar, TimePicker
-  and Link: they have only `SetOn…` callbacks.
-- A focused ButtonImage is not pressed by Enter or Space (Button is).
-- ImageBox takes the size of an image from `Bounds().Max`, not `Dx()`/`Dy()`:
-  wrong for a sub-image; its stretched modes scale the image on every paint.
-- `ZoomView.FitToView` does nothing before the view has a size, so right
-  after `SetImage` in a constructor; it could fit on the first resize.
-- `Space` ignores `SetMinSize`/`SetMaxSize`: its size is `SetSize` only.
-- `ChartSourceVersion` (`ChartMemorySource.Version`) is read by nothing.
 
 ## Theme
 
@@ -45,11 +36,6 @@ are in [platform-checks.md](platform-checks.md).
   whole by the rasterizer of nui, without ClearType: it is to be split in
   runs by font (GDI for its own characters), with the measuring, the
   caret and the baseline agreeing.
-
-## Examples
-
-- The welcome text of notepad says "Ctrl+O", "Ctrl+F"..., though the
-  shortcuts are `Mod+` (⌘ on macOS).
 
 ## Accessibility
 

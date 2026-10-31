@@ -30,6 +30,12 @@ type ColorPicker struct {
 	palette        []color.RGBA
 	onColorChanged func(col color.RGBA)
 	popup          *colorPickerPopup
+
+	// OnColorChanged: the color changed, by the user (also while dragging in
+	// the panel) or by SetColor
+	OnColorChanged Signal[color.RGBA]
+	// OnActivated: the user changed the color
+	OnActivated Signal[color.RGBA]
 }
 
 // DefaultColorPickerPalette is the palette a new ColorPicker offers.
@@ -98,11 +104,16 @@ func (c *ColorPicker) Color() color.RGBA {
 // A color.RGBA is taken as it is (straight alpha); other colors are
 // converted. Without SetAlphaEnabled the color is made opaque.
 func (c *ColorPicker) SetColor(col color.Color) {
-	c.col = c.normalize(toStraightRGBA(col))
+	rgba := c.normalize(toStraightRGBA(col))
+	changed := rgba != c.col
+	c.col = rgba
 	if c.popup != nil {
 		c.popup.setColor(c.col, true)
 	}
 	c.form.Update()
+	if changed {
+		c.OnColorChanged.Emit(rgba)
+	}
 }
 
 // SetOnColorChanged sets the function called whenever the user changes the
@@ -152,9 +163,11 @@ func (c *ColorPicker) changeColor(col color.RGBA) {
 	}
 	c.col = col
 	c.form.Update()
+	c.OnColorChanged.Emit(col)
 	if c.onColorChanged != nil {
 		c.onColorChanged(col)
 	}
+	c.OnActivated.Emit(col)
 }
 
 // OpenPopup opens the panel below the field (above it when it doesn't fit).

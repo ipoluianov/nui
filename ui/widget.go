@@ -198,6 +198,12 @@ type Widget struct {
 	// (Button): the form doesn't emit it for them
 	emitsOwnClick bool
 
+	// links are the connections to what outlives the widget (a model, an
+	// action, a data source), made while the widget is in an open form
+	// (see linkWhileShown); linked tells whether they are made now
+	links  []*widgetLink
+	linked bool
+
 	// See SetDragSource and SetDropTarget
 	dragSource  func(x, y int) *DragData
 	dropAccept  func(data *DragData, x, y int) bool
@@ -1527,6 +1533,51 @@ func (c *Widget) ProcessFocusLost() {
 // widgetBase returns the Widget the widget is built on
 func (c *Widget) widgetBase() *Widget {
 	return c
+}
+
+// widgetLink is a connection of linkWhileShown: connect makes it and
+// returns what undoes it
+type widgetLink struct {
+	connect    func() (disconnect func())
+	disconnect func()
+}
+
+// linkWhileShown keeps a connection to something that outlives the widget
+// (a model, an action, a data source) only while the widget is in an open
+// form: made now if it is, when it gets into one, made again when a closed
+// form is shown again; undone when the form closes or the widget leaves
+// it. So a closed form isn't kept in memory, nor updated, by what it
+// showed. connect also brings the widget up to date: what changed while it
+// was not linked wasn't told. The function returned removes the link.
+func (c *Widget) linkWhileShown(connect func() (disconnect func())) (remove func()) {
+	l := &widgetLink{connect: connect}
+	c.links = append(c.links, l)
+	if c.linked {
+		l.disconnect = connect()
+	}
+	return func() {
+		if l.disconnect != nil {
+			l.disconnect()
+			l.disconnect = nil
+		}
+		c.links = slices.DeleteFunc(c.links, func(o *widgetLink) bool { return o == l })
+	}
+}
+
+// setLinked makes or undoes the links of the widget (see linkWhileShown)
+func (c *Widget) setLinked(linked bool) {
+	if c.linked == linked {
+		return
+	}
+	c.linked = linked
+	for _, l := range slices.Clone(c.links) {
+		if linked && l.disconnect == nil {
+			l.disconnect = l.connect()
+		} else if !linked && l.disconnect != nil {
+			l.disconnect()
+			l.disconnect = nil
+		}
+	}
 }
 
 func (c *Widget) IsFocused() bool {

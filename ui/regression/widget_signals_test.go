@@ -2,6 +2,7 @@ package regression
 
 import (
 	"bytes"
+	"image"
 	"image/color"
 	"testing"
 	"time"
@@ -329,4 +330,89 @@ func TestInvokeRepaintsWholeWindow(t *testing.T) {
 	})
 	w.Settle()
 	w.Screenshot() // the frame is painted
+}
+
+// The pickers keep the rule: the code fires ...Changed only, the user
+// both; the same value again fires nothing
+func TestPickerSignals(t *testing.T) {
+	form := newForm(400, 400)
+	date := ui.NewDatePicker()
+	cal := ui.NewCalendar()
+	tp := ui.NewTimePicker()
+	cp := ui.NewColorPicker()
+	form.Panel().AddWidget(0, 0, date)
+	form.Panel().AddWidget(1, 0, tp)
+	form.Panel().AddWidget(2, 0, cp)
+	form.Panel().AddWidget(3, 0, cal)
+	w := uitest.Show(t, form)
+	dateChanged, dateActivated := count(&date.OnDateChanged), count(&date.OnActivated)
+	calChanged, calActivated := count(&cal.OnDateChanged), count(&cal.OnActivated)
+	tpChanged, tpActivated := count(&tp.OnTimeChanged), count(&tp.OnActivated)
+	cpChanged, cpActivated := count(&cp.OnColorChanged), count(&cp.OnActivated)
+
+	day := time.Date(2026, 3, 14, 0, 0, 0, 0, time.Local)
+	for range 2 {
+		date.SetDate(day)
+		cal.SetDate(day)
+		tp.SetTime(9, 30, 0)
+		cp.SetColor(color.RGBA{10, 20, 30, 255})
+	}
+	if dateChanged.n != 1 || calChanged.n != 1 || tpChanged.n != 1 || cpChanged.n != 1 ||
+		dateActivated.n+calActivated.n+tpActivated.n+cpActivated.n != 0 {
+		t.Fatalf("by the code: date %d, calendar %d, time %d, color %d", dateChanged.n, calChanged.n, tpChanged.n, cpChanged.n)
+	}
+	if tpChanged.last != 9*time.Hour+30*time.Minute || !calChanged.last.Equal(day) {
+		t.Errorf("data: time %v, calendar %v", tpChanged.last, calChanged.last)
+	}
+
+	w.Click(tp)
+	w.Key(ui.KeyArrowUp, ui.KeyModifiers{})
+	if tpChanged.n != 2 || tpActivated.n != 1 || tpActivated.last != tp.Duration() {
+		t.Errorf("time by the user: %d/%d %v", tpChanged.n, tpActivated.n, tpActivated.last)
+	}
+	w.Click(cal) // a day: the selection
+	n := calChanged.n
+	w.Key(ui.KeyArrowRight, ui.KeyModifiers{})
+	w.Key(ui.KeyEnter, ui.KeyModifiers{})
+	if calChanged.n != n+1 || calActivated.n != 1 || !calActivated.last.Equal(cal.Date()) {
+		t.Errorf("calendar by the user: %d/%d %v", calChanged.n-n, calActivated.n, calActivated.last)
+	}
+}
+
+// A link fires OnClick on a click and on Enter
+func TestLinkOnClick(t *testing.T) {
+	form := newForm(300, 200)
+	link := ui.NewLink("Open", nil)
+	form.Panel().AddWidget(0, 0, link)
+	form.Panel().AddVSpacer(1, 0)
+	w := uitest.Show(t, form)
+	clicks := count(&link.OnClick)
+	w.Click(uitest.At(link, 5, 5))
+	w.Key(ui.KeyEnter, ui.KeyModifiers{})
+	if clicks.n != 2 || !link.Visited() {
+		t.Errorf("clicks %d", clicks.n)
+	}
+}
+
+// A focused image button and tool button are pressed by Enter and Space
+func TestButtonImageKeys(t *testing.T) {
+	form := newForm(300, 200)
+	img := image.NewRGBA(image.Rect(0, 0, 16, 16))
+	button := ui.NewButtonImage(img)
+	tool := ui.NewToolButton(img, "Tool", nil)
+	form.Panel().AddWidget(0, 0, button)
+	form.Panel().AddWidget(1, 0, tool)
+	form.Panel().AddVSpacer(2, 0)
+	w := uitest.Show(t, form)
+	pressed, tools := 0, 0
+	button.SetOnButtonClick(func(*ui.ButtonImage) { pressed++ })
+	tool.SetOnClick(func() { tools++ })
+	button.Focus()
+	w.Key(ui.KeyEnter, ui.KeyModifiers{})
+	w.Key(ui.KeySpace, ui.KeyModifiers{})
+	tool.Focus()
+	w.Key(ui.KeySpace, ui.KeyModifiers{})
+	if pressed != 2 || tools != 1 {
+		t.Errorf("image button %d, tool button %d", pressed, tools)
+	}
 }

@@ -11,6 +11,8 @@ conn.Disconnect() // when the handler is no longer needed
 
 The old setters `SetOn…` work as before: each keeps one handler, and a new call replaces the last. New code uses the signals.
 
+This page lists the signals; how to use them - the rules, the lifetime of handlers, signals of your own, patterns - is in [signals.md](../../signals.md).
+
 ## Three rules
 
 1. **The signals of input come before the widget handles the input.** Their data is a pointer to the event; a handler that sets `Handled = true` cancels what the widget would do: a letter is not typed, a table does not open the editor of a cell.
@@ -48,8 +50,13 @@ The coordinates of the mouse events are those of the widget's content, with its 
 | ScrollBar | `OnValueChanged(int)` | `OnActivated(int)` | - |
 | Table | `OnSelectionChanged(TableCell)`, `OnCellChanged(TableCell)` | `OnCellEdited(TableCell)` | `OnCellDoubleClick(*TableCellEvent)` (`Handled` cancels the editing), `OnColumnClick(int)` |
 | TreeView | `OnSelectionChanged(*TreeNode)` | `OnNodeActivated(*TreeNode)`, `OnCellEdited(TreeCell)` | `OnExpanding(*TreeNode)`: before a node opens, the place to load its children; `OnCollapsed(*TreeNode)`; `OnColumnClick(int)` |
+| DatePicker | `OnDateChanged(time.Time)` | `OnActivated(time.Time)`: a date chosen | - |
+| Calendar | `OnDateChanged(time.Time)` | `OnActivated(time.Time)`: a double click or Enter on a day | - |
+| TimePicker | `OnTimeChanged(time.Duration)`: the time since midnight | `OnActivated(time.Duration)` | - |
+| ColorPicker | `OnColorChanged(color.RGBA)`, also while dragging | `OnActivated(color.RGBA)` | - |
+| Link | - | `OnClick(Widgeter)`: a click on the text, Enter or Space | - |
 
-A signal of the application: `ui.OnThemeChanged(bool dark)`, the theme applied. The widgets repaint themselves; the handler recolors what the application colored itself, e.g. icons.
+A signal of the application: `ui.OnThemeChanged(bool dark)`, the theme applied. The widgets repaint themselves; the handler recolors what the application colored itself, e.g. icons. A form connects to it with `ConnectWhileShown(widget, f)`: connected while the form is open.
 
 ## Instead of `CurrentEvent()`
 
@@ -60,7 +67,7 @@ A signal of the application: `ui.OnThemeChanged(bool dark)`, the theme applied. 
 | `tb.SetOnTextBoxKeyDown(func() { ev := ui.CurrentEvent().Parameter.(*ui.EventTextboxKeyDown); if ev.Key == ui.KeyEnter { …; ev.Processed = true } })` | `tb.OnKeyDown.Connect(func(e *ui.KeyEvent) { if e.Key == ui.KeyEnter { …; e.Handled = true } })`, or just `tb.OnSubmit.Connect(func(text string) { … })` |
 | `table.SetOnCellMouseDblClick(func() { ev, _ := ui.CurrentEvent().Parameter.(*ui.EventTableCellMouseDblClick); open(ev.Row) })` | `table.OnCellDoubleClick.Connect(func(e *ui.TableCellEvent) { open(e.Row) })` |
 | a timer asking the selection of a table, because its `SetOnSelectionChanged` is taken by its owner | `table.OnSelectionChanged.Connect(…)`: any number of handlers |
-| a list of `themeListeners` of one's own | `ui.OnThemeChanged.Connect(…)` |
+| a list of `themeListeners` of one's own | `ui.OnThemeChanged.ConnectWhileShown(form.Panel(), …)` |
 | a timer asking the width of a widget | `w.OnResize.Connect(…)` |
 | the place of the mouse kept in `OnMouseMove`, and `Form().KeyModifiers()` in a handler of the wheel | `w.OnWheel.Connect(func(e *ui.WheelEvent) { zoomAt(e.X, e.Y, e.Mods.Ctrl) })` |
 

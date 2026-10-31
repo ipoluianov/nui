@@ -135,7 +135,6 @@ func (p *ChartPane) AddSeries(s ChartSeries) ChartSeries {
 	p.series = append(p.series, s)
 	switch ls := s.(type) {
 	case *LineSeries:
-		ls.watched = false
 		ls.watchMemory()
 	case *BarSeries:
 		if ls.memory != nil {
@@ -153,6 +152,7 @@ func (p *ChartPane) RemoveSeries(s ChartSeries) {
 	for i, o := range p.series {
 		if o == s {
 			p.series = append(p.series[:i:i], p.series[i+1:]...)
+			s.base().stopWatching()
 			s.base().pane = nil
 			p.view.Update()
 			return

@@ -31,6 +31,11 @@ type Calendar struct {
 
 	onDateChanged   func(date time.Time)
 	onDateActivated func(date time.Time)
+
+	// OnDateChanged: the selected date changed, by the user or by SetDate
+	OnDateChanged Signal[time.Time]
+	// OnActivated: a double click on a day, or Enter
+	OnActivated Signal[time.Time]
 }
 
 type calendarPart int
@@ -86,9 +91,14 @@ func (c *Calendar) Date() time.Time {
 // SetDate selects the date (kept within SetMinDate/SetMaxDate) and shows
 // its month, without calling SetOnDateChanged's function.
 func (c *Calendar) SetDate(date time.Time) {
-	c.date = c.clamp(DateOnly(date))
+	date = c.clamp(DateOnly(date))
+	changed := !date.Equal(c.date)
+	c.date = date
 	c.month = firstOfMonth(c.date)
 	c.Update()
+	if changed {
+		c.OnDateChanged.Emit(date)
+	}
 }
 
 // SetMinDate and SetMaxDate limit the dates that can be chosen; a zero
@@ -170,12 +180,14 @@ func (c *Calendar) selectDate(d time.Time) {
 		return
 	}
 	c.date = d
+	c.OnDateChanged.Emit(d)
 	if c.onDateChanged != nil {
 		c.onDateChanged(d)
 	}
 }
 
 func (c *Calendar) activate() {
+	c.OnActivated.Emit(c.date)
 	if c.onDateActivated != nil {
 		c.onDateActivated(c.date)
 	}

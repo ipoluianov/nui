@@ -9,7 +9,8 @@ docs := ui.NewLink("Documentation", nil)
 docs.SetURL("https://example.com/docs")
 ```
 
-- `SetText` / `SetTextFunc` / `Text()`, `SetOnClick(func())`, `SetURL(url)` / `URL()`
+- `SetText` / `SetTextFunc` / `Text()`, `SetURL(url)` / `URL()`
+- `OnClick` (a signal) and `SetOnClick(func())`: called on a click on the text, Enter or Space. The URL opens when neither is set.
 - `Activate()` - does what a click does; `Visited()` - it was activated (drawn in a softer color).
 - `ui.OpenURL(url) error` - opens an address or a file with the system's default application
   (`xdg-open` on Linux, `open` on macOS, the URL handler on Windows).

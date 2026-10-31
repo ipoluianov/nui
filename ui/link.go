@@ -28,6 +28,7 @@ func NewLink(text string, onClick func()) *Link {
 	c.setThemeHeight(ThemeControlHeight, true)
 	c.SetMouseCursor(MouseCursorPointer)
 	c.SetCanBeFocused(true)
+	c.emitsOwnClick = true
 	c.SetOnPaint(c.draw)
 	c.SetOnMouseDown(func(button MouseButton, x, y int, mods KeyModifiers) bool { return true })
 	c.SetOnMouseUp(func(button MouseButton, x, y int, mods KeyModifiers) bool {
@@ -67,7 +68,8 @@ func (c *Link) URL() string {
 	return c.url
 }
 
-// SetOnClick sets the function called when the link is activated.
+// SetOnClick sets the function called when the link is activated; the
+// OnClick signal fires too. Without either, the link opens its URL.
 func (c *Link) SetOnClick(f func()) {
 	c.onClick = f
 }
@@ -84,10 +86,11 @@ func (c *Link) Activate() {
 	}
 	c.visited = true
 	c.form.Update()
+	c.OnClick.Emit(c)
 	switch {
 	case c.onClick != nil:
 		c.onClick()
-	case c.url != "":
+	case c.url != "" && !c.OnClick.Connected():
 		_ = OpenURL(c.url)
 	}
 }

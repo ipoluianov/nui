@@ -6,7 +6,7 @@ A page for each widget and topic of the package `ui`. Common tasks put together 
 
 - [Form](content/form.md)
 - [Widget / properties / events](content/widget.md)
-- [Events: signals](content/events.md)
+- [Events: the signals of each widget](content/events.md); using signals: [signals.md](../signals.md)
 - [Theme](content/theme.md)
 - [Fonts (built-in and system)](content/fonts.md)
 - [Keyboard & mouse types](content/input.md)

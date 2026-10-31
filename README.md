@@ -44,6 +44,7 @@ func main() {
 
 - [Recipes](doc/recipes.md): the main window, dialogs, background work, tables, translations, the tray, tests: common tasks in short code.
 - [Widgets and the API of `ui`](doc/ui/README.md): a page for each widget and topic.
+- [Signals](doc/signals.md): how widgets tell what happens: connecting, the rule of Changed and Activated, signals of your own, the lifetime of handlers.
 - [Rules](doc/rules.md): the UI thread, repaint, events, dialogs: what the signatures do not show. Read before the first change.
 - [Testing](doc/testing.md): forms tested without a display, golden pictures, benchmarks.
 - [To do](doc/todo.md): what is known to be missing.

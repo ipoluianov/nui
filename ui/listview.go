@@ -27,7 +27,7 @@ type ListView struct {
 	OnActivated Signal[int]
 
 	model       ItemModel
-	modelConn   Connection
+	unlinkModel func() // the link to the model's notifications
 	rowHeight   int
 	current     int
 	anchor      int // where a Shift selection starts
@@ -75,10 +75,17 @@ func NewListView() *ListView {
 
 // SetModel shows the model; a ModelNotifier is followed
 func (c *ListView) SetModel(model ItemModel) {
-	c.modelConn.Disconnect()
+	if c.unlinkModel != nil {
+		c.unlinkModel()
+		c.unlinkModel = nil
+	}
 	c.model = model
 	if n, ok := model.(ModelNotifier); ok {
-		c.modelConn = n.ModelChanged().Connect(func(struct{}) { c.Refresh() })
+		// While the list is shown: a model kept longer doesn't keep it
+		c.unlinkModel = c.linkWhileShown(func() func() {
+			c.Refresh()
+			return n.ModelChanged().Connect(func(struct{}) { c.Refresh() }).Disconnect
+		})
 	}
 	c.Refresh()
 }

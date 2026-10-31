@@ -8,11 +8,12 @@ last day of the month. "Today" selects today.
 
 ```go
 cal := ui.NewCalendar()
-cal.SetOnDateChanged(func(d time.Time) { ... })   // a click, the keyboard, Today
-cal.SetOnDateActivated(func(d time.Time) { ... }) // a double click, Enter
+cal.OnDateChanged.Connect(func(d time.Time) { ... }) // any change: the user's or SetDate
+cal.OnActivated.Connect(func(d time.Time) { ... })   // a double click, Enter
 ```
 
-- `Date()` / `SetDate(t)` - dates are at midnight local time (`ui.DateOnly(t)`); `SetDate` shows its month and doesn't call the callback.
+- `Date()` / `SetDate(t)` - dates are at midnight local time (`ui.DateOnly(t)`); `SetDate` shows its month.
+- The old setters: `SetOnDateChanged(f)` (the user's selection only: a click, the keyboard, Today), `SetOnDateActivated(f)`.
 - `SetMinDate(t)`, `SetMaxDate(t)` - a zero time removes the limit; days out of range are grayed out.
 - `ShowMonth(year, month)`, `ShownMonth()`, `SetFirstDayOfWeek(time.Weekday)`
 
@@ -25,10 +26,11 @@ Up/Down change the date by a day, PageUp/PageDown by a month.
 ```go
 due := ui.NewDatePicker()
 due.SetDate(time.Now().AddDate(0, 0, 7))
-due.SetOnDateChanged(func(d time.Time) { task.Due = d })
+due.OnActivated.Connect(func(d time.Time) { task.Due = d }) // the user chose a date
 ```
 
-- `Date()` / `SetDate(t)` (doesn't call the callback), `SetMinDate`, `SetMaxDate`, `Text()` - the date as shown.
+- `OnDateChanged` (any change, `SetDate` too), `OnActivated` (the user's choice); the old `SetOnDateChanged(f)` is the user's choice only.
+- `Date()` / `SetDate(t)`, `SetMinDate`, `SetMaxDate`, `Text()` - the date as shown.
 - `SetFormat(layout)` - a `time.Format` layout; `""` (default) follows the language: `ui.DefaultDateLayout()`.
 - `OpenPopup()`, `ClosePopup()`, `IsPopupOpen()`
 
