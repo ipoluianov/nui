@@ -24,7 +24,7 @@ tray.ShowNotification("Done", "The export has finished")
 - The callbacks run on the UI thread like all the handlers; the application must be running a
   form's `Exec`.
 - The menu opens on a right click; on macOS any click opens it, and `SetOnClick` works only
-  without a menu. Call `SetMenu` again to change the items (e.g. a check mark).
+  without a menu. Call `SetMenu` again to change the items (e.g. a check mark). `Disabled: true` greys an item out.
 - `Close()` removes the icon.
 
 Keeping the application in the tray when its window is closed:

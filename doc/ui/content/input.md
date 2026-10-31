@@ -12,6 +12,14 @@ type MouseCursor  // ui.MouseCursorArrow / Pointer / ResizeHor / ResizeVer / IBe
 
 ## Usage
 
+For a shortcut, `form.AddShortcut` (or an [Action](actions.md)) is simpler: it takes a text like `"Ctrl+Shift+Z"`, `"F5"` or `"Mod+S"` ("Mod" is Cmd on macOS and Ctrl elsewhere) and matches the key by its place, in any keyboard layout. `ui.ParseShortcut` parses such a text into a `ui.Shortcut`.
+
+```go
+form.AddShortcut("Mod+S", save)
+```
+
+To see every key before the shortcuts:
+
 ```go
 form.SetOnGlobalKeyDown(func(key ui.Key, mods ui.KeyModifiers) bool {
 	if key == ui.KeyS && mods.Ctrl {
@@ -21,6 +29,8 @@ form.SetOnGlobalKeyDown(func(key ui.Key, mods ui.KeyModifiers) bool {
 	return false
 })
 ```
+
+Inside a widget, the key and mouse signals carry these types: `OnKeyDown` gets a `*ui.KeyEvent{Key, Mods, Handled}`, `OnMouseDown` a `*ui.MouseEvent{Button, X, Y, Mods, Handled}` (see [Events](events.md)). `w.SetMouseCursor(ui.MouseCursorPointer)` sets the cursor over a widget.
 
 ## Key constants (selected)
 

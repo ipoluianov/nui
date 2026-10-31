@@ -4,7 +4,7 @@ package ui
 // On...: any number of handlers can be connected to one, each gets the data
 // of the event as the argument.
 //
-//	table.OnCellDoubleClick.Connect(func(e ui.CellEvent) { open(e.Row) })
+//	table.OnCellDoubleClick.Connect(func(e *ui.TableCellEvent) { open(e.Row) })
 //	conn := box.OnTextChanged.Connect(func(text string) { search(text) })
 //	conn.Disconnect() // later
 //

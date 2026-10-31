@@ -3,7 +3,7 @@
 Contributor docs. These packages live under `internal/` and can only be
 imported from inside this module; applications use `ui`.
 
-Native GUI library for Go. Windows, keyboard, mouse, 2D canvas. Talks to OS native APIs directly - cgo on macOS (Cocoa), [purego](https://github.com/ebitengine/purego) on Linux (Xlib, no cgo), plain `syscall` on Windows (Win32).
+Native GUI library for Go. Windows, keyboard, mouse, 2D canvas. Talks to OS native APIs directly, without cgo: [purego](https://github.com/ebitengine/purego) on Linux (Xlib) and macOS (Cocoa, AppKit), plain `syscall` on Windows (Win32).
 
 ## Contents
 

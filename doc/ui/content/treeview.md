@@ -20,6 +20,15 @@ report.SetImage(fileIcon)
 docs.Expand()
 ```
 
+## Signals
+
+```go
+tree.OnSelectionChanged.Connect(func(node *ui.TreeNode) { showDetails(node) })
+tree.OnNodeActivated.Connect(func(node *ui.TreeNode) { open(node.Data()) }) // double click, Enter
+```
+
+`OnSelectionChanged`, `OnNodeActivated`, `OnExpanding`, `OnCollapsed`, `OnCellEdited`, `OnColumnClick`; see [events](events.md). The old `SetOn…` setters still work.
+
 ## Columns
 
 - `SetColumnCount(n)` / `ColumnCount()` - at least 1.
@@ -51,7 +60,7 @@ On the tree: `AddNode(parent, text)`, `InsertNode(parent, index, text)`, `Nodes(
 ```go
 folder := tree.AddNode(nil, "C:")
 folder.SetHasChildren(true)
-tree.SetOnExpand(func(node *ui.TreeNode) {
+tree.OnExpanding.Connect(func(node *ui.TreeNode) {
 	if node.ChildCount() == 0 {
 		for _, name := range readDir(node) {
 			node.AddChild(name).SetHasChildren(true)
@@ -60,7 +69,7 @@ tree.SetOnExpand(func(node *ui.TreeNode) {
 })
 ```
 
-`SetOnExpand` is called before a node expands; `SetOnCollapse` after it collapses.
+`OnExpanding` (or the old `SetOnExpand`) is called before a node expands; `OnCollapsed` (`SetOnCollapse`) after it collapses.
 
 `TreeView.ExpandAll()` expands only the nodes that already have children and doesn't load any:
 for a tree of folders loading everything could take forever. Nodes marked with `SetHasChildren`
@@ -75,7 +84,7 @@ the next paint, so a tree of 100 000 nodes can be filled with plain `AddChild` c
 - `CurrentColumn()` / `SetCurrentColumn(col)` - the column editing starts in (the column clicked last).
 - `SetMultiselect(bool)` - Shift+click / Shift+arrows select a range, Ctrl+click and Ctrl+Space toggle a node, Ctrl+arrows move the focus without changing the selection, Ctrl+A selects all shown nodes, dragging selects a range.
 - `SelectedNodes()` (top to bottom), `SetSelectedNodes(nodes)`, `IsNodeSelected(node)`, `SelectAll()`
-- `SetOnSelectionChanged(func(node))` - the current node or the selection changed.
+- `OnSelectionChanged(*TreeNode)` - the current node or the selection changed, by the user or the code (the current node, nil if none); the old setter `SetOnSelectionChanged(func(node))` still works.
 
 Collapsing a node moves the focus out of its children to the node; removing the current node moves it
 to the next sibling (or the previous one, or the parent). A right click selects the node under the
@@ -90,6 +99,7 @@ The same triggers as in `Table`:
 - `EditCurrentCell(text)` / `EditCell(node, col, text)` - open the editor (`""` starts from the cell's text, all selected).
 - `CommitEdit()`, `CancelEdit()`, `IsEditing()`, `IsCellEditable(node, col)`
 - `SetOnCellChanged(func(node, col, text) bool)` - called on commit; return `false` to reject the text.
+- `OnCellEdited(TreeCell{Node, Col, Text})` - the user's edit was accepted.
 
 In the editor Enter commits, Escape cancels, a click elsewhere or Tab commits.
 
@@ -102,7 +112,7 @@ In the editor Enter commits, Escape cancels, a click elsewhere or Tab commits.
 | Left | collapse; on a collapsed node - go to its parent |
 | Numpad + / - / * | expand / collapse / expand the branch (its loaded part, see `ExpandAll`) |
 | Ctrl+Left / Ctrl+Right | previous / next column for editing |
-| Enter, double click | edit (if the trigger is on), else expand/collapse and `SetOnNodeActivated` |
+| Enter, double click | edit (if the trigger is on), else expand/collapse and `OnNodeActivated` (`SetOnNodeActivated`) |
 | letters | jump to the next node starting with the typed text (unless `SetEditTriggerKeyDown`) |
 | Ctrl+C | copy the selected nodes (columns tab-separated) - `CopySelectionToClipboard()` |
 | click on the arrow | expand/collapse without selecting |

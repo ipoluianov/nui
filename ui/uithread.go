@@ -41,6 +41,7 @@ func InvokeSync(f func()) {
 // have changed any of them
 func repaintOpenForms() {
 	for _, form := range openForms() {
+		form.repaint.all = true
 		form.needUpdate = true
 	}
 }

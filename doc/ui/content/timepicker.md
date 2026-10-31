@@ -17,6 +17,6 @@ start.SetOnTimeChanged(func() { meeting.Start = start.Duration() })
 | `:` `.` space | next segment |
 | Home / End, Backspace / Delete | the minimum / maximum, 0 |
 
-- `SetTime(h, m, s)`, `Hour()`, `Minute()`, `Second()`, `Text()`
+- `SetTime(h, m, s)` (doesn't call the callback; the values are clamped, seconds are 0 without `SetShowSeconds(true)`), `Hour()`, `Minute()`, `Second()`, `Text()`
 - `Duration()` / `SetDuration(d)` - the time since midnight.
-- `SetShowSeconds(bool)`, `SetOnTimeChanged(func())`
+- `SetShowSeconds(bool)`, `SetOnTimeChanged(func())` - called when the user changes the time.

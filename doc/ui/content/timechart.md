@@ -101,7 +101,8 @@ of that size (about one point per pixel). Rules:
   continues to the edges of the plot.
 - The call happens on the UI thread during painting, so it must be fast. A
   source that loads data asynchronously (e.g. from a server) returns what it
-  has now and calls `Form().Update()` on the chart when more data arrives.
+  has now and calls `RequestRepaint()` on the chart when more data arrives
+  (safe from any goroutine).
 
 ### TimeChartMemorySource
 
@@ -331,7 +332,7 @@ dialogs.
 ## Appearance
 
 - Colors follow the application theme (`ui.ApplyDarkTheme()` /
-  `ui.ApplyLightTheme()`); call `Form().Update()` after switching.
+  `ui.ApplyLightTheme()`), which repaint the open forms.
 - The time axis uses a slightly smaller font: tick times on the first row and
   a ribbon of dates below it. Each date is centered on the visible part of its
   day, so a range crossing midnight shows both dates. On larger scales the
@@ -342,7 +343,8 @@ dialogs.
 
 - Call chart methods from the UI thread (for example from a widget timer).
   Only `TimeChartMemorySource.AddPoint`/`SetPoints` may be called from other
-  goroutines; trigger the repaint from the UI thread.
+  goroutines. They don't repaint the chart: call `chart.RequestRepaint()`
+  (from any goroutine) or `chart.Update()` (from the UI thread).
 - The form captures the mouse only for the left button. While zooming with the
   right button, the zoom band stops following the pointer when it leaves the
   chart; the release is still handled.

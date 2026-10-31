@@ -10,14 +10,24 @@ cb := ui.NewCheckbox("Enable feature")
 cb.SetChecked(true)
 ```
 
-## Event (no params)
+## Events
 
 ```go
-cb.SetOnStateChanged(func() {
-  ev := ui.CurrentEvent()
-  if e, ok := ev.Parameter.(*ui.EventCheckboxStateChanged); ok {
-    fmt.Println("checked:", e.Checked)
-  }
+cb.OnCheckedChanged.Connect(func(checked bool) { // any change, also SetChecked
+  fmt.Println("checked:", checked)
+})
+cb.OnActivated.Connect(func(checked bool) { // a click or Space of the user
+  save(checked)
 })
 ```
 
+The old `SetOnStateChanged(func())` still works. See [events](events.md).
+
+## Three states
+
+```go
+cb.SetTristate(true)       // a click goes unchecked -> checked -> indeterminate
+cb.SetIndeterminate(true)  // the dash; Checked() is false then
+```
+
+`Checked()`, `Indeterminate()`, `SetText(s)` / `Text()`.

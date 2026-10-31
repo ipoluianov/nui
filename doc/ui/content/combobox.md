@@ -26,14 +26,24 @@ text := cb.SelectedItemText()
 data := cb.SelectedItemData()
 ```
 
+## Items
+
+- `AddItem(text, data)`, `InsertItem(index, text, data)`, `RemoveItem(index)`, `Clear()`
+- `SetItems([]string{...})`: replaces the items (no data); the item with the selected text stays selected, else the first
+- `ItemCount()`, `ItemText(i)`, `ItemData(i)`, `SetItemText(i, text)` (e.g. for another language)
+- `FindText(text)`, `FindData(data)`: the index, -1 if none
+
+The first item is selected by default.
+
 ## Selection changes
 
 ```go
-cb.SetOnSelectedIndexChanged(func() {
-	fmt.Println("picked", cb.SelectedItemText())
+cb.OnSelectionChanged.Connect(func(index int) { // any change, also SetSelectedIndex
+	fmt.Println("now", cb.ItemText(index))
+})
+cb.OnActivated.Connect(func(index int) { // the user picked an item, even the selected one
+	apply(cb.SelectedItemData())
 })
 ```
 
-Called when the user picks another item in the popup; `SetSelectedIndex` doesn't call it.
-`ItemCount()` returns the number of items.
-
+The old `SetOnSelectedIndexChanged(func())` still works: it is called when the user picks another item; `SetSelectedIndex` doesn't call it.

@@ -23,7 +23,7 @@ logs.Changed() // the views follow
 ```
 
 - `ui.NewListModel(texts...)` keeps texts with data: `Append`, `Insert`, `Remove`, `Set`, `SetItems`, `Data(row)`; it tells its views of the changes itself.
-- Your own model: implement `ItemModel`; embed `ui.ModelSignal` and call `Changed()` to tell the views.
+- Your own model: implement `ItemModel`; embed `ui.ModelSignal` and call `Changed()` to tell the views. A model without it: call `list.Refresh()` after changing it.
 - Optional: `ItemStyler` (`Style(row, col) ui.ItemStyle`: color, bold, italic, alignment, icon), `ColumnNamer` (Table headers), `ItemEditor` (cells the user edits in a Table).
 
 ## Selection

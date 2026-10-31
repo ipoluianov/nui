@@ -20,6 +20,28 @@ menu.AddItemWithSubmenu("More", sub)
 ```
 
 
+## Items
+
+```go
+menu.AddSeparator()
+var wrap *ui.ContextMenuItem
+wrap = menu.AddItem("Word wrap", func() { editor.SetWrap(wrap.Checked()) }).SetCheckable(true)
+```
+
+- `AddItem` returns the `*ui.ContextMenuItem`: `SetText`, `SetShortcut("Mod+S")`, `SetImage`, `SetEnabled`, `SetVisible`.
+- `SetCheckable(true)`: a click toggles the check mark before the function runs; `SetChecked`, `Checked()`.
+- `menu.AddAction(action)`: an item showing a `ui.Action` (see [actions](actions.md)).
+- `menu.SetOnShow(func())`: called every time before the menu is shown, e.g. to hide the items that don't apply now.
+- `RemoveAllItems()` empties the menu, e.g. to fill it anew in `SetOnShow`.
+
+## Right click on a widget
+
+```go
+menu := ui.NewContextMenu(table)
+menu.AddItem("Delete", onDelete)
+table.SetContextMenu(menu) // a right click, the Menu key or Shift+F10 opens it
+```
+
 ## Icons
 
 ```go

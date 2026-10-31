@@ -1,7 +1,10 @@
 # Chart
 
-Simple line chart for `[]ui.ChartPoint`: a `ChartView` with one line. For
-more lines, bars, pies and the rest see [Charts](charts.md).
+`Chart` is the simple chart of the earlier versions of nui, kept for the
+code that uses it: one line of `[]ui.ChartPoint`. It is a `ChartView` with
+one line; new code takes `ui.NewLineChart()` or another widget of the
+`ChartView` family, which has more lines, bars, pies, time axes and the
+rest: see [Charts](charts.md).
 
 ## Create
 
@@ -15,10 +18,13 @@ ch.SetData([]ui.ChartPoint{
 })
 ```
 
+`Data()` returns the points; `SetData` replaces them and repaints the chart.
+The points are drawn in the order of X.
+
 ## Useful props
 
 - `xlabel`, `ylabel` (string): the titles of the axes
-- `padding` (int)
+- `padding` (int): the space around the plot, 6 by default
 
 The ticks are picked for the size of the chart so their labels never
 overlap. Being a `ChartView`, the chart zooms with the mouse, shows a

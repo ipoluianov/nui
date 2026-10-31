@@ -79,6 +79,7 @@ func (c *RadioButton) SetChecked(checked bool) {
 	}
 
 	c.checked = checked
+	c.Update()
 	if c.onStateChanged != nil {
 		c.onStateChanged(c, checked)
 	}

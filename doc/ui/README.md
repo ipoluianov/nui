@@ -1,6 +1,6 @@
 # ui documentation (forms & widgets)
 
-Short reference for `ui` controls. Code snippets are intentionally minimal—see `examples/` for runnable demos.
+A page for each widget and topic of the package `ui`. Common tasks put together (the main window, dialogs, background work, tables, translations, the tray, tests) are in [recipes](../recipes.md); the rules the signatures do not show (the UI thread, repaint, events) in [rules](../rules.md). Runnable applications: `examples/`.
 
 ## Basics
 

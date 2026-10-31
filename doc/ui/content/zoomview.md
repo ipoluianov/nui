@@ -15,7 +15,8 @@ view.OnZoomChanged.Connect(func(zoom float64) { status.SetText(fmt.Sprintf("%.0f
 - The wheel scrolls (Shift+wheel sideways), **Ctrl+wheel zooms around the mouse**: the point under it stays.
 - The middle button drags the content; with `SetPanWithLeftButton(true)` the left one too.
 - `+`, `-` zoom, `0` shows the actual size.
-- `SetZoom`, `ZoomAt(zoom, x, y)`, `FitToView`, `ActualSize`, `CenterOn(x, y)`, `SetZoomRange`.
+- `SetZoom`, `ZoomAt(zoom, x, y)`, `FitToView`, `ActualSize`, `CenterOn(x, y)`, `SetZoomRange` (1/32 to 64 by default), `Zoom()`.
+- `FitToView` needs the size of the view: a view not laid out yet (width 0) is left as it is; call it again, e.g. from `OnResize`.
 - `ToContent(x, y)` and `ToView(x, y)` convert between the view and the content (a click on a pixel of the image: `view.ToContent(e.X, e.Y)`).
 
 A painter draws in the view's canvas, converting the content's coordinates:

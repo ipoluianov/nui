@@ -12,7 +12,7 @@ cal.SetOnDateChanged(func(d time.Time) { ... })   // a click, the keyboard, Toda
 cal.SetOnDateActivated(func(d time.Time) { ... }) // a double click, Enter
 ```
 
-- `Date()` / `SetDate(t)` - dates are at midnight local time (`ui.DateOnly(t)`).
+- `Date()` / `SetDate(t)` - dates are at midnight local time (`ui.DateOnly(t)`); `SetDate` shows its month and doesn't call the callback.
 - `SetMinDate(t)`, `SetMaxDate(t)` - a zero time removes the limit; days out of range are grayed out.
 - `ShowMonth(year, month)`, `ShownMonth()`, `SetFirstDayOfWeek(time.Weekday)`
 
@@ -28,7 +28,7 @@ due.SetDate(time.Now().AddDate(0, 0, 7))
 due.SetOnDateChanged(func(d time.Time) { task.Due = d })
 ```
 
-- `Date()` / `SetDate(t)`, `SetMinDate`, `SetMaxDate`, `Text()` - the date as shown.
+- `Date()` / `SetDate(t)` (doesn't call the callback), `SetMinDate`, `SetMaxDate`, `Text()` - the date as shown.
 - `SetFormat(layout)` - a `time.Format` layout; `""` (default) follows the language: `ui.DefaultDateLayout()`.
 - `OpenPopup()`, `ClosePopup()`, `IsPopupOpen()`
 

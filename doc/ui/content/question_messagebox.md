@@ -21,3 +21,5 @@ ui.ShowQuestionMessageBoxYesNoCancel(form.Panel(), "Notepad", "Save the changes?
 	nil,                    // Cancel (Esc): keep editing
 )
 ```
+
+The buttons' texts follow the language (`ui.UIText()`). In the Yes/No and OK/Cancel boxes the close button of the window calls nothing; in the Yes/No/Cancel box it calls the Cancel callback. With a `nil` parent the box is a window of its own, not modal.

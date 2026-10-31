@@ -18,7 +18,8 @@ form.AddAction(save)        // the shortcut works when the action isn't in the m
 ```
 
 - `SetEnabled(bool)`, or `SetEnabledFunc(f)`: `f` is asked again before a menu opens and every few tenths of a second, so the items follow the application's state without code that updates them.
-- `SetCheckable(true)`: running the action toggles `Checked()`; the menu items show a check mark, the buttons a pressed look.
+- `SetCheckable(true)`: running the action toggles `Checked()` (`SetChecked` sets it); the menu items show a check mark, the buttons a pressed look.
+- `SetText`, `SetIcon`, `SetShortcut` (see [Keyboard & mouse](input.md)), `SetTooltip` change all the items at once.
 - `Trigger()` runs it as a click would (nothing if disabled). `OnTriggered` and `OnChanged` are signals.
 
 A menu item can be checkable without an action too: `item.SetCheckable(true)`, `item.SetChecked(...)`, `item.Checked()`.

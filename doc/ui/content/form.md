@@ -8,17 +8,31 @@
 form := ui.NewForm()
 form.SetTitle("My app")
 form.SetSize(800, 600)
-form.Exec()
+form.Panel().AddWidget(0, 0, ui.NewLabel("Hello"))
+form.Show()
+form.Exec() // runs the event loop until the form is closed
 ```
+
+`Exec` needs a shown form: call `Show`, `ShowMaximized` or `ShowModal` first.
 
 ## Key methods
 
 - **`Panel() *ui.Panel`**: form root container.
 - **`SetMainWidget(w ui.Widgeter)`**: replace the root content with a single widget.
-- **`Exec()` / `ExecMaximized()`**: run the window event loop.
+- **`Show()` / `ShowMaximized()`**: open the window and return at once.
+- **`ShowModal(parent *ui.Form)`**: open the form as a dialog over `parent`, which gets no input until it closes (see [Dialog](dialog.md)).
+- **`Exec()`**: wait until the form is closed. From `main()` it runs the event loop of all the forms; from a handler, a nested loop.
+- **`SetTitle(text)` / `SetTitleFunc(f)`** (follows the language), **`SetSize(w, h)`**, **`Move(x, y)`**, **`Maximize()` / `Minimize()` / `Restore()`**.
+- **`OnClose func() bool`**: called when the user closes the window (close button, Alt+F4) or on `RequestClose`; return `false` to keep it open. Not called by `Close()`.
 - **`Close()`**: close the window at once, without calling `OnClose`. Safe from any goroutine. A window with an open modal dialog closes as soon as the dialog does.
 - **`RequestClose() bool`**: close the window as if the user clicked its close button: `OnClose` runs first and can keep the window open. Call it on the UI thread (a handler or `Invoke`).
 - **`Invoke(f func())`**: run `f` on the UI thread, then repaint the form. Safe from any goroutine.
+- **`Update()`**: repaint the whole form with the next frame. A widget that changed what it draws calls its own `Update()`, which repaints only its rectangle.
+- **`AddShortcut(shortcut, f)`**: run `f` on a key wherever the focus is, e.g. `form.AddShortcut("Mod+F", search.Focus)` ("Mod" is Cmd on macOS, Ctrl elsewhere). `AddAction(a)` does the same for an [Action](actions.md).
+- **`SetAcceptButton(btn)` / `SetCancelButton(btn)`**: the buttons pressed by Enter and Esc.
+- **`SetMenuBar(bar)`**: the main menu, see [MenuBar](menu_bar.md).
+- **`SetOnActivated(f)` / `SetOnDeactivated(f)`**, **`IsActive()`**: the window got or lost the keyboard focus.
+- **`FocusedWidget()`**, **`WidgetById(id)`**.
 - **`Hide()` / `Show()` / `IsHidden()`**: hide the window (taskbar button and all) and bring it back; the form stays open. See [TrayIcon](trayicon.md).
 - **`ShowToast(text, kind)` / `ShowToastFor(text, kind, duration)`**: a short message in the corner, see [Toasts](toast.md).
 - **`KeyModifiers() ui.KeyModifiers`**: which of Shift, Ctrl, Alt (Cmd on macOS) are held right now, not only inside a key event - e.g. to show what the function keys do with them; read it in a timer. Call it on the UI thread.
@@ -57,17 +71,16 @@ Other goroutines must not touch forms and widgets directly. They hand the work o
 ```go
 go func() {
 	data := loadData() // slow work off the UI thread
-	form.Invoke(func() { table.SetData(data) })
+	form.Invoke(func() { list.SetItems(data) }) // data []string
 }()
 ```
-- **`OnClose func() bool`**: called when the user closes the window (close button, Alt+F4) or on `RequestClose`; return `false` to keep it open. Not called by `Close()`.
-- **`SetIcon(img image.Image)`**: set the icon of this window (title bar / taskbar), overriding the application icon. Works before and after the window is shown.
 
-## Application icon
+## Icons
 
+- **`form.SetIcon(img image.Image)`**: set the icon of this window (title bar / taskbar), overriding the application icon. Works before and after the window is shown.
 - **`ui.SetAppIcon(img image.Image)`**: set the default icon for all windows. Call it at startup, before showing any form; every form created afterwards uses it unless it has its own `SetIcon`.
 
 ## Global events
 
-- **`SetOnGlobalKeyDown(func(key ui.Key, mods ui.KeyModifiers) bool)`**: intercept key presses before focused widget.
+- **`SetOnGlobalKeyDown(func(key ui.Key, mods ui.KeyModifiers) bool)`**: intercept key presses before the focused widget (a focused text field still takes its editing keys, e.g. Ctrl+Z, first); return `true` to stop the key there.
 

@@ -24,7 +24,7 @@ points straight away and keep them in memory.
 | `ui.NewSparkline()` | `SetValues`, `AddValue`, `SetMaxValues`, `SetKind` | no axes, no frame; `ui.DrawSparkline` draws one in a table cell |
 | `ui.NewXYChart()` | a `ChartView` of linear axes | add any series to its panes |
 | `ui.NewTimeChart()` | see [TimeChart](timechart.md) | a `ChartView` of a time axis |
-| `ui.NewChart()` | `SetData([]ui.ChartPoint)` | the simple chart of the earlier versions |
+| `ui.NewChart()` | `SetData([]ui.ChartPoint)` | the simple chart of the earlier versions: see [Chart](chart.md) |
 
 ```go
 ch.Series("Plan").AddXY(1, 10).AddXY(2, 12)
@@ -57,7 +57,7 @@ ch := ui.NewChartView()
 price := ch.Pane(0)
 price.SetWeight(3)              // three quarters of the height
 price.AddCandles("ACME").SetSource(src)
-avg := price.AddLine("Average 20")
+price.AddLine("Average 20").SetSource(average)
 volume := ch.AddPane().AddBars("Volume")
 volume.SetSource(volumes)
 ```

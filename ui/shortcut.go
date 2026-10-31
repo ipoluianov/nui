@@ -365,6 +365,11 @@ func (c *Form) processShortcut(key Key, mods KeyModifiers) bool {
 // the shortcut
 func (c *ContextMenu) itemWithShortcut(key Key, mods KeyModifiers) *ContextMenuItem {
 	for _, item := range c.items {
+		// The state of an action is asked from time to time: now, so a
+		// key right after the state changed is not lost
+		if item.action != nil {
+			item.action.Update()
+		}
 		if item.separator || !item.IsVisible() || !item.Enabled() {
 			continue
 		}

@@ -43,6 +43,9 @@ The coordinates of the mouse events are those of the widget's content, with its 
 | Checkbox, ToggleSwitch | `OnCheckedChanged(bool)` | `OnActivated(bool)` | - |
 | RadioButton | `OnCheckedChanged(bool)`, also when another button of the group took the check | `OnActivated(bool)` | - |
 | NumBox, Slider | `OnValueChanged(float64)` | `OnActivated(float64)` | - |
+| ListView | `OnSelectionChanged(int)`: the current row, -1 if none | `OnActivated(int)`: a double click or Enter on a row | - |
+| TabWidget | `OnCurrentChanged(int)` | `OnActivated(int)`: a click on a tab, also the current one | - |
+| ScrollBar | `OnValueChanged(int)` | `OnActivated(int)` | - |
 | Table | `OnSelectionChanged(TableCell)`, `OnCellChanged(TableCell)` | `OnCellEdited(TableCell)` | `OnCellDoubleClick(*TableCellEvent)` (`Handled` cancels the editing), `OnColumnClick(int)` |
 | TreeView | `OnSelectionChanged(*TreeNode)` | `OnNodeActivated(*TreeNode)`, `OnCellEdited(TreeCell)` | `OnExpanding(*TreeNode)`: before a node opens, the place to load its children; `OnCollapsed(*TreeNode)`; `OnColumnClick(int)` |
 
@@ -68,7 +71,19 @@ A widget that embeds `ui.Widget` gets all the signals of the base widget. Its ow
 ```go
 type ColorWell struct {
 	ui.Widget
+	color          color.RGBA
 	OnColorChanged ui.Signal[color.RGBA] // any change
 	OnActivated    ui.Signal[color.RGBA] // a choice of the user
 }
+
+func (c *ColorWell) SetColor(col color.RGBA) {
+	if col == c.color {
+		return // nothing changed: nothing fires
+	}
+	c.color = col
+	c.Update()
+	c.OnColorChanged.Emit(col)
+}
 ```
+
+`Connected()` tells whether a signal has any handler.

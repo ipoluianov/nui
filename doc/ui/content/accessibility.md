@@ -19,7 +19,7 @@ The widgets of nui describe themselves:
 A widget without a text needs a name:
 
 ```go
-refresh := ui.NewToolButton(icons.Refresh, "Refresh", reload) // named by the tooltip
+refresh := ui.NewToolButton(refreshIcon, "Refresh", reload) // named by the tooltip
 search := ui.NewTextBox()
 search.SetAccessibleName("Search")
 search.SetAccessibleDescription("Finds the files by their names")

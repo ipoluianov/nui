@@ -41,13 +41,13 @@ win.OnCloseRequest(func() bool {
 ## Repainting
 
 ```go
-win.Update() // request a repaint (coalesced, ~max 25 fps)
+win.Update() // request a repaint (requests before the frame give one)
 win.OnPaint(func(rgba *image.RGBA) {
 	// draw into rgba, e.g. via canvas.NewCanvas(rgba)
 })
 ```
 
-`rgba` is a fresh per-window buffer already filled with the window's background color. Do not store the `*image.RGBA` pointer across calls — draw and return.
+`rgba` is the window's buffer and keeps the last frame: the handler paints over it what changed, the background too (the form of `ui` repaints only the rectangles of the widgets that changed). Without an `OnPaint` handler the buffer is filled with the window's background color. When the size changes the old pixels are not in their places: paint the whole window. Do not store the `*image.RGBA` pointer across calls — draw and return.
 
 ## Properties
 

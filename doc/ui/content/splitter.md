@@ -15,3 +15,9 @@ sp.SetOnSplitChanged(func() {
 	saveWidth(sp.SecondSize())
 })
 ```
+
+- `SetWidgets(first, second)`, `First()`, `Second()`.
+- `SetFirstSize(px)` / `FirstSize()`, `SetSecondSize(px)` / `SecondSize()`: the size of a pane (the width for `NewHSplitter`, the height for `NewVSplitter`).
+- `SetHandleSize(px)` / `HandleSize()`: the thickness of the handle.
+- `SetOnSplitChanged(f)`: called when the user has dragged the handle, e.g. to save the size in the [settings](application.md).
+- `IsVertical()`: true for `NewVSplitter`.

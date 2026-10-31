@@ -1,6 +1,8 @@
 # Timer
 
-A `ui.Timer` runs a function on the UI thread at an interval, while its widget is in an open form. The function may change the widgets directly; the form repaints after it.
+A `ui.Timer` runs a function on the UI thread at an interval, while its widget is in an open form. The function may change the widgets directly.
+
+After the function the timer's widget is repainted, not the whole form (a timer of the form's `Panel()` repaints all of it). The setters of the other widgets ask for their own repaint; a widget that draws data of its own needs its `Update()` (see [Widget](widget.md#painting)).
 
 ```go
 // Every second, the first time right away; the timer is returned to stop it

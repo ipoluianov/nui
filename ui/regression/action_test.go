@@ -124,3 +124,24 @@ func TestStatusBar(t *testing.T) {
 		t.Errorf("the section at x %d: not at the right", px)
 	}
 }
+
+// The shortcut of a menu item works right after its action became
+// enabled, before the state is asked again by the timer
+func TestActionShortcutRightAfterEnabled(t *testing.T) {
+	form := newForm(400, 300)
+	saves, modified := 0, false
+	save := ui.NewAction("&Save", func() { saves++ }).
+		SetShortcut("Ctrl+S").
+		SetEnabledFunc(func() bool { return modified })
+	bar := ui.NewMenuBar()
+	bar.AddMenu("&File").AddAction(save)
+	form.SetMenuBar(bar)
+	form.Panel().AddVSpacer(0, 0)
+	w := uitest.Show(t, form)
+
+	modified = true
+	w.Shortcut("Ctrl+S")
+	if saves != 1 {
+		t.Errorf("saves %d", saves)
+	}
+}

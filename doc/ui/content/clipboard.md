@@ -14,6 +14,7 @@ ui.ClipboardSet(
 	ui.ClipboardItem{MIME: ui.MIMEText, Data: []byte("2 shapes")},
 	ui.ClipboardItem{MIME: "application/x-myapp-shapes", Data: shapesJSON},
 )
+ui.ClipboardSetData("application/x-myapp-shapes", shapesJSON) // one format
 data, ok, err := ui.ClipboardGetData("application/x-myapp-shapes")
 
 paste.SetEnabled(ui.ClipboardHasFormat(ui.MIMEPNG))

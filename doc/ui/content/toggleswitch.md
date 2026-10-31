@@ -6,9 +6,10 @@ the knob slides to its side.
 ```go
 wifi := ui.NewToggleSwitch("Wi-Fi")
 wifi.SetChecked(true)
-wifi.SetOnStateChanged(func() { network.SetWifi(wifi.Checked()) })
+wifi.OnActivated.Connect(func(on bool) { network.SetWifi(on) })
 ```
 
-- `Checked()` / `SetChecked(bool)` - `SetChecked` doesn't call the callback and doesn't animate.
+- `Checked()` / `SetChecked(bool)` - `SetChecked` doesn't animate; it fires `OnCheckedChanged`, not `OnActivated`.
 - `Text()` / `SetText(text)` / `SetTextFunc(f)` (follows the language)
-- `SetOnStateChanged(func())` - called when the user flips it.
+- `OnCheckedChanged(bool)` - any change; `OnActivated(bool)` - the user flipped it. See [events](events.md).
+- `SetOnStateChanged(func())` - the old setter, called when the user flips it.

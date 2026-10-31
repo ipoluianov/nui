@@ -1,7 +1,10 @@
 package regression
 
 import (
+	"bytes"
+	"image/color"
 	"testing"
+	"time"
 
 	"github.com/ipoluianov/nui/ui"
 	"github.com/ipoluianov/nui/ui/uitest"
@@ -277,4 +280,53 @@ func TestTabWidgetPages(t *testing.T) {
 	if tabs.CurrentIndex() != 0 || activated.n != 1 || activated.last != 0 {
 		t.Errorf("click: current %d, activated %d", tabs.CurrentIndex(), activated.n)
 	}
+}
+
+// A radio button checked from code, in a frame that repaints only a part
+// of the window (a timer of another widget), is repainted with the button
+// it unchecked
+func TestRadioButtonSetCheckedRepaints(t *testing.T) {
+	t.Setenv("NUI_CHECK_REPAINT", "panic")
+	form := newForm(300, 200)
+	a, b := ui.NewRadioButton("A"), ui.NewRadioButton("B")
+	group := form.Panel().AddPanel(0, 0)
+	group.AddWidget(0, 0, a)
+	group.AddWidget(1, 0, b)
+	clock := form.Panel().AddLabel(1, 0, "0")
+	form.Panel().AddVSpacer(2, 0)
+	a.SetChecked(true)
+	w := uitest.Show(t, form)
+	clock.AfterFunc(10*time.Millisecond, func() { b.SetChecked(true) })
+	w.Wait(50 * time.Millisecond)
+	if !b.Checked() || a.Checked() {
+		t.Errorf("a %v, b %v", a.Checked(), b.Checked())
+	}
+	shown := w.Screenshot()
+	form.Update() // the whole window
+	w.Settle()
+	if !bytes.Equal(shown.Pix, w.Screenshot().Pix) {
+		t.Error("the radio buttons are not repainted")
+	}
+}
+
+// ui.Invoke repaints the whole window, also when a widget asked for its own
+// repaint in the same function: what f changed elsewhere is painted
+func TestInvokeRepaintsWholeWindow(t *testing.T) {
+	t.Setenv("NUI_CHECK_REPAINT", "panic")
+	form := newForm(300, 200)
+	label := form.Panel().AddLabel(0, 0, "a")
+	value := 0
+	box := paintBox(func(cnv *ui.Canvas) {
+		if value > 0 {
+			cnv.FillRect(0, 0, 50, 30, color.RGBA{200, 0, 0, 255})
+		}
+	})
+	form.Panel().AddWidget(1, 0, box)
+	w := uitest.Show(t, form)
+	ui.Invoke(func() {
+		value = 1          // the data of box, without box.Update()
+		label.SetText("b") // a repaint of the label alone
+	})
+	w.Settle()
+	w.Screenshot() // the frame is painted
 }

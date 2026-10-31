@@ -14,12 +14,13 @@ task := ui.RunAsync(form.Panel(), func(ctx context.Context, p *ui.Progress) ([]F
 	}
 	list.SetModel(filesModel(files))
 })
-task.OnProgress.Connect(func(r ui.ProgressReport) { bar.SetValue(r.Fraction) })
+task.OnProgress.Connect(func(r ui.ProgressReport) { bar.SetValue(r.Fraction) }) // bar := ui.NewProgressBar(0, 1, 0)
 // task.Cancel() cancels the context
 ```
 
 - The work is cancelled (its context done) by `task.Cancel()`, or when the form of the widget given closes — then the result is dropped, the widgets are gone.
 - The work must not touch the widgets: it reports with `p.Report`, and returns.
+- `ProgressReport` is `Fraction` (0..1, negative if unknown) and `Text`. `task.Finished()` tells whether the result was given.
 
 With a progress dialog that has a Cancel button:
 

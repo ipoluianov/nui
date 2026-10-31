@@ -400,6 +400,15 @@ a click, a key paint the whole window): a painter is clipped to the part of the 
 repainted, and `ClipBounds()` is that part. With the expensive parts kept,
 a frame is the copy of their pictures and the drawing of the rest.
 
+So a paint must not depend on the paint before it. A painter that lays
+itself out by what it measures while painting (the room of the labels of
+an axis, the width of a column of text) works the layout out within the
+same paint, again until it stops changing, rather than keeping it for the
+next frame: a frame that repaints a part of the widget must draw the
+pixels the whole would, or the parts painted at different times do not
+fit together. (`ChartView` repeats its layout so until the width of the
+plot settles.)
+
 ## Markers
 
 `DrawMarker(shape, x, y, size, fill, stroke)` draws `ui.MarkerCircle`,

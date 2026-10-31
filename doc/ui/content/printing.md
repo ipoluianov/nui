@@ -1,6 +1,6 @@
 # Printing and PDF
 
-The application draws the pages on a [Canvas](widget.md), the same way widgets draw themselves;
+The application draws the pages on a [Canvas](canvas.md), the same way widgets draw themselves;
 nui sends them to a printer or saves them as a PDF file.
 
 ## Printing text
@@ -16,7 +16,7 @@ form.Print(job, func(err error) {
 
 `NewTextPrintJob` wraps the lines to the page width (keeping spaces and indentation, so code
 and columns print as they are), splits them into pages and numbers the pages.
-`TextPrintOptions`: `FontFamily` (e.g. `ui.FontFamilyMono`), `FontSize` in points (10),
+`TextPrintOptions`: `FontFamily` (the theme font by default; e.g. `ui.FontFamilyMono`), `FontSize` in points (10),
 `Margin` in millimeters (20), `NoPageNumbers`.
 
 ## Drawing pages
@@ -39,7 +39,7 @@ job := &ui.PrintJob{
 - `Paginate` is for documents whose page count depends on the page size; it is called once the
   paper is known (on Windows, the printer's).
 - `Paper` (`ui.PaperA4` by default, `PaperA5`, `PaperA3`, `PaperLetter`, `PaperLegal`),
-  `Landscape`, `DPI` (300 by default).
+  `Landscape`, `DPI` (`ui.DefaultPrintDPI`, 300, by default).
 
 ## PDF
 

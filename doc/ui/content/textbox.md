@@ -26,10 +26,13 @@ tb.SetIsPassword(true)
 ## Events
 
 ```go
-tb.SetOnTextChanged(func() {
-  fmt.Println(tb.Text())
+tb.OnTextChanged.Connect(func(text string) {
+  fmt.Println(text)
 })
+tb.OnSubmit.Connect(func(text string) { search(text) }) // Enter in a single-line box
 ```
+
+The old `SetOnTextChanged(func())` still works. All the signals are listed at the end of the page.
 
 ## Undo and Redo
 
@@ -44,7 +47,7 @@ typing, or of Backspace or Delete, at one place is one step; a paste is one step
 Places in the text are `ui.TextPos{Line, Col}`, in runes, from 0.
 
 - `CursorPosition()`, `SetCursorPosition(pos)`, `ScrollToCursor()`
-- `Selection() (from, to)`, `SetSelection(anchor, cursor)`, `HasSelection()`, `SelectedText()`, `SelectAllText()`
+- `Selection() (from, to)`, `SetSelection(anchor, cursor)`, `HasSelection()`, `SelectedText()`, `SelectAllText()`, `MoveCursorToEnd()`
 - `InsertText(s)`: at the cursor, replacing the selection; Undo takes it back (`SetText` starts the history anew). To replace the whole text undoably: `SelectAllText()`, then `InsertText(...)`.
 - `Cut()`, `Copy()`, `Paste()`, `Undo()`, `Redo()`
 - `LineCount()`, `Line(i)`, `Lines()`; `PosAt(offset)`, `OffsetOf(pos)`: the rune offsets in `Text()`, for searching it.

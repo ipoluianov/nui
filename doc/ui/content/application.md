@@ -14,7 +14,9 @@ settings.Get("recent", &recent)
 settings.Save()
 ```
 
-`ui.SettingsDir(app)` is the directory, for the application's other files.
+- `String`, `Int`, `Float`, `Bool` take a default for a missing key; `Get(key, &v)` reports whether the key was there.
+- `Delete(key)` removes a key; `Path()` is the file. `ui.OpenSettingsFile(path)` keeps them in a file of one's own.
+- `ui.SettingsDir(app)` is the directory, for the application's other files.
 
 ## The window where the user left it
 

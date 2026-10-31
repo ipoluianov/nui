@@ -6,6 +6,7 @@ Fixed-size image button for toolbars (48x48 by default).
 - Checked state for toggles: a lighter background and a bright bar along the bottom.
 - Highlight: a colored bar along the bottom, e.g. for the action to start with.
 - A lighter bottom edge, so the buttons stand out from the toolbar.
+- A flat look (`SetFlat(true)`): just the image, with a soft background under the mouse - a light toolbar.
 
 ## Create
 
@@ -28,6 +29,8 @@ btn.SetButtonSize(ui.ToolButtonDefaultSize*2, ui.ToolButtonDefaultSize)
 
 ```go
 btn.SetEnabled(false)       // grayed out, clicks ignored
-btn.SetChecked(visible)     // the button does not toggle itself on click
+btn.SetChecked(visible)     // the button does not toggle itself on click; IsChecked() reads it
 btn.SetHighlight(ui.ColorFromHex("#3fb950")) // colored bottom bar to draw attention; nil - usual look
 ```
+
+`SetOnClick(func())` replaces the click handler given to `NewToolButton`; `SetImage(img)` changes the icon (the grayed copy follows).
