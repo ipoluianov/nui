@@ -9,7 +9,7 @@ import (
 )
 
 // The behavior of the text box, as the user sees it: kept by the rewrite of
-// its storage (doc/production-readiness.md 7.2, phase 3)
+// its storage
 
 func textBoxForm(t *testing.T, multiline bool) (*uitest.Window, *ui.TextBox) {
 	t.Helper()
@@ -188,7 +188,7 @@ func TestTextBoxGolden(t *testing.T) {
 	w.MatchGolden("textbox-scrolled-selection")
 }
 
-// Bug #5, fixed: a property change doesn't make a multiline box expandable
+// A property change doesn't make a multiline box expandable
 // again; SetMultiline itself does, at once
 func TestTextBoxKeepsSizePolicy(t *testing.T) {
 	form := newForm(300, 200)

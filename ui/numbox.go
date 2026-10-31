@@ -61,7 +61,7 @@ func NewNumBox() *NumBox {
 	c.SetYExpandable(false)
 	c.SetMinWidth(120)
 	// One line high, as a line edit: a grid without an expandable row
-	// doesn't stretch it (bug #16)
+	// doesn't stretch it
 	c.setThemeHeight(ThemeControlHeight, true)
 	c.SetMouseCursor(MouseCursorIBeam)
 

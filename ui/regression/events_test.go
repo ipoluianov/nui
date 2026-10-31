@@ -7,9 +7,9 @@ import (
 	"github.com/ipoluianov/nui/ui/uitest"
 )
 
-// The signals of the widgets (doc/production-readiness.md 3.2)
+// The signals of the widgets
 
-// Bug #3, fixed: the release of the right button reaches the widget, by
+// The release of the right button reaches the widget, by
 // the old handler and by the signal
 func TestRightButtonUp(t *testing.T) {
 	form := newForm(300, 200)
@@ -180,7 +180,7 @@ func TestOnResize(t *testing.T) {
 	}
 }
 
-// Bug #4, fixed: a disabled container disables its children
+// A disabled container disables its children
 func TestDisabledParent(t *testing.T) {
 	form := newForm(300, 200)
 	panel := form.Panel().AddPanel(0, 0)
@@ -199,7 +199,7 @@ func TestDisabledParent(t *testing.T) {
 	}
 }
 
-// Bug #11, fixed: an open list takes the keys, the form's global handler
+// An open list takes the keys, the form's global handler
 // gets them again once it closes
 func TestGlobalKeysUnderPopup(t *testing.T) {
 	form := newForm(300, 200)

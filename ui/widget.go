@@ -3439,8 +3439,7 @@ func (c *Widget) SetRowStretch(row, weight int) {
 
 // gridLines are the occupied columns and rows of a grid, sorted: the layout
 // goes over these only, not over all the numbers between the first and the
-// last (a widget in column 1 000 000 used to cost a million empty columns,
-// bug #17)
+// last (a widget in column 1 000 000 used to cost a million empty columns)
 type gridLines struct {
 	cols, rows       []int
 	colRows, rowCols map[int][]int // the rows of a column, the columns of a row

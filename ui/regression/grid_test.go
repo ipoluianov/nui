@@ -149,7 +149,7 @@ func TestHBoxVBox(t *testing.T) {
 	}
 }
 
-// Bug #17, fixed: the layout costs the occupied columns, not the numbers
+// The layout costs the occupied columns, not the numbers
 // between them
 func TestSparseGrid(t *testing.T) {
 	form := newForm(400, 200)

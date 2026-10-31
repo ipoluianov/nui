@@ -6,6 +6,7 @@ Short reference for `ui` controls. Code snippets are intentionally minimal—see
 
 - [Form](content/form.md)
 - [Widget / properties / events](content/widget.md)
+- [Events: signals](content/events.md)
 - [Theme](content/theme.md)
 - [Fonts (built-in and system)](content/fonts.md)
 - [Keyboard & mouse types](content/input.md)

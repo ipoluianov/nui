@@ -11,9 +11,9 @@ import (
 	"testing"
 )
 
-// Bug #12, fixed and kept: every ui.Name the documentation mentions exists
-// in the package ui (the docs described ShowEnterStringDialog,
-// ShowAboutDialog and UpdateMainForm, which never were)
+// Every ui.Name the documentation mentions exists in the package ui (the
+// docs described ShowEnterStringDialog, ShowAboutDialog and UpdateMainForm,
+// which never were)
 func TestDocsMentionExistingAPI(t *testing.T) {
 	exported := map[string]bool{}
 	pkgs, err := parser.ParseDir(token.NewFileSet(), filepath.Join("..", ""), func(fi os.FileInfo) bool {
@@ -38,8 +38,8 @@ func TestDocsMentionExistingAPI(t *testing.T) {
 	mention := regexp.MustCompile(`\bui\.([A-Z][A-Za-z0-9_]*)`)
 	var docs []string
 	filepath.Walk(filepath.Join("..", "..", "doc"), func(path string, info os.FileInfo, err error) error {
-		// The plan names the APIs to come
-		if err == nil && strings.HasSuffix(path, ".md") && filepath.Base(path) != "production-readiness.md" {
+		// The list of what is missing names the APIs to come
+		if err == nil && strings.HasSuffix(path, ".md") && filepath.Base(path) != "todo.md" {
 			docs = append(docs, path)
 		}
 		return nil

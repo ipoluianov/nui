@@ -8,9 +8,9 @@ import (
 )
 
 // The layout is done once for many changes, and before anything looks at
-// the places of the widgets (doc/production-readiness.md 3.1)
+// the places of the widgets
 
-// Bug #1, fixed: RemoveWidget lays the parent out, the widget to the right
+// RemoveWidget lays the parent out, the widget to the right
 // of the removed one moves to its place
 func TestRemoveWidgetLayout(t *testing.T) {
 	form := newForm(400, 200)
@@ -26,7 +26,7 @@ func TestRemoveWidgetLayout(t *testing.T) {
 	}
 }
 
-// Bug #2, fixed: widgets in one grid cell lie on top of each other, each
+// Widgets in one grid cell lie on top of each other, each
 // laid out to the cell
 func TestTwoWidgetsInCell(t *testing.T) {
 	form := newForm(400, 200)
@@ -146,7 +146,7 @@ func countPosted(w *uitest.Window) int {
 	return uitest.RunPosted()
 }
 
-// Bug #14, fixed: a label is as high as its font and its lines need
+// A label is as high as its font and its lines need
 func TestLabelHeight(t *testing.T) {
 	form := newForm(400, 300)
 	big := ui.NewLabel("Big text")
@@ -173,7 +173,7 @@ func TestLabelHeight(t *testing.T) {
 	}
 }
 
-// Bug #16, fixed: a NumBox stays one line high in a grid without an
+// A NumBox stays one line high in a grid without an
 // expandable row; a click in its middle doesn't step it
 func TestNumBoxHeight(t *testing.T) {
 	form := newForm(300, 200)
@@ -188,7 +188,7 @@ func TestNumBoxHeight(t *testing.T) {
 	}
 }
 
-// Bug #9, fixed: SetAnchors works for the children placed absolutely
+// SetAnchors works for the children placed absolutely
 func TestAnchors(t *testing.T) {
 	form := newForm(400, 300)
 	canvas := ui.NewPanel()

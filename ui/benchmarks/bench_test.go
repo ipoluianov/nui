@@ -7,7 +7,7 @@
 //	go test ./ui/benchmarks -bench . -benchmem
 //	go test ./ui/benchmarks -bench . -short    # without the 20 000 lines
 //
-// The numbers measured last are in doc/benchmarks.md.
+// What each one measures is in doc/testing.md.
 package benchmarks
 
 import (

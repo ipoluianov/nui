@@ -89,7 +89,7 @@ func TestNumBoxAndSliderSignals(t *testing.T) {
 	slider.SetRange(0, 10)
 	form.Panel().AddWidget(0, 0, num)
 	form.Panel().AddWidget(1, 0, slider)
-	form.Panel().AddVSpacer(2, 0) // see known bug #16
+	form.Panel().AddVSpacer(2, 0)
 	w := uitest.Show(t, form)
 	numChanged, numActivated := count(&num.OnValueChanged), count(&num.OnActivated)
 	slChanged, slActivated := count(&slider.OnValueChanged), count(&slider.OnActivated)

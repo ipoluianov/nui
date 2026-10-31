@@ -87,4 +87,4 @@ order. Other lines are drawn a character after another, as before.
 
 ## Signals
 
-`OnTextChanged` (any change), `OnTextEdited` (the user's), `OnSubmit` (Enter in a single-line box), `OnEditingFinished` (Enter, or leaving the box after a change); see [events](../../events.md).
+`OnTextChanged` (any change), `OnTextEdited` (the user's), `OnSubmit` (Enter in a single-line box), `OnEditingFinished` (Enter, or leaving the box after a change); see [events](events.md).

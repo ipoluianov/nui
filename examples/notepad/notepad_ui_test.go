@@ -77,7 +77,7 @@ func TestCloseAsks(t *testing.T) {
 	}
 }
 
-// Bug #15, fixed: Escape dismisses the question and keeps the window with
+// Escape dismisses the question and keeps the window with
 // its changes
 func TestCloseQuestionEscape(t *testing.T) {
 	n := newNotepad()

@@ -9,7 +9,7 @@ import (
 	"github.com/ipoluianov/nui/ui/uitest"
 )
 
-// Bug #6, fixed: Canvas.DrawImage draws a sub-image from its own bounds
+// Canvas.DrawImage draws a sub-image from its own bounds
 func TestDrawImageSubImage(t *testing.T) {
 	src := image.NewRGBA(image.Rect(0, 0, 20, 10))
 	red, blue := color.RGBA{255, 0, 0, 255}, color.RGBA{0, 0, 255, 255}
@@ -34,7 +34,7 @@ func TestDrawImageSubImage(t *testing.T) {
 	}
 }
 
-// Bug #7, fixed: Canvas.DrawText breaks lines at "\n" too
+// Canvas.DrawText breaks lines at "\n" too
 func TestDrawTextNewline(t *testing.T) {
 	inkBelow := func(text string) int {
 		form := newForm(200, 120)

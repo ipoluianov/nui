@@ -25,7 +25,7 @@ func copyTable(t *testing.T, selectingRows bool) *ui.Table {
 	return table
 }
 
-// Bug #10, fixed: the whole selection is copied, as spreadsheets paste it
+// The whole selection is copied, as spreadsheets paste it
 func TestTableCopySelection(t *testing.T) {
 	table := copyTable(t, false)
 	table.SetCurrentCell2(0, 0)

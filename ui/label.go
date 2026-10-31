@@ -30,7 +30,7 @@ func NewLabel(text string) *Label {
 }
 
 // heightForText is the label's height: a control's height, or more for a
-// larger font or more lines (bug #14: big text was cut off)
+// larger font or more lines (big text used to be cut off)
 func (c *Label) heightForText() int {
 	_, textHeight, err := MeasureText(c.FontFamily(), c.FontSize(), "Ag")
 	if err != nil {

@@ -368,7 +368,7 @@ func (c *TextBox) Multiline() bool {
 // Props
 // ProcessPropChange: only the mode changes the size policy. (Any property
 // used to turn a multiline box expandable again, undoing SetXExpandable and
-// SetYExpandable: bug #5.)
+// SetYExpandable.)
 func (c *TextBox) ProcessPropChange(key string, value interface{}) {
 	if c.propIsProcessing {
 		return
