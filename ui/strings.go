@@ -9,8 +9,10 @@ import (
 )
 
 // UIStrings are the texts of the library's own widgets, e.g. the buttons of
-// message boxes. English, Russian and Chinese are built in; an application
-// adds other languages with RegisterUIStrings.
+// message boxes. English, Russian, Chinese, Japanese, Korean, Turkish,
+// Indonesian, Vietnamese and the main languages of Europe are built in
+// (strings_builtin.go); an application adds other languages with
+// RegisterUIStrings.
 type UIStrings struct {
 	OK     string
 	Cancel string
@@ -23,6 +25,10 @@ type UIStrings struct {
 	MonthNames [12]string
 	// WeekdaysShort are two- or three-letter names, Sunday first (as time.Weekday)
 	WeekdaysShort [7]string
+	// MonthYear is the layout of a calendar's title, for fmt with the month
+	// name (%[1]s) and the year (%[2]d): "%[1]s %[2]d" in English,
+	// "%[2]d年%[1]s" in Japanese. A month not at the start is lowercased.
+	MonthYear string
 
 	// The print dialog (Form.Print on Linux and macOS)
 	Print, Printer, Copies, Pages, PagesHint, Paper string
@@ -36,38 +42,14 @@ type UIStrings struct {
 }
 
 var (
-	uiStringsMu     sync.RWMutex
-	uiStringsByLang = map[string]UIStrings{
-		"ru": {OK: "OK", Cancel: "Отмена", Yes: "Да", No: "Нет",
-			Today: "Сегодня",
-			MonthNames: [12]string{"Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
-				"Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"},
-			WeekdaysShort: [7]string{"Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"},
-			Print:         "Печать", Printer: "Принтер", Copies: "Копии", Pages: "Страницы",
-			PagesHint: "Все, или например 1-3, 5", Paper: "Бумага",
-			Portrait: "Книжная", Landscape: "Альбомная", SaveAsPDF: "Сохранить в PDF",
-			Open: "Открыть", Save: "Сохранить", SelectFolder: "Выбрать папку", Home: "Домой", Up: "Вверх",
-			FileName: "Имя", FileSize: "Размер", FileModified: "Изменён", FileType: "Тип файлов",
-			ShowHiddenFiles: "Показывать скрытые файлы", FileNotFound: "Файл «%s» не найден.",
-			FileExistsReplace: "Файл «%s» уже существует. Заменить его?"},
-		"zh": {OK: "确定", Cancel: "取消", Yes: "是", No: "否",
-			Today: "今天",
-			MonthNames: [12]string{"一月", "二月", "三月", "四月", "五月", "六月",
-				"七月", "八月", "九月", "十月", "十一月", "十二月"},
-			WeekdaysShort: [7]string{"日", "一", "二", "三", "四", "五", "六"},
-			Print:         "打印", Printer: "打印机", Copies: "份数", Pages: "页面",
-			PagesHint: "全部，或例如 1-3, 5", Paper: "纸张",
-			Portrait: "纵向", Landscape: "横向", SaveAsPDF: "另存为 PDF",
-			Open: "打开", Save: "保存", SelectFolder: "选择文件夹", Home: "主目录", Up: "上一级",
-			FileName: "名称", FileSize: "大小", FileModified: "修改时间", FileType: "文件类型",
-			ShowHiddenFiles: "显示隐藏文件", FileNotFound: "找不到文件“%s”。",
-			FileExistsReplace: "文件“%s”已存在。要替换它吗？"},
-	}
+	uiStringsMu      sync.RWMutex
+	uiStringsByLang  = builtinUIStrings()
 	uiStringsEnglish = UIStrings{OK: "OK", Cancel: "Cancel", Yes: "Yes", No: "No",
 		Today: "Today",
 		MonthNames: [12]string{"January", "February", "March", "April", "May", "June",
 			"July", "August", "September", "October", "November", "December"},
 		WeekdaysShort: [7]string{"Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"},
+		MonthYear:     "%[1]s %[2]d",
 		Print:         "Print", Printer: "Printer", Copies: "Copies", Pages: "Pages",
 		PagesHint: "All, or e.g. 1-3, 5", Paper: "Paper",
 		Portrait: "Portrait", Landscape: "Landscape", SaveAsPDF: "Save as PDF",

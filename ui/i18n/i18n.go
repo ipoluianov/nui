@@ -158,7 +158,8 @@ func intersect(a, b []string) []string {
 }
 
 // Normalize brings a language tag to the form "ll" or "ll-RR": "ru_RU.UTF-8"
-// becomes "ru-RU", "zh-Hans-CN" becomes "zh-CN", "zh-Hant" becomes "zh-TW".
+// becomes "ru-RU", "zh-Hans-CN" becomes "zh-CN", "zh-Hant" becomes "zh-TW",
+// "no_NO" becomes "nb-NO".
 func Normalize(tag string) string {
 	tag, _, _ = strings.Cut(tag, ".") // encoding: en_US.UTF-8
 	tag, _, _ = strings.Cut(tag, "@") // modifier: sr_RS@latin
@@ -168,6 +169,10 @@ func Normalize(tag string) string {
 	}
 
 	lang := strings.ToLower(parts[0])
+	// Norwegian is mostly told as "no"; its written language is Bokmål
+	if lang == "no" {
+		lang = "nb"
+	}
 	region, script := "", ""
 	for _, part := range parts[1:] {
 		switch {

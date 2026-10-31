@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -390,7 +391,7 @@ func (c *Calendar) draw(cnv *Canvas) {
 	}
 	cnv.SetHAlign(HAlignCenter)
 	cnv.SetColor(p.Text)
-	title := fmt.Sprintf("%s %d", texts.MonthNames[c.month.Month()-1], c.month.Year())
+	title := monthTitle(texts, c.month)
 	cnv.DrawText(prevX+size, calendarPadding, nextX-prevX-size, c.headerHeight(), title)
 
 	// Weekday names
@@ -460,4 +461,15 @@ func (c *Calendar) draw(cnv *Canvas) {
 func (c *Calendar) applyThemeMetrics() {
 	c.Widget.applyThemeMetrics()
 	c.updateSize()
+}
+
+// monthTitle is the title of the month of t in the language of texts, by
+// its MonthYear layout: the month lowercased when it is not first, as
+// "2026. október"
+func monthTitle(texts *UIStrings, t time.Time) string {
+	month := texts.MonthNames[t.Month()-1]
+	if !strings.HasPrefix(texts.MonthYear, "%[1]s") {
+		month = strings.ToLower(month)
+	}
+	return fmt.Sprintf(texts.MonthYear, month, t.Year())
 }

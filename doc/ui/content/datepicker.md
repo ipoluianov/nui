@@ -34,6 +34,10 @@ due.SetOnDateChanged(func(d time.Time) { task.Due = d })
 
 ## Language
 
-Month and day names come from `ui.UIText()` (`MonthNames`, `WeekdaysShort`, `Today`; English,
-Russian and Chinese built in, others via `ui.RegisterUIStrings`). The first day of the week is
+Month and day names come from `ui.UIText()` (`MonthNames`, `WeekdaysShort`, `Today`, and `MonthYear`, the order of the title: "2026年10月" in Japanese). Built in:
+English, Russian, Chinese (Simplified), Japanese, Korean, Turkish, Indonesian, Vietnamese and the
+main languages of Europe - German, French, Spanish,
+Italian, Portuguese (and Brazilian), Dutch, Polish, Czech, Slovak, Hungarian, Romanian, Bulgarian,
+Greek, Swedish, Danish, Norwegian, Finnish, Croatian, Serbian, Slovenian, Lithuanian, Latvian,
+Estonian; others via `ui.RegisterUIStrings`. The first day of the week is
 `ui.FirstDayOfWeek()`: Sunday for English (US), Japanese, Korean and a few others, Monday elsewhere.

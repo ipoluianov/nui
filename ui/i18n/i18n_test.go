@@ -77,6 +77,8 @@ func TestNormalize(t *testing.T) {
 		"zh-Hant":     "zh-TW",
 		"zh-Hant-HK":  "zh-HK",
 		"sr_RS@latin": "sr-RS",
+		"no_NO.UTF-8": "nb-NO",
+		"nb":          "nb",
 		"":            "",
 	} {
 		if got := Normalize(tag); got != want {
