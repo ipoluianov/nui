@@ -682,10 +682,49 @@ func TestCancelMousePressStopsTableSelecting(t *testing.T) {
 		}
 		form.processMouseDblClick(MouseButtonLeft, x, rowY(0))
 
-		form.cancelMousePress()
+		form.giveMouseToModal()
 		form.processMouseMove(x, rowY(3))
 		if table.CurrentRow() != 0 {
 			t.Errorf("with press %v: the moving mouse selected row %d", withPress, table.CurrentRow())
 		}
+	}
+}
+
+// A widget under the mouse when a dialog opens is left: its hover does not
+// stay on until the mouse moves after the dialog is closed
+func TestGiveMouseToModalLeavesHover(t *testing.T) {
+	lbl := NewLabel("link")
+	form := newTestForm(t, lbl)
+	hovered := false
+	lbl.OnHoverChanged.Connect(func(on bool) { hovered = on })
+	x, y := lbl.RectClientAreaOnWindow()
+	form.processMouseMove(x+2, y+2)
+	if !hovered {
+		t.Fatal("the label is not hovered under the mouse")
+	}
+	form.giveMouseToModal()
+	if hovered {
+		t.Error("the label stays hovered after a dialog opened")
+	}
+}
+
+// The first label of a bottom axis is moved in so as not to stick out; one
+// that then runs into the next is left out, not drawn over it
+func TestBottomAxisEdgeLabelsDoNotOverlap(t *testing.T) {
+	cnv := NewCanvas(image.NewRGBA(image.Rect(0, 0, 400, 100)))
+	w := NewLabel("")
+	cnv.SetFontFamily(w.FontFamily())
+	cnv.SetFontSize(w.FontSize())
+	a := newChartAxis(nil, "x", ChartAxisBottom, NewLinearScale(0, 400))
+	a.start, a.length = 0, 400
+	a.ticks = []ChartTick{{Value: 2, Label: "13:41:30"}, {Value: 60, Label: "13:42:00"}, {Value: 200, Label: "13:43:00"}, {Value: 398, Label: "13:44:00"}}
+	var c ChartView
+	got := c.visibleTickLabels(cnv, a, float64(chartTickLen+3))
+	var labels []string
+	for _, l := range got {
+		labels = append(labels, l.label)
+	}
+	if want := "13:42:00 13:43:00 13:44:00"; strings.Join(labels, " ") != want {
+		t.Errorf("labels %v, want %s", labels, want)
 	}
 }

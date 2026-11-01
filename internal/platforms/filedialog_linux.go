@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -168,9 +169,14 @@ func saveFileDialogZenity(bin string, opts SaveFileDialogOptions) (string, error
 }
 
 func saveFileDialogKdialog(bin string, opts SaveFileDialogOptions, attach []string) (string, error) {
+	// kdialog takes the name only from an absolute path: "./name" opens the
+	// folder with the name empty
 	dir := opts.DefaultDirectory
 	if dir == "" {
 		dir = "."
+	}
+	if abs, err := filepath.Abs(dir); err == nil {
+		dir = abs
 	}
 	path := joinDirAndName(dir, opts.DefaultFileName)
 

@@ -46,3 +46,19 @@ func TestFileDialogModal(t *testing.T) {
 		t.Errorf("kdialog ran with %q (%v)", out, err)
 	}
 }
+
+// kdialog fills the name in only from an absolute path: without a default
+// folder it gets the current one in full
+func TestKdialogSaveAbsolutePath(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "kdialog")
+	os.WriteFile(bin, []byte("#!/bin/sh\necho \"$2\"\n"), 0o755)
+	t.Chdir(dir)
+	got, err := saveFileDialogKdialog(bin, SaveFileDialogOptions{DefaultFileName: "a.csv"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(dir, "a.csv"); got != want {
+		t.Errorf("kdialog got %q, want %q", got, want)
+	}
+}

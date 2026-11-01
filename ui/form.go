@@ -816,8 +816,7 @@ func (c *Form) ShowModal(parent *Form) {
 	}
 	platforms.RunOnUIThread(func() {
 		c.parentForm = parent
-		// The release of a button held now goes to the new window
-		parent.cancelMousePress()
+		parent.giveMouseToModal()
 		// Centered with the size it opens with
 		c.growToMinSize()
 		if c.posX < 0 && c.posY < 0 {
@@ -1229,6 +1228,15 @@ func (c *Form) processMouseUp(button MouseButton, x int, y int) {
 	}
 
 	c.Update()
+}
+
+// giveMouseToModal is called when a modal window opens over this one: the
+// release of a button held now goes to the new window, and the mouse leaving
+// the widgets of this one is not reported while it is open (a link would stay
+// underlined after the dialog it opened is closed)
+func (c *Form) giveMouseToModal() {
+	c.cancelMousePress()
+	c.processMouseLeave()
 }
 
 // cancelMousePress releases the mouse buttons held in the form outside all

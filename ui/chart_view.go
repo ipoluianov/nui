@@ -785,15 +785,8 @@ func (c *ChartView) drawAxis(cnv *Canvas, a *ChartAxis, lineH float64) {
 	cnv.StrokePath(path, StrokeStyle{Width: 1}, th.Axis)
 
 	off := float64(chartTickLen + 3)
-	for _, t := range a.ticks {
-		if t.Minor || t.Label == "" {
-			continue
-		}
-		pos := a.ToPixel(t.Value)
-		if !chartFinite(pos) || pos < a.start-1 || pos > a.start+a.length+1 {
-			continue
-		}
-		c.drawTickLabel(cnv, a, t.Label, pos, off, lineH)
+	for _, l := range c.visibleTickLabels(cnv, a, off) {
+		c.drawTickLabel(cnv, a, l.label, l.pos, off, lineH)
 	}
 	if len(a.ribbonSpans) > 0 && a.Horizontal() {
 		c.drawRibbon(cnv, a, lineH)
@@ -817,6 +810,52 @@ func (c *ChartView) drawAxis(cnv *Canvas, a *ChartAxis, lineH float64) {
 		}
 		cnv.Restore()
 	}
+}
+
+type chartTickLabel struct {
+	label string
+	pos   float64
+}
+
+// visibleTickLabels returns the labels of the axis to draw. The first and
+// the last labels of a bottom axis are moved in so as not to stick out
+// (see bottomLabelX): one that then runs into its neighbour is left out.
+func (c *ChartView) visibleTickLabels(cnv *Canvas, a *ChartAxis, off float64) []chartTickLabel {
+	var res []chartTickLabel
+	lastEnd, lastMoved := math.Inf(-1), false
+	for _, t := range a.ticks {
+		if t.Minor || t.Label == "" {
+			continue
+		}
+		pos := a.ToPixel(t.Value)
+		if !chartFinite(pos) || pos < a.start-1 || pos > a.start+a.length+1 {
+			continue
+		}
+		l := chartTickLabel{t.Label, pos}
+		if a.position != ChartAxisBottom || a.labelAngle != 0 {
+			res = append(res, l)
+			continue
+		}
+		tw := chartTextWidth(cnv, t.Label)
+		x := bottomLabelX(a, pos, off, tw)
+		moved := math.Abs(x-pos) > 0.5
+		if x-tw/2 < lastEnd+chartTickGap/2 {
+			if !lastMoved {
+				continue
+			}
+			res = res[:len(res)-1] // the first label, moved onto this one
+		}
+		res = append(res, l)
+		lastEnd, lastMoved = x+tw/2, moved
+	}
+	return res
+}
+
+// bottomLabelX is the center of the label of a bottom axis at pos, kept
+// within the axis: the first and the last labels do not stick out
+func bottomLabelX(a *ChartAxis, pos, off, tw float64) float64 {
+	x := math.Max(a.start-off, math.Min(pos, a.start+a.length+off-tw/2))
+	return math.Max(x, a.start-off+tw/2)
 }
 
 // drawTickLabel writes the label of a tick at the position along the axis,
@@ -852,10 +891,7 @@ func (c *ChartView) drawTickLabel(cnv *Canvas, a *ChartAxis, label string, pos, 
 	}
 	switch a.position {
 	case ChartAxisBottom:
-		// Kept within the axis: the first and the last labels do not stick out
-		tw := chartTextWidth(cnv, label)
-		x := math.Max(a.start-off, math.Min(pos, a.start+a.length+off-tw/2))
-		x = math.Max(x, a.start-off+tw/2)
+		x := bottomLabelX(a, pos, off, chartTextWidth(cnv, label))
 		chartDrawLabel(cnv, label, x, a.bandY+off-2, HAlignCenter, VAlignTop, col)
 	case ChartAxisTop:
 		chartDrawLabel(cnv, label, pos, a.bandY+a.bandH-off-lineH+2, HAlignCenter, VAlignTop, col)

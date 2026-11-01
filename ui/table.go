@@ -1761,13 +1761,13 @@ func (c *Table) draw(cnv *Canvas) {
 					cnv.SetFontFamily(c.FontFamily())
 					cnv.SetFontSize(c.FontSize())
 					col := c.ForegroundColor()
-					if selected {
-						col = p.HighlightedText
+					if cellObj != nil && cellObj.color != nil {
+						col = cellObj.color
 					}
-					if cellObj != nil {
-						if cellObj.color != nil {
-							col = cellObj.color
-						}
+					// The text of the cell's own color can't be read on the
+					// highlight of the theme: it is made for HighlightedText
+					if selected && (cellObj == nil || cellObj.color == nil || ColorToHex(backColor) == ColorToHex(p.Highlight)) {
+						col = p.HighlightedText
 					}
 					cnv.SetColor(col)
 
@@ -1908,12 +1908,18 @@ func (c *Table) drawPost(cnv *Canvas) {
 				imgWidth += c.cellPadding
 			}
 
-			cnv.SetHAlign(headerCell.hAlign)
+			textWidth := cellWidth - c.cellPadding*2 - imgWidth
+			// A name that does not fit shows its start, whatever the alignment
+			hAlign := headerCell.hAlign
+			if w, _, err := MeasureText(c.FontFamily(), c.FontSize(), headerCell.name); err == nil && w > textWidth {
+				hAlign = HAlignLeft
+			}
+			cnv.SetHAlign(hAlign)
 			cnv.SetVAlign(VAlignCenter)
 			cnv.SetColor(CurrentPalette().ButtonText)
 			cnv.SetFontFamily(c.FontFamily())
 			cnv.SetFontSize(c.FontSize())
-			cnv.DrawText(x+c.cellPadding+imgWidth, y+c.cellPadding, cellWidth-c.cellPadding*2-imgWidth, cellHeight-c.cellPadding*2, headerCell.name)
+			cnv.DrawText(x+c.cellPadding+imgWidth, y+c.cellPadding, textWidth, cellHeight-c.cellPadding*2, headerCell.name)
 
 			cnv.SetColor(c.CellBorderColor())
 			cnv.DrawRect(x, y, cellWidth+1, cellHeight+1)
