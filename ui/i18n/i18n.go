@@ -206,8 +206,14 @@ func Base(tag string) string {
 //
 // Russian, Ukrainian, Belarusian, Serbian, Croatian and Bosnian take three
 // forms (1 and 21, 2-4 and 22-24, the rest), Polish three too (only 1, 2-4
-// and 22-24, the rest), Chinese, Japanese and Korean one, other languages two
-// (1, the rest). A missing form is replaced by the last one given.
+// and 22-24, the rest), Czech and Slovak three (1, 2-4, the rest),
+// Slovenian four (1 and 101, 2 and 102, 3-4 and 103-104, the rest),
+// Lithuanian three (1 and 21, 2-9 and 22-29, the rest: 0, 10-20, 30),
+// Latvian three (1 and 21, the rest, 0 and 10-20 and 30: in this order),
+// Romanian three (1, 0 and 2-19 and 102-119, the rest: 20 and more take
+// "de"), Chinese, Japanese, Korean, Vietnamese, Indonesian, Turkish and
+// Hungarian one (the noun does not change after a number), other languages
+// two (1, the rest). A missing form is replaced by the last one given.
 func Plural(lang string, n int, forms ...string) string {
 	if len(forms) == 0 {
 		return ""
@@ -235,7 +241,55 @@ func Plural(lang string, n int, forms ...string) string {
 		default:
 			index = 2
 		}
-	case "zh", "ja", "ko":
+	case "cs", "sk":
+		switch {
+		case n == 1:
+			index = 0
+		case n >= 2 && n <= 4:
+			index = 1
+		default:
+			index = 2
+		}
+	case "sl":
+		switch n % 100 {
+		case 1:
+			index = 0
+		case 2:
+			index = 1
+		case 3, 4:
+			index = 2
+		default:
+			index = 3
+		}
+	case "lt":
+		teen := n%100 >= 11 && n%100 <= 19
+		switch {
+		case n%10 == 1 && !teen:
+			index = 0
+		case n%10 >= 2 && !teen:
+			index = 1
+		default:
+			index = 2
+		}
+	case "lv":
+		switch {
+		case n%10 == 0 || n%100 >= 11 && n%100 <= 19:
+			index = 2
+		case n%10 == 1:
+			index = 0
+		default:
+			index = 1
+		}
+	case "ro":
+		switch {
+		case n == 1:
+			index = 0
+		case n == 0 || n%100 >= 2 && n%100 <= 19:
+			index = 1
+		default:
+			index = 2
+		}
+	case "zh", "ja", "ko", "vi", "id", "tr", "hu":
 		index = 0
 	default:
 		if n == 1 {

@@ -111,6 +111,22 @@ func TestPlural(t *testing.T) {
 			t.Errorf("sr %d: %q, want %q", n, got, want)
 		}
 	}
+	for lang, cases := range map[string]map[int]string{
+		// The forms are named by their place: the numbers that take each
+		"cs": {0: "c", 1: "a", 2: "b", 4: "b", 5: "c", 21: "c", 22: "c", 101: "c"},
+		"sk": {1: "a", 3: "b", 5: "c"},
+		"sl": {0: "d", 1: "a", 2: "b", 3: "c", 4: "c", 5: "d", 11: "d", 101: "a", 102: "b", 104: "c", 111: "d"},
+		"lt": {0: "c", 1: "a", 2: "b", 9: "b", 10: "c", 11: "c", 19: "c", 20: "c", 21: "a", 22: "b", 111: "c"},
+		"lv": {0: "c", 1: "a", 2: "b", 10: "c", 11: "c", 19: "c", 21: "a", 22: "b", 30: "c", 111: "c"},
+		"ro": {0: "b", 1: "a", 2: "b", 19: "b", 20: "c", 101: "c", 102: "b", 119: "b", 120: "c"},
+		"tr": {1: "a", 5: "a"},
+	} {
+		for n, want := range cases {
+			if got := Plural(lang, n, "a", "b", "c", "d"); got != want {
+				t.Errorf("%s %d: %q, want %q", lang, n, got, want)
+			}
+		}
+	}
 	if got := Plural("zh", 5, "个文件"); got != "个文件" {
 		t.Errorf("zh: %q", got)
 	}
