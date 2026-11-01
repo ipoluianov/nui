@@ -816,6 +816,8 @@ func (c *Form) ShowModal(parent *Form) {
 	}
 	platforms.RunOnUIThread(func() {
 		c.parentForm = parent
+		// The release of a button held now goes to the new window
+		parent.cancelMousePress()
 		// Centered with the size it opens with
 		c.growToMinSize()
 		if c.posX < 0 && c.posY < 0 {
@@ -1227,6 +1229,24 @@ func (c *Form) processMouseUp(button MouseButton, x int, y int) {
 	}
 
 	c.Update()
+}
+
+// cancelMousePress releases the mouse buttons held in the form outside all
+// widgets: no click, no drop. A window opened while a button is held (a dialog
+// opened by a double click) gets the real release, and the widgets of this
+// one would stay pressed: a table would go on selecting rows as the mouse moves.
+func (c *Form) cancelMousePress() {
+	// Where a double click comes in place of the press, the widget is only
+	// known as the one the left button is held on
+	if c.mousePressedWidget == nil && c.mouseLeftButtonPressedWidget != nil {
+		c.mousePressedWidget, c.mousePressedButton = c.mouseLeftButtonPressedWidget, MouseButtonLeft
+	}
+	if c.mousePressedWidget != nil {
+		c.processMouseUp(c.mousePressedButton, dragCancelledPos, dragCancelledPos)
+	}
+	if c.mouseLeftButtonPressed {
+		c.processMouseUp(MouseButtonLeft, dragCancelledPos, dragCancelledPos)
+	}
 }
 
 func (c *Form) processMouseMove(x int, y int) {

@@ -651,3 +651,41 @@ func TestPropertyGridWideFields(t *testing.T) {
 		t.Errorf("Due written as %v, want %v", s.Due, want)
 	}
 }
+
+// A dialog opened by a double click gets the release of the button: the
+// table under it must not go on selecting rows as the mouse moves
+func TestCancelMousePressStopsTableSelecting(t *testing.T) {
+	for _, withPress := range []bool{true, false} {
+		table := NewTable()
+		table.SetSelectingRows(true)
+		form := newTestForm(t, table)
+		table.SetColumnCount(1)
+		table.SetRowCount(5)
+		form.UpdateLayout()
+
+		tx, ty := table.RectClientAreaOnWindow()
+		rowY := func(row int) int {
+			for y := 0; y < table.Height(); y++ {
+				if r, _ := table.CellAt(10, y); r == row {
+					return ty + y + 2
+				}
+			}
+			t.Fatalf("row %d not found", row)
+			return 0
+		}
+		x := tx + 10
+		form.processMouseDown(MouseButtonLeft, x, rowY(0))
+		form.processMouseUp(MouseButtonLeft, x, rowY(0))
+		// Some systems send the second press, some only the double click
+		if withPress {
+			form.processMouseDown(MouseButtonLeft, x, rowY(0))
+		}
+		form.processMouseDblClick(MouseButtonLeft, x, rowY(0))
+
+		form.cancelMousePress()
+		form.processMouseMove(x, rowY(3))
+		if table.CurrentRow() != 0 {
+			t.Errorf("with press %v: the moving mouse selected row %d", withPress, table.CurrentRow())
+		}
+	}
+}
