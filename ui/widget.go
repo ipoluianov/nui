@@ -193,6 +193,9 @@ type Widget struct {
 	OnResize Signal[Size]
 	// OnFocusChanged: the widget got (true) or lost the keyboard focus
 	OnFocusChanged Signal[bool]
+	// OnHoverChanged: the mouse came over the widget (true) or left it;
+	// the widget right under the mouse, not its parents
+	OnHoverChanged Signal[bool]
 
 	// emitsOwnClick is set by the widgets that emit OnClick themselves
 	// (Button): the form doesn't emit it for them

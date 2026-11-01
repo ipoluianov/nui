@@ -10,7 +10,7 @@ if err != nil {
 }
 tray.SetIcon(img) // a square image, 32x32 or 64x64
 tray.SetTooltip("My app")
-tray.SetOnClick(func() { form.Show() })
+tray.OnClick.Connect(func(*ui.TrayIcon) { form.Show() })
 tray.SetMenu(
 	ui.TrayMenuItem{Text: "Open", OnClick: func() { form.Show() }},
 	ui.TrayMenuItem{Text: "Mute", Checkable: true, Checked: muted, OnClick: toggleMute},
@@ -23,7 +23,7 @@ tray.ShowNotification("Done", "The export has finished")
 
 - The callbacks run on the UI thread like all the handlers; the application must be running a
   form's `Exec`.
-- The menu opens on a right click; on macOS any click opens it, and `SetOnClick` works only
+- The menu opens on a right click; on macOS any click opens it, and `OnClick` works only
   without a menu. Call `SetMenu` again to change the items (e.g. a check mark). `Disabled: true` greys an item out.
 - `Close()` removes the icon.
 

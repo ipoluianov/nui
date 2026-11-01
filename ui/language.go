@@ -9,7 +9,7 @@ import (
 
 // The language of the application. Texts follow it live: set them with
 // SetTextFunc (and SetTitleFunc, SetTooltipFunc...) and they are updated on
-// SetLanguage; other texts are updated in Form.SetOnLanguageChanged.
+// SetLanguage; other texts are updated on Form.OnLanguageChanged.
 
 var (
 	languageMu  sync.RWMutex
@@ -45,7 +45,7 @@ func SystemLanguage() string {
 }
 
 // SetLanguage switches the application to the language: the open forms
-// update their texts (see SetTextFunc and Form.SetOnLanguageChanged) and
+// update their texts (see SetTextFunc and Form.OnLanguageChanged) and
 // are laid out again. Chinese, Japanese and Korean also pick their variant
 // of the system CJK font.
 func SetLanguage(lang string) {
@@ -112,7 +112,7 @@ func (c *Form) SetTitleFunc(f func() string) {
 
 // SetOnLanguageChanged sets the function that updates the texts SetTextFunc
 // doesn't cover (table headers, combo box items, texts put together...)
-// when the language changes.
+// when the language changes. New code uses OnLanguageChanged.
 func (c *Form) SetOnLanguageChanged(f func()) {
 	c.onLanguageChanged = f
 }
@@ -137,6 +137,7 @@ func (c *Form) applyLanguage() {
 	if c.onLanguageChanged != nil {
 		c.onLanguageChanged()
 	}
+	c.OnLanguageChanged.Emit(Language())
 	applyThemeMetricsTree(c.topWidget)
 	if c.menuBar != nil {
 		applyThemeMetricsTree(c.menuBar)

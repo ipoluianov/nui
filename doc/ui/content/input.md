@@ -21,12 +21,11 @@ form.AddShortcut("Mod+S", save)
 To see every key before the shortcuts:
 
 ```go
-form.SetOnGlobalKeyDown(func(key ui.Key, mods ui.KeyModifiers) bool {
-	if key == ui.KeyS && mods.Ctrl {
+form.OnGlobalKeyDown.Connect(func(e *ui.KeyEvent) {
+	if e.Key == ui.KeyS && e.Mods.Ctrl {
 		save()
-		return true
+		e.Handled = true
 	}
-	return false
 })
 ```
 

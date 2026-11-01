@@ -231,10 +231,7 @@ func (c *Form) followMouseInPopups(x, y int) {
 		return
 	}
 	// Off the popups: nothing is highlighted
-	if c.hoverWidget != nil {
-		c.hoverWidget.ProcessMouseLeave()
-		c.hoverWidget = nil
-	}
+	c.leaveHoverWidget()
 }
 
 // mouseTarget returns the widget that gets a mouse event at the client point

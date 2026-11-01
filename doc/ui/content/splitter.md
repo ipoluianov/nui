@@ -11,13 +11,13 @@ Dragging respects the panes' minimum sizes. A hidden pane gives its space to the
 sp := ui.NewHSplitter()
 sp.SetWidgets(list, details)
 sp.SetSecondSize(400) // details keep 400px when the window is resized
-sp.SetOnSplitChanged(func() {
-	saveWidth(sp.SecondSize())
+sp.OnActivated.Connect(func(size int) {
+	saveWidth(size)
 })
 ```
 
 - `SetWidgets(first, second)`, `First()`, `Second()`.
 - `SetFirstSize(px)` / `FirstSize()`, `SetSecondSize(px)` / `SecondSize()`: the size of a pane (the width for `NewHSplitter`, the height for `NewVSplitter`).
 - `SetHandleSize(px)` / `HandleSize()`: the thickness of the handle.
-- `SetOnSplitChanged(f)`: called when the user has dragged the handle, e.g. to save the size in the [settings](application.md).
+- `OnActivated` (`int`): the user dragged the handle; the size of the fixed pane, e.g. to save it in the [settings](application.md). `SetFirstSize`/`SetSecondSize` don't fire it. The old `SetOnSplitChanged(f)` still works.
 - `IsVertical()`: true for `NewVSplitter`.

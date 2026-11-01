@@ -32,6 +32,7 @@ A widget tells what happens to it by signals, fields `On…` of the type `ui.Sig
 btn := ui.NewButton("OK")
 btn.OnClick.Connect(func(ui.Widgeter) { save() })
 panel.OnResize.Connect(func(s ui.Size) { relayout(s.Width) })
+link.OnHoverChanged.Connect(func(in bool) { link.SetUnderline(in) })
 ```
 
 The old setters still work; each keeps one handler:

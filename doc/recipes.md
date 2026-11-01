@@ -384,6 +384,8 @@ func T() *Strings { return catalog.Get(ui.Language()) }
 
 form.SetTitleFunc(func() string { return T().Title })
 files.SetTextFunc(func() string { return T().Files(count()) })
+// What SetTextFunc doesn't cover: table headers, combo box items
+form.OnLanguageChanged.Connect(func(string) { updateHeaders() })
 ```
 
 The library's own texts (OK, Cancel, the calendar, the file and print dialogs) are built in for English, Russian, Chinese, Japanese, Korean, Turkish, Indonesian, Vietnamese and the main languages of Europe; `ui.RegisterUIStrings` adds others.
@@ -399,7 +401,7 @@ if err != nil {
 }
 quitting := false
 tray.SetIcon(icon)
-tray.SetOnClick(func() { form.Activate() })
+tray.OnClick.Connect(func(*ui.TrayIcon) { form.Activate() })
 tray.SetMenu(
 	ui.TrayMenuItem{Text: "Show", OnClick: func() { form.Activate() }},
 	ui.TrayMenuItem{Separator: true},

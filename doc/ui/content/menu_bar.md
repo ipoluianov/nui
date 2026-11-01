@@ -2,7 +2,7 @@
 
 Main menu of a form: a row of titles at the top of the window. Each title opens a
 [ContextMenu](context_menu.md) that drops down below it, so the menus support everything
-context menus do: separators, submenus, icons, hidden items, `SetOnShow`.
+context menus do: separators, submenus, icons, hidden items, `OnShow`.
 
 ## Create
 

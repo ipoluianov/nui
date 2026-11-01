@@ -416,3 +416,98 @@ func TestButtonImageKeys(t *testing.T) {
 		t.Errorf("image button %d, tool button %d", pressed, tools)
 	}
 }
+
+// OnHoverChanged: the widget right under the mouse, on entering and leaving
+func TestHoverChangedSignal(t *testing.T) {
+	form := newForm(300, 200)
+	a, b := ui.NewLabel("A"), ui.NewLabel("B")
+	form.Panel().AddWidget(0, 0, a)
+	form.Panel().AddWidget(1, 0, b)
+	w := uitest.Show(t, form)
+	hoverA := count(&a.OnHoverChanged)
+
+	w.Move(a)
+	if hoverA.n != 1 || !hoverA.last {
+		t.Fatalf("enter: %d %v", hoverA.n, hoverA.last)
+	}
+	w.Move(uitest.At(a, 1, 1)) // still over it
+	w.Move(b)
+	if hoverA.n != 2 || hoverA.last {
+		t.Errorf("leave: %d %v", hoverA.n, hoverA.last)
+	}
+}
+
+// OnGlobalKeyDown sees the keys before the focused widget; Handled takes
+// the key, and the old setter is not called then
+func TestGlobalKeyDownSignal(t *testing.T) {
+	form := newForm(300, 200)
+	form.Panel().AddWidget(0, 0, ui.NewButton("OK"))
+	var keys []ui.Key
+	form.OnGlobalKeyDown.Connect(func(e *ui.KeyEvent) {
+		keys = append(keys, e.Key)
+		e.Handled = e.Key == ui.KeyF5
+	})
+	setter := 0
+	form.SetOnGlobalKeyDown(func(ui.Key, ui.KeyModifiers) bool { setter++; return false })
+	w := uitest.Show(t, form)
+
+	w.Key(ui.KeyF5, ui.KeyModifiers{})
+	w.Key(ui.KeyF6, ui.KeyModifiers{})
+	if len(keys) != 2 || keys[0] != ui.KeyF5 || keys[1] != ui.KeyF6 || setter != 1 {
+		t.Errorf("keys %v, setter %d", keys, setter)
+	}
+}
+
+func TestLanguageChangedSignal(t *testing.T) {
+	form := newForm(300, 200)
+	w := uitest.Show(t, form)
+	changed := count(&form.OnLanguageChanged)
+	t.Cleanup(func() { ui.SetLanguage("en"); w.Settle() })
+
+	ui.SetLanguage("de")
+	w.Settle()
+	if changed.n != 1 || changed.last != "de" {
+		t.Errorf("changed %d %q", changed.n, changed.last)
+	}
+}
+
+// OnShow fires every time before the menu opens
+func TestContextMenuShowSignal(t *testing.T) {
+	form := newForm(300, 200)
+	label := ui.NewLabel("Menu here")
+	form.Panel().AddWidget(0, 0, label)
+	menu := ui.NewContextMenu(label)
+	item := menu.AddItem("Item", func() {})
+	label.SetContextMenu(menu)
+	menu.OnShow.Connect(func(m *ui.ContextMenu) { item.SetVisible(false) })
+	shown := count(&menu.OnShow)
+	w := uitest.Show(t, form)
+
+	w.RightClick(label)
+	w.Key(ui.KeyEsc, ui.KeyModifiers{})
+	w.RightClick(label)
+	if shown.n != 2 || shown.last != menu || item.IsVisible() {
+		t.Errorf("shown %d, item visible %v", shown.n, item.IsVisible())
+	}
+}
+
+// OnActivated of a splitter: the user dragged the handle, not the code
+func TestSplitterActivatedSignal(t *testing.T) {
+	form := newForm(400, 200)
+	splitter := ui.NewHSplitter()
+	splitter.SetWidgets(ui.NewPanel(), ui.NewPanel())
+	form.Panel().AddWidget(0, 0, splitter)
+	w := uitest.Show(t, form)
+	activated := count(&splitter.OnActivated)
+
+	splitter.SetFirstSize(150)
+	w.Settle()
+	if activated.n != 0 {
+		t.Fatalf("by the code: %d", activated.n)
+	}
+	handle := uitest.At(splitter, splitter.FirstSize()+3, splitter.Height()/2)
+	w.Drag(handle, uitest.Point{X: handle.X + 50, Y: handle.Y})
+	if activated.n == 0 || activated.last != splitter.FirstSize() || splitter.FirstSize() < 190 {
+		t.Errorf("dragged: %d, last %d, first size %d", activated.n, activated.last, splitter.FirstSize())
+	}
+}

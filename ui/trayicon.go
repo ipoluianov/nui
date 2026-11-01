@@ -40,7 +40,12 @@ var ErrNotificationsNotSupported = platforms.ErrNotificationsNotSupported
 // To keep the application in the tray when its window is closed, hide the
 // form instead: form.OnClose = func() bool { form.Hide(); return false }
 type TrayIcon struct {
-	icon platforms.TrayIcon
+	icon    platforms.TrayIcon
+	onClick func()
+
+	// OnClick: a left click on the icon (on macOS, only when the icon has
+	// no menu)
+	OnClick Signal[*TrayIcon]
 }
 
 // NewTrayIcon puts an icon in the system tray. Set its image with SetIcon:
@@ -51,6 +56,7 @@ func NewTrayIcon() (*TrayIcon, error) {
 		return nil, err
 	}
 	t := &TrayIcon{icon: icon}
+	t.icon.OnClick(t.clicked)
 	if appIcon != nil {
 		t.icon.SetIcon(appIcon)
 	}
@@ -75,9 +81,16 @@ func (t *TrayIcon) SetTooltip(text string) {
 }
 
 // SetOnClick sets the function called on a left click on the icon (on macOS,
-// only when the icon has no menu)
+// only when the icon has no menu). New code uses OnClick.
 func (t *TrayIcon) SetOnClick(f func()) {
-	t.icon.OnClick(f)
+	t.onClick = f
+}
+
+func (t *TrayIcon) clicked() {
+	if t.onClick != nil {
+		t.onClick()
+	}
+	t.OnClick.Emit(t)
 }
 
 // SetMenu sets the menu of the icon; call it again to change the items, e.g.

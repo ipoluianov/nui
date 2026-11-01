@@ -192,6 +192,12 @@ New code uses the signals. Replacing an old handler:
 | Was | Is |
 |---|---|
 | `b.SetOnClick(f)` | `b.OnClick.Connect(func(ui.Widgeter) { f() })` |
+| `w.SetOnMouseEnter(f)`, `w.SetOnMouseLeave(g)` | `w.OnHoverChanged.Connect(func(in bool) { … })` |
+| `form.SetOnGlobalKeyDown(f)` | `form.OnGlobalKeyDown.Connect(func(e *ui.KeyEvent) { e.Handled = f(e.Key, e.Mods) })` |
+| `form.SetOnLanguageChanged(f)` | `form.OnLanguageChanged.Connect(func(string) { f() })` |
+| `menu.SetOnShow(f)` | `menu.OnShow.Connect(func(*ui.ContextMenu) { f() })` |
+| `sp.SetOnSplitChanged(f)` | `sp.OnActivated.Connect(func(size int) { … })` |
+| `tray.SetOnClick(f)` | `tray.OnClick.Connect(func(*ui.TrayIcon) { f() })` |
 | `box.SetOnTextChanged(f)` | `box.OnTextChanged.Connect(f)` |
 | `ui.CurrentEvent()` in a handler | the data of the signal: `OnKeyDown.Connect(func(e *ui.KeyEvent) {…})` |
 | a timer polling a selection or a width | `OnSelectionChanged`, `OnResize` |

@@ -9,6 +9,11 @@ type ContextMenu struct {
 	parentMenu *ContextMenu
 	onShow     func()
 
+	// OnShow: the menu is about to be shown, every time; the place to hide
+	// the items that don't apply to what is selected now
+	// (ContextMenuItem.SetVisible)
+	OnShow Signal[*ContextMenu]
+
 	// dropDown is set when the menu drops down from a rectangle (a MenuBar
 	// title) instead of opening at a point, see dropDownFrom
 	dropDown                                    bool
@@ -47,7 +52,7 @@ func (c *ContextMenu) drawBorder(cnv *Canvas) {
 
 // SetOnShow sets the function called every time before the menu is shown,
 // e.g. to hide the items that don't apply to what is selected now
-// (ContextMenuItem.SetVisible).
+// (ContextMenuItem.SetVisible). New code uses OnShow.
 func (c *ContextMenu) SetOnShow(f func()) {
 	c.onShow = f
 }
@@ -128,6 +133,7 @@ func (c *ContextMenu) show(x int, y int) {
 	if c.onShow != nil {
 		c.onShow()
 	}
+	c.OnShow.Emit(c)
 	c.SetPosition(x, y)
 	c.rebuildVisualElements()
 	c.form.Panel().AppendPopupWidget(c)
@@ -147,6 +153,7 @@ func (c *ContextMenu) showMenu(x int, y int, parentMenu *ContextMenu) {
 	if c.onShow != nil {
 		c.onShow()
 	}
+	c.OnShow.Emit(c)
 	c.SetPosition(x, y)
 	c.rebuildVisualElements()
 	//c.Window().AppendPopup(c)

@@ -142,6 +142,16 @@ type Form struct {
 
 	OnClose func() bool
 
+	// OnGlobalKeyDown: a key, before the focused widget handles it, except
+	// the keys a focused text field edits with (see AddShortcut); Handled
+	// set by a handler takes the key. While a menu or a list is open the
+	// keys go to it, not here.
+	OnGlobalKeyDown Signal[*KeyEvent]
+	// OnLanguageChanged: the language changed (see SetLanguage); the
+	// language. The place to update the texts SetTextFunc doesn't cover:
+	// table headers, combo box items, texts put together...
+	OnLanguageChanged Signal[string]
+
 	// See SetTitleFunc and SetOnLanguageChanged
 	titleFunc         func() string
 	onLanguageChanged func()
@@ -579,7 +589,8 @@ func (c *Form) IsActive() bool {
 // SetOnGlobalKeyDown sets the function that sees the keys before the
 // focused widget, except the keys a focused text field edits with (see
 // AddShortcut); it returns true for a key it took. While a menu or a list
-// is open the keys go to it, not here.
+// is open the keys go to it, not here. New code uses OnGlobalKeyDown,
+// whose handlers are called first.
 func (c *Form) SetOnGlobalKeyDown(onGlobalKeyDown func(keyCode Key, mods KeyModifiers) bool) {
 	c.onGlobalKeyDown = onGlobalKeyDown
 }
@@ -1264,12 +1275,11 @@ func (c *Form) updateHover() {
 	hoverWidget := c.widgetUnderMouse(c.lastMouseX, c.lastMouseY)
 
 	if hoverWidget != c.hoverWidget {
-		if c.hoverWidget != nil {
-			c.hoverWidget.ProcessMouseLeave()
-		}
+		c.leaveHoverWidget()
 		c.hoverWidget = hoverWidget
 		if c.hoverWidget != nil {
 			c.hoverWidget.ProcessMouseEnter()
+			c.hoverWidget.widgetBase().OnHoverChanged.Emit(true)
 		}
 		c.tooltipHoverChanged()
 	}
@@ -1305,13 +1315,19 @@ func (c *Form) processMouseLeave() {
 	}
 	c.topWidget.ProcessMouseLeave()
 	c.tooltipHide()
-
-	if c.hoverWidget != nil {
-		c.hoverWidget.ProcessMouseLeave()
-		c.hoverWidget = nil
-	}
-
+	c.leaveHoverWidget()
 	c.Update()
+}
+
+// leaveHoverWidget tells the widget under the mouse that the mouse left it
+func (c *Form) leaveHoverWidget() {
+	w := c.hoverWidget
+	if w == nil {
+		return
+	}
+	w.ProcessMouseLeave()
+	c.hoverWidget = nil
+	w.widgetBase().OnHoverChanged.Emit(false)
 }
 
 func (c *Form) processMouseEnter() {
@@ -1385,8 +1401,16 @@ func (c *Form) processKeyDown(keyCode Key, mods KeyModifiers) bool {
 
 	// An open menu or list takes the keys: the application's shortcuts wait
 	// until it closes
-	if c.onGlobalKeyDown != nil && len(c.topWidget.PopupWidgets) == 0 {
-		if c.onGlobalKeyDown(keyCode, mods) {
+	if len(c.topWidget.PopupWidgets) == 0 {
+		if c.OnGlobalKeyDown.Connected() {
+			e := &KeyEvent{Key: keyCode, Mods: mods}
+			c.OnGlobalKeyDown.Emit(e)
+			if e.Handled {
+				c.Update()
+				return true
+			}
+		}
+		if c.onGlobalKeyDown != nil && c.onGlobalKeyDown(keyCode, mods) {
 			c.Update()
 			return true
 		}

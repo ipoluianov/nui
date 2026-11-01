@@ -24,6 +24,10 @@ type Splitter struct {
 	fixedSize   int // -1 - not set yet, the area is split in half
 
 	onSplitChanged func()
+
+	// OnActivated: the user dragged the handle; the size of the fixed pane
+	// (see SetFirstSize, SetSecondSize)
+	OnActivated Signal[int]
 }
 
 // NewHSplitter creates a splitter with the panes on the left and on the right
@@ -122,7 +126,8 @@ func (c *Splitter) SecondSize() int {
 	return c.paneSize(c.second)
 }
 
-// SetOnSplitChanged sets the callback called when the user has dragged the handle
+// SetOnSplitChanged sets the callback called when the user has dragged the
+// handle. New code uses OnActivated.
 func (c *Splitter) SetOnSplitChanged(fn func()) {
 	c.onSplitChanged = fn
 }
@@ -283,6 +288,7 @@ func (c *Splitter) dragHandleTo(offset int) {
 	if c.onSplitChanged != nil {
 		c.onSplitChanged()
 	}
+	c.OnActivated.Emit(fixedSize)
 }
 
 // splitterHandle is the draggable bar between the panes of a Splitter

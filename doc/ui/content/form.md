@@ -82,5 +82,6 @@ go func() {
 
 ## Global events
 
-- **`SetOnGlobalKeyDown(func(key ui.Key, mods ui.KeyModifiers) bool)`**: intercept key presses before the focused widget (a focused text field still takes its editing keys, e.g. Ctrl+Z, first); return `true` to stop the key there.
+- **`OnGlobalKeyDown`** (`*ui.KeyEvent`): intercept key presses before the focused widget (a focused text field still takes its editing keys, e.g. Ctrl+Z, first); `e.Handled = true` stops the key there. The old `SetOnGlobalKeyDown(func(key, mods) bool)` still works.
+- **`OnLanguageChanged`** (`string`): the language changed (`ui.SetLanguage`); update the texts `SetTextFunc` doesn't cover. The old `SetOnLanguageChanged(func())` still works.
 

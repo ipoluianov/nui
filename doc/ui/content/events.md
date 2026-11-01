@@ -33,6 +33,7 @@ All the signals fire in the UI thread. The handlers are called in the order they
 | `OnClick` | `Widgeter` (who) | the left button pressed and released on the widget; a button is also pressed by Space, Enter and `Push` |
 | `OnResize` | `Size{Width, Height}` | the layout gave the widget a new size, instead of a timer asking its width |
 | `OnFocusChanged` | `bool` | the widget got (`true`) or lost the focus |
+| `OnHoverChanged` | `bool` | the mouse came over the widget (`true`) or left it; the widget right under the mouse, not its parents |
 
 The coordinates of the mouse events are those of the widget's content, with its scrolling, as in its own handlers.
 
@@ -55,6 +56,16 @@ The coordinates of the mouse events are those of the widget's content, with its 
 | TimePicker | `OnTimeChanged(time.Duration)`: the time since midnight | `OnActivated(time.Duration)` | - |
 | ColorPicker | `OnColorChanged(color.RGBA)`, also while dragging | `OnActivated(color.RGBA)` | - |
 | Link | - | `OnClick(Widgeter)`: a click on the text, Enter or Space | - |
+| Splitter | - | `OnActivated(int)`: the user dragged the handle; the size of the fixed pane | - |
+| ContextMenu | - | - | `OnShow(*ContextMenu)`: every time before the menu is shown |
+
+## Signals of the form and the tray
+
+| Signal | Data | When |
+|---|---|---|
+| `Form.OnGlobalKeyDown` | `*KeyEvent{Key, Mods, Handled}` | a key, before the focused widget, except the keys a focused text field edits with; `Handled` takes it. Not while a menu or a list is open |
+| `Form.OnLanguageChanged` | `string` (the language) | `ui.SetLanguage`: the place for the texts `SetTextFunc` doesn't cover - table headers, combo box items |
+| `TrayIcon.OnClick` | `*TrayIcon` | a left click on the icon (on macOS only without a menu) |
 
 A signal of the application: `ui.OnThemeChanged(bool dark)`, the theme applied. The widgets repaint themselves; the handler recolors what the application colored itself, e.g. icons. A form connects to it with `ConnectWhileShown(widget, f)`: connected while the form is open.
 

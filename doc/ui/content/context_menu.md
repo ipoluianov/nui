@@ -31,8 +31,8 @@ wrap = menu.AddItem("Word wrap", func() { editor.SetWrap(wrap.Checked()) }).SetC
 - `AddItem` returns the `*ui.ContextMenuItem`: `SetText`, `SetShortcut("Mod+S")`, `SetImage`, `SetEnabled`, `SetVisible`.
 - `SetCheckable(true)`: a click toggles the check mark before the function runs; `SetChecked`, `Checked()`.
 - `menu.AddAction(action)`: an item showing a `ui.Action` (see [actions](actions.md)).
-- `menu.SetOnShow(func())`: called every time before the menu is shown, e.g. to hide the items that don't apply now.
-- `RemoveAllItems()` empties the menu, e.g. to fill it anew in `SetOnShow`.
+- `menu.OnShow` (`*ui.ContextMenu`): every time before the menu is shown, e.g. to hide the items that don't apply now. The old `SetOnShow(func())` still works.
+- `RemoveAllItems()` empties the menu, e.g. to fill it anew in `OnShow`.
 
 ## Right click on a widget
 
@@ -68,7 +68,7 @@ The first item is active, so the keyboard (Up/Down, Enter, Esc) works at once.
 The Menu key and Shift+F10 open, from the keyboard, the menu a right click would: the one set
 with `SetContextMenu` on the focused widget or on its nearest parent that has one. It opens
 under the focused widget (a table: under its current cell) with the first item chosen. The key
-goes to the application first: a widget's `SetOnKeyDown`, `SetOnGlobalKeyDown` and a shortcut
+goes to the application first: a widget's `OnKeyDown`, the form's `OnGlobalKeyDown` and a shortcut
 added with `form.AddShortcut` take it before the menu opens.
 
 In an open menu Up/Down choose an item, Home/End the first or the last one, Enter or Space
