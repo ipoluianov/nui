@@ -728,3 +728,47 @@ func TestBottomAxisEdgeLabelsDoNotOverlap(t *testing.T) {
 		t.Errorf("labels %v, want %s", labels, want)
 	}
 }
+
+// A single-line box whose cursor was moved to the end before it was laid
+// out shows its text from the start once it has its width
+func TestTextBoxCursorMovedBeforeLayout(t *testing.T) {
+	tb := NewTextBox()
+	form := NewForm()
+	form.Panel().AddWidget(0, 0, tb)
+	form.Panel().AddVSpacer(1, 0)
+	// As in the show handler of a dialog: before the window has its size
+	form.processResize(0, 0)
+	form.UpdateLayout()
+	tb.SetText("127.0.0.1")
+	tb.MoveCursorToEnd()
+	tb.SelectAllText()
+	form.processResize(500, 400)
+	form.UpdateLayout()
+	if tb.Width() < 200 {
+		t.Fatalf("the box is %d wide", tb.Width())
+	}
+	if tb.ScrollX() != 0 {
+		t.Errorf("the text is scrolled by %d: its start is hidden", tb.ScrollX())
+	}
+}
+
+// A table made current while hidden (an empty list shows a hint instead)
+// is not scrolled sideways when shown: a widget of no size can't tell
+// what of it is visible
+func TestTableCurrentCellWhileHidden(t *testing.T) {
+	table := NewTable()
+	form := newTestForm(t, table)
+	table.SetColumnCount(4)
+	for i := 0; i < 4; i++ {
+		table.SetColumnWidth(i, 220)
+	}
+	table.SetVisible(false)
+	form.UpdateLayout()
+	table.SetRowCount(2)
+	table.SetCurrentCell2(0, 0)
+	table.SetVisible(true)
+	form.UpdateLayout()
+	if table.ScrollX() != 0 {
+		t.Errorf("the table is scrolled by %d: its first column is hidden", table.ScrollX())
+	}
+}

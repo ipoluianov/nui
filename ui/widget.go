@@ -1769,14 +1769,16 @@ func (c *Widget) ScrollEnsureVisible(x1, y1 int) {
 	if y1 < c.scrollY {
 		c.setScrollY(y1)
 	}
-	if y1 > c.scrollY+vh {
-		c.setScrollY(y1 - vh)
-	}
-
 	if x1 < c.scrollX {
 		c.setScrollX(x1)
 	}
-	if x1 > c.scrollX+vw {
+	// A widget not laid out yet or hidden has no visible area: scrolled
+	// forward to the point, it would show the point at its left (top) edge
+	// once it gets its size, the content before the point hidden
+	if vh > 0 && y1 > c.scrollY+vh {
+		c.setScrollY(y1 - vh)
+	}
+	if vw > 0 && x1 > c.scrollX+vw {
 		c.setScrollX(x1 - vw)
 	}
 }
