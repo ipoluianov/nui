@@ -214,10 +214,18 @@ func (c *ContextMenu) AddItemWithSubmenu(text string, innerMenu *ContextMenu) *C
 	return item
 }
 
+// RemoveAllItems empties the menu, e.g. to fill it anew in OnShow: the
+// items go from the list the menu is laid out by too, not only from its
+// widgets, or the menu keeps their place and grows on every refill
 func (c *ContextMenu) RemoveAllItems() {
 	c.RemoveAllWidgets()
+	c.items = nil
+	c.active = nil
 	c.rebuildVisualElements()
-	c.form.Update()
+	// A menu not shown yet has no form
+	if c.form != nil {
+		c.form.Update()
+	}
 }
 
 func (c *ContextMenu) OnInit() {

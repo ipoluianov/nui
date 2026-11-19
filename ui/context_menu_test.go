@@ -98,3 +98,25 @@ func TestComboBoxItemPickedOnRelease(t *testing.T) {
 		t.Errorf("picked %d, want 2", picked)
 	}
 }
+
+// A menu emptied and filled anew is as high as its new items: the removed
+// ones take no place and are not chosen with the keyboard
+func TestContextMenuRemoveAllItems(t *testing.T) {
+	menu := NewContextMenu(nil)
+	for range 3 {
+		menu.RemoveAllItems()
+		menu.AddItem("Old one", nil)
+		menu.AddSeparator()
+		menu.AddItem("Old two", nil)
+	}
+	menu.RemoveAllItems()
+	item := menu.AddItem("New", nil)
+	menu.rebuildVisualElements()
+	if menu.menuHeight != item.height() {
+		t.Errorf("height after refilling = %d, want the one item's %d", menu.menuHeight, item.height())
+	}
+	menu.activateFirst()
+	if menu.activeItem() != item {
+		t.Error("the keyboard chooses a removed item")
+	}
+}
