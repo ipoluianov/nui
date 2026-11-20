@@ -1,11 +1,12 @@
 package ui
 
 import (
+	"cmp"
 	"image"
 	"image/color"
 	"math"
 	"runtime"
-	"sort"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -38,6 +39,9 @@ type Renderer3D struct {
 	clipV  []clipVert
 	proj   []int32
 	tex    map[image.Image]*rTexture
+	// The buffers of sorting the translucent triangles, kept between frames
+	order    []transOrder
+	transBuf []rTri
 
 	// The cutting planes of the object being added, in its coordinates:
 	// a point p is kept where plane[0..2]·p + plane[3] >= 0
@@ -345,10 +349,45 @@ func (r *Renderer3D) draw(w, h int, px float32, scene *Scene3D, cam Camera) {
 	}
 	r.stats.Triangles = len(r.tris) + len(r.trans) - 2*r.stats.Lines
 	r.stats.Points = len(r.points)
-	// The translucent triangles from the far to the near
-	sort.SliceStable(r.trans, func(i, j int) bool { return r.trans[i].sortKey > r.trans[j].sortKey })
+	r.sortTranslucent()
 	r.rasterize()
 	r.stats.Duration = time.Since(start)
+}
+
+// transOrder is a translucent triangle's place in the sorting: its depth and
+// where it was added
+type transOrder struct {
+	key float32
+	i   int32
+}
+
+// sortTranslucent puts the translucent triangles from the far to the near;
+// those as far keep the order they were added in. The short pairs of the
+// depth and the place are sorted, not the triangles, and the triangles are
+// then moved once: a stable sort of the triangles themselves (sort.SliceStable)
+// moved them O(n log² n) times by reflection and took most of a frame of
+// many translucent lines.
+func (r *Renderer3D) sortTranslucent() {
+	n := len(r.trans)
+	if n < 2 {
+		return
+	}
+	order := slices.Grow(r.order[:0], n)
+	for i := range r.trans {
+		order = append(order, transOrder{r.trans[i].sortKey, int32(i)})
+	}
+	slices.SortFunc(order, func(a, b transOrder) int {
+		if c := cmp.Compare(b.key, a.key); c != 0 {
+			return c
+		}
+		return cmp.Compare(a.i, b.i)
+	})
+	sorted := slices.Grow(r.transBuf[:0], n)
+	for _, o := range order {
+		sorted = append(sorted, r.trans[o.i])
+	}
+	r.order = order
+	r.trans, r.transBuf = sorted, r.trans
 }
 
 func (r *Renderer3D) hasPointLights() bool {
