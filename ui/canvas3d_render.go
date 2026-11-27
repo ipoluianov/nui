@@ -22,6 +22,12 @@ type Renderer3D struct {
 	// Antialias is how many samples a pixel takes along each side: 1 - one
 	// (fast, jagged edges), 2 - four (smooth), 3 - nine. Zero is 2.
 	Antialias int
+	// PixelSize, when over 1, draws coarser than the canvas: a sample
+	// covers that many pixels along each side, and the picture is
+	// stretched over them smoothly (bilinear). 2 is half the resolution, a
+	// quarter of the samples: for frames soon replaced, as an animation's.
+	// Antialias is not used then.
+	PixelSize int
 	// Workers is how many goroutines draw; zero is one per processor
 	Workers int
 
@@ -204,6 +210,12 @@ func (r *Renderer3D) Render(cnv *Canvas, x, y, w, h int, scene *Scene3D, cam Cam
 	}
 	visible := image.Rect(px, py, px+pw, py+ph).Intersect(cnv.clipRect()).Intersect(cnv.rgba.Rect)
 	if visible.Empty() {
+		return
+	}
+	if k := min(r.PixelSize, 8); k > 1 {
+		r.draw((pw+k-1)/k, (ph+k-1)/k, float32(cnv.scale)/float32(k), scene, cam)
+		r.resolveCoarse(cnv, px, py, k, visible)
+		r.drawLabels(cnv, x, y, w, h, scene, cam)
 		return
 	}
 	ss := r.Antialias
@@ -1133,6 +1145,64 @@ func (r *Renderer3D) resolve(cnv *Canvas, px, py, ss int, visible image.Rectangl
 	})
 }
 
+// resolveCoarse puts the coarse buffers, a sample over k × k pixels, onto
+// the canvas: each pixel mixes the four samples around its middle
+// (bilinear), the edges of the buffers repeated; the canvas under it shows
+// through as in resolve
+func (r *Renderer3D) resolveCoarse(cnv *Canvas, px, py, k int, visible image.Rectangle) {
+	// The sample coordinate of a pixel's middle, and the two samples
+	// around it with the weight of the second, along one side
+	span := func(p, n int) (i0, i1 int, w float32) {
+		u := (float32(p)+0.5)/float32(k) - 0.5
+		f := float32(math.Floor(float64(u)))
+		i0, w = int(f), u-f
+		i1 = i0 + 1
+		i0, i1 = max(0, min(i0, n-1)), max(0, min(i1, n-1))
+		return
+	}
+	cols := visible.Dx()
+	xs0, xs1 := make([]int, cols), make([]int, cols)
+	xw := make([]float32, cols)
+	for c := range cols {
+		xs0[c], xs1[c], xw[c] = span(visible.Min.X+c-px, r.w)
+	}
+	r.parallel(visible.Dy(), 32, func(from, to int) {
+		for yy := visible.Min.Y + from; yy < visible.Min.Y+to; yy++ {
+			y0, y1, wy := span(yy-py, r.h)
+			row0, row1 := y0*r.w*4, y1*r.w*4
+			off := cnv.rgba.PixOffset(visible.Min.X, yy)
+			for c := 0; c < cols; c, off = c+1, off+4 {
+				wx := xw[c]
+				a, b := xs0[c]*4, xs1[c]*4
+				p00 := r.color[row0+a : row0+a+4 : row0+a+4]
+				p01 := r.color[row0+b : row0+b+4 : row0+b+4]
+				p10 := r.color[row1+a : row1+a+4 : row1+a+4]
+				p11 := r.color[row1+b : row1+b+4 : row1+b+4]
+				var s [4]float32
+				for i := range 4 {
+					top := float32(p00[i]) + (float32(p01[i])-float32(p00[i]))*wx
+					bottom := float32(p10[i]) + (float32(p11[i])-float32(p10[i]))*wx
+					s[i] = top + (bottom-top)*wy
+				}
+				if s[3] < 0.5 {
+					continue
+				}
+				d := cnv.rgba.Pix[off : off+4 : off+4]
+				if s[3] >= 254.5 {
+					d[0], d[1], d[2], d[3] = uint8(s[0]+0.5), uint8(s[1]+0.5), uint8(s[2]+0.5), 255
+					continue
+				}
+				// Premultiplied, as draw.Over
+				ia := 1 - s[3]/255
+				d[0] = uint8(min(255, s[0]+float32(d[0])*ia+0.5))
+				d[1] = uint8(min(255, s[1]+float32(d[1])*ia+0.5))
+				d[2] = uint8(min(255, s[2]+float32(d[2])*ia+0.5))
+				d[3] = uint8(min(255, s[3]+float32(d[3])*ia+0.5))
+			}
+		}
+	})
+}
+
 // drawLabels draws the texts of the scene at their points
 func (r *Renderer3D) drawLabels(cnv *Canvas, x, y, w, h int, scene *Scene3D, cam Camera) {
 	if len(scene.Labels) == 0 {
@@ -1146,6 +1216,10 @@ func (r *Renderer3D) drawLabels(cnv *Canvas, x, y, w, h int, scene *Scene3D, cam
 	}
 	cnv.SetHAlign(HAlignCenter)
 	cnv.SetVAlign(VAlignCenter)
+	// A label that would cover one drawn before it is lifted up, a line
+	// at a time, until it is clear, and joined to its point by a thin line:
+	// the names of parts close together stay readable at any zoom
+	var placed []labelBox
 	for _, l := range scene.Labels {
 		lx, ly, _, ok := cam.Project(l.P, float64(w), float64(h))
 		if !ok {
@@ -1155,7 +1229,54 @@ func (r *Renderer3D) drawLabels(cnv *Canvas, x, y, w, h int, scene *Scene3D, cam
 		if col == (color.RGBA{}) {
 			col = color.RGBA{128, 128, 128, 255}
 		}
+		tw, th := cnv.MeasureTextF(l.Text)
+		box := labelBox{lx - tw/2 - labelGap, ly - th/2, lx + tw/2 + labelGap, ly + th/2}
+		lift := liftLabel(box, placed)
+		placed = append(placed, box.up(lift))
+		cy := ly - lift
+		if lift > 0 {
+			lead := col
+			lead.A = col.A / 2
+			cnv.DrawLineF(lx, ly, lx, cy+th/2, lead)
+		}
 		cnv.SetColor(col)
-		cnv.DrawText(int(math.Round(lx))-150, int(math.Round(ly))-15, 300, 30, l.Text)
+		cnv.DrawText(int(math.Round(lx))-150, int(math.Round(cy))-15, 300, 30, l.Text)
 	}
+}
+
+// labelGap keeps labels side by side this far apart, pixels; labelMaxLift
+// is how many lines a label is lifted at most
+const (
+	labelGap     = 3
+	labelMaxLift = 12
+)
+
+// labelBox is the box a label takes on the screen
+type labelBox struct{ x0, y0, x1, y1 float64 }
+
+// liftLabel returns how far up, in whole lines, the box must go to cover
+// none of the placed ones (at most labelMaxLift lines)
+func liftLabel(b labelBox, placed []labelBox) float64 {
+	line := b.y1 - b.y0
+	lift := 0.0
+	for k := 0; k < labelMaxLift && b.over(placed, -lift); k++ {
+		lift += line
+	}
+	return lift
+}
+
+// up returns the box lifted by dy pixels
+func (b labelBox) up(dy float64) labelBox {
+	return labelBox{b.x0, b.y0 - dy, b.x1, b.y1 - dy}
+}
+
+// over tells the box moved by dy covers any of the others
+func (b labelBox) over(others []labelBox, dy float64) bool {
+	m := labelBox{b.x0, b.y0 + dy, b.x1, b.y1 + dy}
+	for _, o := range others {
+		if m.x0 < o.x1 && o.x0 < m.x1 && m.y0 < o.y1 && o.y0 < m.y1 {
+			return true
+		}
+	}
+	return false
 }

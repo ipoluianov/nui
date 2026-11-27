@@ -256,6 +256,49 @@ func TestRender3DDepth(t *testing.T) {
 	}
 }
 
+// A coarse frame (PixelSize 2) takes a quarter of the samples and is the
+// same picture: the colors inside the boxes as in the full frame, the
+// edges within a coarse sample of where they are
+func TestRender3DPixelSize(t *testing.T) {
+	s, cam := testScene3D()
+	full := NewRenderer3D()
+	full.Antialias = 1
+	want := full.RenderImage(101, 100, s, cam)
+	r := NewRenderer3D()
+	r.PixelSize = 2
+	img := r.RenderImage(101, 100, s, cam)
+	if got, all := r.Stats().Samples, full.Stats().Samples; got != 51*50 || all != 101*100 {
+		t.Errorf("%d samples, the full frame %d", got, all)
+	}
+	if img.Rect != want.Rect {
+		t.Fatalf("size %v, want %v", img.Rect, want.Rect)
+	}
+	differ := 0
+	for y := range 100 {
+		for x := range 101 {
+			a, b := img.RGBAAt(x, y), want.RGBAAt(x, y)
+			if a == b {
+				continue
+			}
+			differ++
+			// A pixel off the full frame is at an edge: the full frame has
+			// another color within two pixels
+			edge := false
+			for dy := -2; dy <= 2 && !edge; dy++ {
+				for dx := -2; dx <= 2 && !edge; dx++ {
+					edge = want.RGBAAt(x+dx, y+dy) != b
+				}
+			}
+			if !edge {
+				t.Fatalf("(%d, %d) is %v, the full frame %v away from any edge", x, y, a, b)
+			}
+		}
+	}
+	if differ > 101*100/10 {
+		t.Errorf("%d pixels differ", differ)
+	}
+}
+
 func TestRender3DOrthoAndInside(t *testing.T) {
 	s, cam := testScene3D()
 	cam.Orthographic = true
@@ -390,5 +433,21 @@ func BenchmarkRender3DFill(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		r.Render(cnv, 0, 0, 800, 700, s, cam)
+	}
+}
+
+// Labels on one point are stacked up, a line each; a label beside them
+// stays where it is
+func TestLiftLabel(t *testing.T) {
+	a := labelBox{0, 0, 50, 10}
+	var placed []labelBox
+	var lifts []float64
+	for _, b := range []labelBox{a, a, a, {60, 0, 100, 10}} {
+		lift := liftLabel(b, placed)
+		lifts = append(lifts, lift)
+		placed = append(placed, b.up(lift))
+	}
+	if lifts[0] != 0 || lifts[1] != 10 || lifts[2] != 20 || lifts[3] != 0 {
+		t.Errorf("lifts %v, want 0, 10, 20, 0", lifts)
 	}
 }

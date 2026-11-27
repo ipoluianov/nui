@@ -43,6 +43,7 @@ type View3D struct {
 	home                 view3DOrbit
 	homeSet              bool
 	antialias            int
+	pixelSize            int
 	interacting          bool
 	idle                 *Timer
 	autoRotate           float64
@@ -77,6 +78,7 @@ type view3DCacheKey struct {
 	cam        Camera
 	rect       image.Rectangle
 	aa         int
+	pixelSize  int
 	bg         color.RGBA
 	fontSize   float64
 	fontFamily string
@@ -153,6 +155,19 @@ func (v *View3D) SetAntialias(n int) {
 	v.antialias = n
 	v.Update()
 }
+
+// SetPixelSize draws the view coarser: a sample over n × n pixels,
+// stretched smoothly (see Renderer3D.PixelSize); 0 or 1 is every pixel.
+// For frames soon replaced, as those of an animation: 2 takes a quarter of
+// the work.
+func (v *View3D) SetPixelSize(n int) {
+	v.pixelSize = n
+	v.Update()
+}
+
+// PixelSize returns how many pixels a sample of the view covers along each
+// side (SetPixelSize)
+func (v *View3D) PixelSize() int { return v.pixelSize }
 
 // SetOrthographic switches to the parallel projection, or back to the
 // perspective
@@ -433,6 +448,7 @@ func (v *View3D) paint(cnv *Canvas) {
 		aa = 1
 	}
 	v.renderer.Antialias = aa
+	v.renderer.PixelSize = v.pixelSize
 	cam := v.Camera()
 	// The picture of the last paint is right while the camera, the size,
 	// the background, the font of the labels and the scene are the same,
@@ -440,7 +456,7 @@ func (v *View3D) paint(cnv *Canvas) {
 	// the view's own
 	px, py, pw, ph := cnv.pixelRect(0, 0, w, h)
 	rect := image.Rect(px, py, px+pw, py+ph)
-	key := view3DCacheKey{cam: cam, rect: rect, aa: aa, bg: bg, fontSize: cnv.state.fontSize, fontFamily: cnv.state.fontFamily}
+	key := view3DCacheKey{cam: cam, rect: rect, aa: aa, pixelSize: v.pixelSize, bg: bg, fontSize: cnv.state.fontSize, fontFamily: cnv.state.fontFamily}
 	sig, cacheable := scene.signature()
 	cacheable = cacheable && !rect.Empty() && !cnv.state.hasXf && cnv.rec == nil &&
 		rect.In(cnv.shapeClip().Intersect(cnv.rgba.Rect)) &&
