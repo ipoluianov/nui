@@ -697,12 +697,88 @@ func (l *TextLayout) IndexAt(x, y float64) int {
 	ln := &l.lines[li]
 	x -= ln.x
 	best, bestD := ln.start, math.Inf(1)
-	for r := ln.start; r <= ln.end; r++ {
-		if d := math.Abs(ln.caretX(r) - x); d < bestD {
-			best, bestD = r, d
+	for i, cx := range ln.caretXs() {
+		if d := math.Abs(cx - x); d < bestD {
+			best, bestD = ln.start+i, d
 		}
 	}
 	return l.offsets[best]
+}
+
+// caretXs returns caretX of each rune of the line, ln.start to ln.end, in
+// one pass over the clusters: caretX of every rune alone is quadratic in
+// the length of the line
+func (ln *layoutLine) caretXs() []float64 {
+	n := ln.end - ln.start + 1
+	if n <= 0 {
+		return nil
+	}
+	xs := make([]float64, n)
+	// in: the caret is within the rune's cluster; trail: the trailing edge
+	// of the cluster of the rune before (index i is the rune ln.start+i-1).
+	// The first cluster that has a rune wins, as in caretX.
+	in := make([]bool, n)
+	trail := make([]float64, n)
+	hasTrail := make([]bool, n)
+	for _, c := range ln.clusters {
+		for r := max(c.start, ln.start-1); r < c.start+c.count && r <= ln.end; r++ {
+			if i := r - ln.start; i >= 0 && !in[i] {
+				f := float64(r-c.start) / float64(c.count)
+				if c.rtl {
+					xs[i] = c.x1 - f*(c.x1-c.x0)
+				} else {
+					xs[i] = c.x0 + f*(c.x1-c.x0)
+				}
+				in[i] = true
+			}
+			if j := r - ln.start + 1; j < n && !hasTrail[j] {
+				if c.rtl {
+					trail[j] = c.x0
+				} else {
+					trail[j] = c.x1
+				}
+				hasTrail[j] = true
+			}
+		}
+	}
+	for i := range xs {
+		switch {
+		case in[i]:
+		case hasTrail[i]:
+			xs[i] = trail[i]
+		case ln.rtl:
+			xs[i] = 0
+		default:
+			xs[i] = ln.width
+		}
+	}
+	return xs
+}
+
+// caretXsAll returns the x of the caret before each rune of the text, and
+// after the last, as CaretRect gives them: one pass over the lines
+func (l *TextLayout) caretXsAll() []float64 {
+	l.layout()
+	out := make([]float64, len(l.runes)+1)
+	if len(l.lines) == 0 {
+		return out
+	}
+	li := 0
+	ln := &l.lines[0]
+	xs := ln.caretXs()
+	for r := range out {
+		for li < len(l.lines)-1 && r > l.lines[li].end {
+			li++
+			ln = &l.lines[li]
+			xs = ln.caretXs()
+		}
+		if i := r - ln.start; i >= 0 && i < len(xs) {
+			out[r] = ln.x + xs[i]
+		} else {
+			out[r] = ln.x + ln.caretX(r)
+		}
+	}
+	return out
 }
 
 // SelectionRects returns the rectangles that cover the text between the

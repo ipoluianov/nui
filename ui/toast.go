@@ -29,6 +29,9 @@ const (
 	toastPaddingX   = 14
 	toastPaddingY   = 10
 	toastStripe     = 4
+	// toastMaxLines: a longer text (an error with a log) is cut, with "..."
+	// on the last line, or its window would be millions of pixels tall
+	toastMaxLines = 10
 )
 
 // toast is a short message in the bottom-right corner of the form that
@@ -61,6 +64,10 @@ func (c *Form) ShowToastFor(text string, kind ToastKind, duration time.Duration)
 	}
 	t := &toast{kind: kind, expires: time.Now().Add(duration)}
 	t.lines = wrapTextLines(text, ThemeFontFamily(), ThemeFontSize(), toastMaxWidth-toastPaddingX*2-toastStripe)
+	if len(t.lines) > toastMaxLines {
+		t.lines = t.lines[:toastMaxLines]
+		t.lines[len(t.lines)-1] += "..."
+	}
 	textWidth := 0
 	for _, line := range t.lines {
 		w, _, err := MeasureText(ThemeFontFamily(), ThemeFontSize(), line)

@@ -2,7 +2,6 @@ package ui
 
 import (
 	"image"
-	"math"
 )
 
 // The clip by a shape: ClipPath keeps the pixels of the area it may change
@@ -48,8 +47,11 @@ func (c *Canvas) ClipPath(p *Path) {
 	ox, oy, s := float64(c.state.translateX), float64(c.state.translateY), c.scale
 	r := image.Rectangle{}
 	if ok {
-		r = image.Rect(int(math.Floor(minX*s+ox))-1, int(math.Floor(minY*s+oy))-1,
-			int(math.Ceil(maxX*s+ox))+1, int(math.Ceil(maxY*s+oy))+1)
+		// Huge and infinite bounds kept within range before they become
+		// ints, where they would wrap around
+		if b := boxPixels([4]float64{minX*s + ox, minY*s + oy, maxX*s + ox, maxY*s + oy}); !b.Empty() {
+			r = b.Inset(-1)
+		}
 	}
 	// The clip of the whole frame (see shapeClip): drawn within a part of
 	// it, the mask is set within the part, and the pixels outside are left

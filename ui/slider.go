@@ -91,7 +91,11 @@ func (c *Slider) setOrientation(vertical bool) {
 }
 
 // SetRange sets the minimum and the maximum; the value is kept in them.
+// A range with a NaN or an infinite end is ignored.
 func (c *Slider) SetRange(min, max float64) {
+	if !finiteValue(min) || !finiteValue(max) {
+		return
+	}
 	if max < min {
 		min, max = max, min
 	}
@@ -107,7 +111,11 @@ func (c *Slider) Max() float64       { return c.max }
 
 // SetStep makes the value a multiple of step from the minimum; 0 (the
 // default) allows any value, and the keys move by 1/100 of the range.
+// A NaN or infinite step is ignored.
 func (c *Slider) SetStep(step float64) {
+	if !finiteValue(step) {
+		return
+	}
 	c.step = math.Max(0, step)
 	c.value = c.snap(c.value)
 	c.form.Update()
@@ -120,17 +128,23 @@ func (c *Slider) Step() float64 {
 // SetPageStep sets how far PageUp/PageDown move; 0 (the default) is 1/10
 // of the range.
 func (c *Slider) SetPageStep(step float64) {
+	if !finiteValue(step) {
+		return
+	}
 	c.pageStep = math.Max(0, step)
 }
 
 // SetTickInterval draws a tick every interval along the track; 0 draws none.
 func (c *Slider) SetTickInterval(interval float64) {
+	if !finiteValue(interval) {
+		return
+	}
 	c.tickInterval = math.Max(0, interval)
 	c.form.Update()
 }
 
 // SetValue sets the value, kept in the range and on the step, without
-// calling SetOnValueChanged's function.
+// calling SetOnValueChanged's function. NaN is ignored.
 func (c *Slider) SetValue(value float64) {
 	v := c.snap(value)
 	changed := v != c.value
@@ -151,7 +165,11 @@ func (c *Slider) SetOnValueChanged(f func()) {
 	c.onValueChanged = f
 }
 
+// snap keeps v in the range and on the step; a NaN v keeps the value
 func (c *Slider) snap(v float64) float64 {
+	if math.IsNaN(v) {
+		return c.value
+	}
 	v = math.Max(c.min, math.Min(c.max, v))
 	if c.step > 0 {
 		v = c.min + math.Round((v-c.min)/c.step)*c.step
@@ -368,4 +386,10 @@ func abs(v int) int {
 		return -v
 	}
 	return v
+}
+
+// finiteValue tells whether v is neither NaN nor infinite: Go's min, max
+// and math.Max pass NaN through, so a clamp alone doesn't keep it out
+func finiteValue(v float64) bool {
+	return !math.IsNaN(v) && !math.IsInf(v, 0)
 }

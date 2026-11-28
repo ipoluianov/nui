@@ -72,8 +72,21 @@ func (r *evenOddRasterizer) LineTo(bx, by float32) {
 		if x1 < x0 {
 			x0, x1 = x1, x0
 		}
-		// What is left of the first pixel adds to it, as the sum along
-		// the row carries it on; what is past the last one is not seen
+		// The part of the line left of the first pixel adds all of its
+		// height to it, as the sum along the row carries it on; the part
+		// past the last one is not seen. Only the rest is split between
+		// the cells: clamping the ends would spread the whole height over
+		// the part within the row and give the wrong area.
+		if x0 < 0 && x1 > 0 {
+			left := d * (-x0 / (x1 - x0))
+			row[0] += left
+			d -= left
+			x0 = 0
+		}
+		if x0 < fw && x1 > fw {
+			d *= (fw - x0) / (x1 - x0)
+			x1 = fw
+		}
 		x0 = max(0, min(x0, fw))
 		x1 = max(0, min(x1, fw))
 		x0i := int(x0)

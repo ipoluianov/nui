@@ -343,8 +343,12 @@ func (c *TextBox) SetMultiline(multiline bool) {
 }
 
 // applyMultiline sets what the mode decides: a multiline box scrolls and
-// grows in both directions, a single-line one only in width
+// grows in both directions, a single-line one only in width and holds one
+// line (the lines of a box made single-line are joined)
 func (c *TextBox) applyMultiline() {
+	if !c.Multiline() && len(c.lines) > 1 {
+		c.SetText(strings.Join(c.lines, ""))
+	}
 	if c.Multiline() {
 		c.allowScrollX = true
 		c.allowScrollY = true
@@ -820,32 +824,20 @@ func (c *TextBox) moveCursorNearPoint(x, y int, modifiers KeyModifiers) {
 		charPos[i] = charPos[i] + c.lineX(lineNumber)
 	}
 
-	if len(charPos) == 1 {
-		c.moveCursor(0, lineNumber, modifiers)
-		return
-	}
+	c.moveCursor(nearestCaret(charPos, x), lineNumber, modifiers)
+}
 
-	if x < charPos[1]-(charPos[1]-charPos[0])/2 {
-		c.moveCursor(0, lineNumber, modifiers)
-	}
-
-	for pos := 1; pos < len(charPos)-1; pos++ {
-		left := charPos[pos] - (charPos[pos]-charPos[pos-1])/2
-		right := charPos[pos] + (charPos[pos+1]-charPos[pos])/2
-		if x >= left && x < right {
-			c.moveCursor(pos, lineNumber, modifiers)
-			break
+// nearestCaret returns the index of the caret position of charPos (the x of
+// each caret, left to right) nearest to x: each caret takes the points from
+// the middle between it and its left neighbor up to the middle between it
+// and its right neighbor, so every x belongs to one caret
+func nearestCaret(charPos []int, x int) int {
+	for i := 0; i+1 < len(charPos); i++ {
+		if 2*x < charPos[i]+charPos[i+1] {
+			return i
 		}
 	}
-
-	widthOfLastChar := 0
-	if len(charPos) > 1 {
-		widthOfLastChar = charPos[len(charPos)-1] - charPos[len(charPos)-2]
-	}
-
-	if x > charPos[len(charPos)-1]-widthOfLastChar/2 {
-		c.moveCursor(len(charPos)-1, lineNumber, modifiers)
-	}
+	return max(0, len(charPos)-1)
 }
 
 func (c *TextBox) MouseUp(button MouseButton, x int, y int, mods KeyModifiers) {
@@ -1100,6 +1092,11 @@ func (c *TextBox) modifyText(cmd textboxModifyCommand, modifiers KeyModifiers, d
 		}
 	case textboxModifyCommandSetText:
 		lines := splitLines(data.(string))
+		// A single-line box holds one line: the breaks are dropped, as
+		// typing and InsertText drop them
+		if !c.Multiline() && len(lines) > 1 {
+			lines = []string{strings.Join(lines, "")}
+		}
 		changed = !slices.Equal(lines, c.lines)
 		if changed {
 			c.lines = lines
@@ -1576,13 +1573,16 @@ func (c *TextBox) visualStep(right bool) (int, bool) {
 	if !needsShaping(line) {
 		return 0, false // as the logical order
 	}
-	at := c.caretX(c.cursorPosY, c.cursorPosX)
+	// The carets of the line at once: one at a time is quadratic
+	xs := textCaretXs(c.FontFamily(), c.FontSize(), line)
+	caret := func(i int) int { return xs[max(0, min(i, len(xs)-1))] }
+	at := caret(c.cursorPosX)
 	best, bestX := -1, 0
 	for _, i := range graphemeBounds(line) {
 		if i == c.cursorPosX {
 			continue
 		}
-		x := c.caretX(c.cursorPosY, i)
+		x := caret(i)
 		if (right && x > at && (best < 0 || x < bestX)) || (!right && x < at && (best < 0 || x > bestX)) {
 			best, bestX = i, x
 		}

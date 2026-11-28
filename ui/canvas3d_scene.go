@@ -340,7 +340,7 @@ func (s *Scene3D) Pick(ray Ray3) (hit Hit3D, ok bool) {
 		mesh := o.Mesh
 		for t := 0; t < mesh.TriangleCount(); t++ {
 			a, b, c := mesh.triangle(t)
-			if a >= len(mesh.Positions) || b >= len(mesh.Positions) || c >= len(mesh.Positions) {
+			if !indicesIn(len(mesh.Positions), a, b, c) {
 				continue
 			}
 			pa, pb, pc := mesh.Positions[a], mesh.Positions[b], mesh.Positions[c]

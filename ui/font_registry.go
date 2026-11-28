@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 	"log"
+	"math"
 	"strings"
 	"sync"
 
@@ -132,7 +133,27 @@ func withFace(family string, size float64, fn func(face font.Face)) error {
 	return nil
 }
 
+// maxFaceCache is how many faces faceCache keeps: text zoomed smoothly or
+// animated asks for a new size every frame, and a cache over this many is
+// emptied, as the glyph caches of fallbackFace are
+const maxFaceCache = 256
+
+// faceSize rounds the font size to 1/64 of a pixel, the precision of the
+// faces (fixed.Int26_6 at 72 DPI), so sizes that draw the same share a
+// face; false for a size that is NaN, infinite or below 0
+func faceSize(size float64) (float64, bool) {
+	if !(size >= 0) || math.IsInf(size, 1) {
+		return 0, false
+	}
+	return math.Round(size*64) / 64, true
+}
+
 func getFaceEntry(family string, style FontStyle, size float64) (*faceEntry, error) {
+	q, ok := faceSize(size)
+	if !ok {
+		return nil, fmt.Errorf("font size %v is not a finite number of 0 or more", size)
+	}
+	size = q
 	key := faceKey{faceName(family, style), size}
 
 	fontsMu.RLock()
@@ -186,6 +207,11 @@ func getFaceEntry(family string, style FontStyle, size float64) (*faceEntry, err
 		fb.synths = append(fb.synths, f.synth)
 	}
 	entry = &faceEntry{face: fb}
+	if len(faceCache) >= maxFaceCache {
+		// The faces taken from it before stay usable: each has a lock of
+		// its own, and is only dropped from here
+		faceCache = make(map[faceKey]*faceEntry)
+	}
 	faceCache[key] = entry
 	return entry, nil
 }

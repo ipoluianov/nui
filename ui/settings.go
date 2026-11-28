@@ -21,6 +21,7 @@ import (
 // Safe for concurrent use.
 type Settings struct {
 	mu     sync.Mutex
+	saveMu sync.Mutex // held through a whole Save
 	path   string
 	values map[string]json.RawMessage
 }
@@ -64,7 +65,16 @@ func (s *Settings) load(path string) error {
 	if err != nil {
 		return err
 	}
-	return json.Unmarshal(data, &s.values)
+	// Decoded aside: a file of "null" would set the map to nil (and every
+	// Set would panic), a broken one would leave it half filled
+	var values map[string]json.RawMessage
+	if err := json.Unmarshal(data, &values); err != nil {
+		return err
+	}
+	if values != nil {
+		s.values = values
+	}
+	return nil
 }
 
 // Get decodes the value of the key into v (a pointer); false if there is
@@ -128,20 +138,44 @@ func (s *Settings) Save() error {
 	if s.path == "" {
 		return errors.New("nui: the settings have no file")
 	}
+	// One save at a time, from the snapshot to the rename: the file ends
+	// with the last snapshot, not with whichever rename came last
+	s.saveMu.Lock()
+	defer s.saveMu.Unlock()
 	s.mu.Lock()
 	data, err := json.MarshalIndent(s.values, "", "  ")
 	s.mu.Unlock()
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
+	dir := filepath.Dir(s.path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	tmp := s.path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+	// A temporary file of its own, so another process saving the same
+	// settings doesn't write into it
+	f, err := os.CreateTemp(dir, filepath.Base(s.path)+".*.tmp")
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, s.path)
+	tmp := f.Name()
+	_, err = f.Write(data)
+	if err == nil {
+		err = f.Chmod(0o644)
+	}
+	if err == nil {
+		err = f.Sync()
+	}
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = os.Rename(tmp, s.path)
+	}
+	if err != nil {
+		os.Remove(tmp)
+	}
+	return err
 }
 
 // Path returns the file of the settings

@@ -504,16 +504,22 @@ func (c *Canvas) drawTextXf(x, y, width, height int, text string) {
 	// The resolution of the picture follows the stretch of the transform,
 	// so the text is as sharp as it can be
 	k := max(1, c.state.xf.meanScale()) * c.scale
-	pw, ph := int(math.Ceil(float64(width)*k)), int(math.Ceil(float64(height)*k))
-	if pw <= 0 || ph <= 0 {
+	if math.IsNaN(k) || math.IsInf(k, 0) {
+		return // a transform of no size
+	}
+	// The size compared in float64: the product of ints overflows at a
+	// large zoom and passes as small
+	fw, fh := math.Ceil(float64(width)*k), math.Ceil(float64(height)*k)
+	if !(fw >= 1 && fh >= 1) {
 		return
 	}
-	if pw*ph > 1<<20 {
+	if fw*fh > 1<<20 {
 		// Too large a picture: the outlines of the letters, sharp at any
 		// zoom
 		c.drawTextOutlines(x, y, width, height, text)
 		return
 	}
+	pw, ph := int(fw), int(fh)
 	img := image.NewRGBA(image.Rect(0, 0, pw, ph))
 	sub := NewCanvasScaled(img, k)
 	st := *c.state

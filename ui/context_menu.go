@@ -64,11 +64,23 @@ func (c *Form) ShowContextMenu(menu *ContextMenu, x int, y int) {
 	if menu == nil {
 		return
 	}
-	menu.attachToForm(menu, c)
+	c.attachPopup(menu)
 	menu.ShowMenu(x, y)
 	if active := menu.activeItem(); active == nil {
 		menu.activateFirst()
 	}
+}
+
+// attachPopup attaches the popup about to be shown to the form. One that had
+// no form (a menu built for this show, or one whose owner left the form) is
+// detached again when it closes, or every menu shown would stay in the
+// registry of the widgets, with its items linked to their actions, until the
+// form closes.
+func (c *Form) attachPopup(w Widgeter) {
+	if b := w.widgetBase(); b.form == nil {
+		b.detachOnPopupClose = true
+	}
+	w.attachToForm(w, c)
 }
 
 // isContextMenuKey tells the keys that open a context menu: the Menu key

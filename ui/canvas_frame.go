@@ -237,26 +237,38 @@ func (c *Canvas) fillPolygonPixels(pts [][2]float64, col color.Color) {
 	if len(pts) < 3 {
 		return
 	}
-	minX, minY := math.Inf(1), math.Inf(1)
-	maxX, maxY := math.Inf(-1), math.Inf(-1)
-	for _, p := range pts {
-		minX, minY = math.Min(minX, p[0]), math.Min(minY, p[1])
-		maxX, maxY = math.Max(maxX, p[0]), math.Max(maxY, p[1])
+	// The points as rasterizePolys keeps them: a NaN one leaves no shape,
+	// infinite and huge ones are moved within range
+	poly := make([]PointF, len(pts))
+	box := [4]float64{math.Inf(1), math.Inf(1), math.Inf(-1), math.Inf(-1)}
+	for i, p := range pts {
+		if math.IsNaN(p[0]) || math.IsNaN(p[1]) {
+			return
+		}
+		q := PointF{max(-maxRasterCoord, min(p[0], maxRasterCoord)), max(-maxRasterCoord, min(p[1], maxRasterCoord))}
+		poly[i] = q
+		box = [4]float64{math.Min(box[0], q.X), math.Min(box[1], q.Y), math.Max(box[2], q.X), math.Max(box[3], q.Y)}
 	}
 	// Rasterized in the clip of the whole frame, see shapeClip
-	b := image.Rect(int(math.Floor(minX)), int(math.Floor(minY)), int(math.Ceil(maxX)), int(math.Ceil(maxY))).
-		Intersect(c.shapeClip()).Intersect(c.rgba.Rect)
+	b := boxPixels(box).Intersect(c.shapeClip()).Intersect(c.rgba.Rect)
 	clip := b.Intersect(c.clipRect())
 	if clip.Empty() {
+		return
+	}
+	// Clipped to the rectangle with a margin, as in rasterizeRect: the
+	// rasterizer's fixed-point math overflows on points far out of it
+	var bufA, bufB []PointF
+	edges := [4]float64{-1, -1, float64(b.Dx()) + 1, float64(b.Dy()) + 1}
+	poly = clipPolygon(poly, float64(b.Min.X), float64(b.Min.Y), edges, &bufA, &bufB)
+	if len(poly) < 3 {
 		return
 	}
 	ras := rasterizers.Get().(*rasterizer)
 	defer rasterizers.Put(ras)
 	z := ras.reset(b.Dx(), b.Dy())
-	ox, oy := float64(b.Min.X), float64(b.Min.Y)
-	z.MoveTo(float32(pts[0][0]-ox), float32(pts[0][1]-oy))
-	for _, p := range pts[1:] {
-		z.LineTo(float32(p[0]-ox), float32(p[1]-oy))
+	z.MoveTo(float32(poly[0].X), float32(poly[0].Y))
+	for _, p := range poly[1:] {
+		z.LineTo(float32(p.X), float32(p.Y))
 	}
 	z.ClosePath()
 	c.fillRasterized(ras, b, clip, col)
@@ -338,8 +350,11 @@ func quarterTrig(steps int) [][2]float64 {
 // corners to pts, clockwise on the screen. The radius is kept within half
 // of the sides; the arcs are made of short lines.
 func roundedRectPoints(pts [][2]float64, x, y, w, h, radius float64) [][2]float64 {
-	radius = max(0, min(radius, w/2, h/2))
-	steps := min(4+int(radius)/2, 32)
+	radius = min(radius, w/2, h/2)
+	if !(radius > 0) { // NaN too: min and max let it through
+		radius = 0
+	}
+	steps := 4 + int(min(radius, 56))/2 // at most 32, an infinite radius too
 	corner := func(cx, cy, from float64) {
 		if radius == 0 {
 			pts = append(pts, [2]float64{cx, cy})

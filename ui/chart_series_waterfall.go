@@ -90,6 +90,11 @@ func (s *WaterfallSeries) bars() [][2]float64 {
 			res[i] = [2]float64{0, sum}
 			continue
 		}
+		// A change of Inf or NaN has no value: a flat bar, the total goes on
+		if !chartFinite(st.value) {
+			res[i] = [2]float64{sum, sum}
+			continue
+		}
 		res[i] = [2]float64{sum, sum + st.value}
 		sum += st.value
 	}
@@ -106,7 +111,7 @@ func (s *WaterfallSeries) Range(axis *ChartAxis, v *ChartViewport) (float64, flo
 	}
 	lo, hi := 0.0, 0.0
 	for _, b := range s.bars() {
-		lo, hi = math.Min(lo, math.Min(b[0], b[1])), math.Max(hi, math.Max(b[0], b[1]))
+		lo, hi = chartWiden(lo, hi, b[0], b[1])
 	}
 	return lo, hi, true
 }

@@ -624,7 +624,7 @@ func (g sweepGradient) ColorAt(x, y float64) color.RGBA {
 // blendColorImage puts the picture of a color glyph on dst, its origin at
 // the pixel (x, y), within the clip, at the opacity alpha 0..255
 func blendColorImage(dst *image.RGBA, clip image.Rectangle, ci *colorImage, x, y int, alpha uint32) {
-	if ci == nil || ci.img == nil {
+	if ci == nil || ci.img == nil || !textCoordOK(x, y) {
 		return
 	}
 	box := ci.img.Rect.Add(image.Pt(x+ci.x, y+ci.y))

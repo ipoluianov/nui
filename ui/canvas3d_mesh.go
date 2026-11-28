@@ -73,6 +73,13 @@ func (m *Mesh) triangle(i int) (int, int, int) {
 	return i * 3, i*3 + 1, i*3 + 2
 }
 
+// indicesIn tells whether the corners a, b, c are all among the n
+// positions: a negative or too large index (Indices is a public field)
+// makes the triangle skipped
+func indicesIn(n, a, b, c int) bool {
+	return uint(a) < uint(n) && uint(b) < uint(n) && uint(c) < uint(n)
+}
+
 // Bounds returns the box that holds the mesh
 func (m *Mesh) Bounds() (lo, hi Vec3) {
 	if m.boundsOK {
@@ -97,7 +104,7 @@ func (m *Mesh) ComputeNormals() {
 	m.Normals = make([]Vec3, len(m.Positions))
 	for t := 0; t < m.TriangleCount(); t++ {
 		a, b, c := m.triangle(t)
-		if a >= len(m.Positions) || b >= len(m.Positions) || c >= len(m.Positions) {
+		if !indicesIn(len(m.Positions), a, b, c) {
 			continue
 		}
 		n := m.Positions[b].Sub(m.Positions[a]).Cross(m.Positions[c].Sub(m.Positions[a]))
@@ -182,6 +189,9 @@ func (m *Mesh) Append(o *Mesh) {
 	}
 	for t := 0; t < o.TriangleCount(); t++ {
 		a, b, c := o.triangle(t)
+		if !indicesIn(len(o.Positions), a, b, c) {
+			continue
+		}
 		m.Indices = append(m.Indices, base+a, base+b, base+c)
 	}
 	m.Changed()
@@ -215,7 +225,7 @@ func (m *Mesh) wireEdges(all bool) []int {
 	for t := 0; t < m.TriangleCount(); t++ {
 		i := [3]int{}
 		i[0], i[1], i[2] = m.triangle(t)
-		if i[0] >= len(m.Positions) || i[1] >= len(m.Positions) || i[2] >= len(m.Positions) {
+		if !indicesIn(len(m.Positions), i[0], i[1], i[2]) {
 			continue
 		}
 		p0, p1, p2 := m.Positions[i[0]], m.Positions[i[1]], m.Positions[i[2]]
@@ -791,6 +801,9 @@ func (m *Mesh) WriteOBJ(w io.Writer) error {
 	}
 	for t := 0; t < m.TriangleCount(); t++ {
 		a, b, c := m.triangle(t)
+		if !indicesIn(len(m.Positions), a, b, c) {
+			continue
+		}
 		fmt.Fprintf(bw, "f %s %s %s\n", ref(a), ref(b), ref(c))
 	}
 	return bw.Flush()

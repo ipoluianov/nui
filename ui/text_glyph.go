@@ -79,13 +79,18 @@ type glyphMask struct {
 }
 
 var (
-	glyphMasksMu sync.Mutex
-	glyphMasks   = map[glyphMaskKey]*glyphMask{}
+	glyphMasksMu    sync.Mutex
+	glyphMasks      = map[glyphMaskKey]*glyphMask{}
+	glyphMasksBytes int // the pixels of the kept masks
 )
 
-// maxGlyphMasks is how many masks are kept: when there are more, they are
-// all made again as needed
-const maxGlyphMasks = 16384
+// maxGlyphMasks is how many masks are kept, and maxGlyphMaskBytes how many
+// bytes of their pixels: when there are more, they are all made again as
+// needed
+const (
+	maxGlyphMasks     = 16384
+	maxGlyphMaskBytes = 64 << 20
+)
 
 // glyphMaskFor returns the kept mask of the key, made by make the first
 // time
@@ -98,10 +103,15 @@ func glyphMaskFor(key glyphMaskKey, make func() *glyphMask) *glyphMask {
 	}
 	m = make()
 	glyphMasksMu.Lock()
-	if len(glyphMasks) >= maxGlyphMasks {
+	if len(glyphMasks) >= maxGlyphMasks || glyphMasksBytes+len(m.pix) > maxGlyphMaskBytes {
 		clear(glyphMasks)
+		glyphMasksBytes = 0
+	}
+	if old, ok := glyphMasks[key]; ok { // made meanwhile by another goroutine
+		glyphMasksBytes -= len(old.pix)
 	}
 	glyphMasks[key] = m
+	glyphMasksBytes += len(m.pix)
 	glyphMasksMu.Unlock()
 	return m
 }
@@ -302,6 +312,9 @@ func rasterGlyph(s *glyphShape, z *hintZones, hint bool, size, dx float64, itali
 // where the pixel is opaque, and by their mean where it is not: the
 // stripes of a screen are only under an opaque picture.
 func blendGlyphMask(dst *image.RGBA, clip image.Rectangle, m *glyphMask, x, y int, r, g, b, a uint32, lcd int) {
+	if !textCoordOK(x, y) {
+		return
+	}
 	box := image.Rect(x+m.x, y+m.y, x+m.x+m.w, y+m.y+m.h)
 	vis := box.Intersect(clip).Intersect(dst.Rect)
 	if vis.Empty() || a == 0 {
@@ -318,6 +331,17 @@ func blendGlyphMask(dst *image.RGBA, clip image.Rectangle, m *glyphMask, x, y in
 		}
 		blendLCDRow(px, m.pix[mi*3:(mi+w)*3], r, g, b, a, lcd)
 	}
+}
+
+// maxTextCoord bounds the pixel coordinates text is drawn at: a line or a
+// glyph farther from the origin of the picture is off any picture, and the
+// arithmetic of its boxes could overflow (int(NaN) is -2^63, a far point
+// converted to int is near ±2^63), so it is not drawn
+const maxTextCoord = 1 << 30
+
+// textCoordOK tells whether text may be drawn at the pixel (x, y)
+func textCoordOK(x, y int) bool {
+	return x >= -maxTextCoord && x <= maxTextCoord && y >= -maxTextCoord && y <= maxTextCoord
 }
 
 // mix8 is d*(255-k) + s*k, divided by 255 and rounded
@@ -423,6 +447,13 @@ func drawTextGlyphs(dst *image.RGBA, text string, col color.Color, family string
 	bold := max(1, int(math.Round(size/24)))
 	buf := sfntBuffers.Get().(*sfnt.Buffer)
 	defer sfntBuffers.Put(buf)
+	// Large glyphs are filled as outlines, within the clip, as DrawTextLayout
+	// fills them: the mask of a glyph is as large as the glyph, whatever
+	// part of it is seen, and kept
+	var outlines *Path
+	if size > maxMaskSize {
+		outlines = NewPath()
+	}
 	for _, gl := range glyphs {
 		gi, err := gl.font.GlyphIndex(buf, gl.r)
 		if err != nil {
@@ -432,7 +463,21 @@ func drawTextGlyphs(dst *image.RGBA, text string, col color.Color, family string
 		if gl.synth&FontBold != 0 {
 			bw = bold
 		}
+		if outlines != nil {
+			s := sfntShape(gl.font, gi)
+			ox, italic := float64(x+gl.x), gl.synth&FontItalic != 0
+			s.addTo(outlines, ox, float64(baseline), size, italic)
+			if bw > 0 {
+				s.addTo(outlines, ox+float64(bw), float64(baseline), size, italic)
+			}
+			continue
+		}
 		m := sfntGlyphMask(gl.font, gi, size, gl.synth, bw, lcd)
 		blendGlyphMask(dst, clip, m, x+gl.x, baseline, r, g, b, a, lcd)
+	}
+	if outlines != nil {
+		cnv := &Canvas{rgba: dst, scale: 1, lcd: lcd,
+			state: &canvasState{clipX: clip.Min.X, clipY: clip.Min.Y, clipW: clip.Dx(), clipH: clip.Dy()}}
+		cnv.FillPath(outlines, col)
 	}
 }

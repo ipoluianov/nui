@@ -155,11 +155,14 @@ func (s *SpanSeries) Range(axis *ChartAxis, v *ChartViewport) (float64, float64,
 		cs := s.pane.rowAxis()
 		return -0.5, float64(len(cs.categories)) - 0.5, true
 	}
+	// A span without finite bounds is not drawn, so it is not fitted
 	lo, hi := math.Inf(1), math.Inf(-1)
 	for _, sp := range s.spans {
-		lo, hi = math.Min(lo, sp.Start), math.Max(hi, sp.End)
+		if chartFinite(sp.Start) && chartFinite(sp.End) {
+			lo, hi = math.Min(lo, sp.Start), math.Max(hi, sp.End)
+		}
 	}
-	return lo, hi, true
+	return lo, hi, lo <= hi
 }
 
 // chartXMargin: the first and the last spans, the milestones, are not at
@@ -183,7 +186,10 @@ func (s *SpanSeries) Draw(cnv *Canvas, v *ChartViewport) {
 	byID := map[string]spanRect{}
 	for i, sp := range s.spans {
 		row := cs.Index(sp.Row)
-		if row < 0 {
+		// A span without finite bounds is not drawn: the test of
+		// visibility below is false for NaN, and its label would be put at
+		// a NaN position
+		if row < 0 || !chartFinite(sp.Start) || !chartFinite(sp.End) {
 			continue
 		}
 		col := s.spanColor(sp, row, v.Theme)

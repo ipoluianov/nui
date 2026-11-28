@@ -193,6 +193,9 @@ func (c *ComboBox) SetOnSelectedIndexChanged(f func()) {
 
 // selectByUser selects the item the user picked
 func (c *ComboBox) selectByUser(index int) {
+	if index < 0 || index >= len(c.items) {
+		return
+	}
 	changed := index != c.selectedIndex
 	c.SetSelectedIndex(index)
 	if changed && c.onSelectedIndexChanged != nil {
@@ -259,8 +262,12 @@ func (c *ComboBox) OpenPopup() {
 	// So the popup can highlight whichever item is currently selected.
 	popup.selectedIndex = c.selectedIndex
 	for _, item := range c.items {
-		popup.AddItem(item.text, func(index int) {
-			c.selectByUser(index)
+		popup.AddItem(item.text, func(int) {
+			// The items may have changed while the popup was open: pick the
+			// item shown, wherever it is now, and nothing if it is gone.
+			if index := slices.Index(c.items, item); index >= 0 {
+				c.selectByUser(index)
+			}
 			c.form.Update()
 		})
 	}

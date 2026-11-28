@@ -49,7 +49,7 @@ func (c *Form) RememberState(settings *Settings, key string) {
 	if settings.Get(key, &state) {
 		c.SetState(state)
 	}
-	c.onClosing(func() {
+	c.onEveryClose(func() {
 		settings.Set(key, c.State())
 		settings.Save()
 	})

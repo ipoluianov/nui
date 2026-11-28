@@ -602,7 +602,7 @@ func (r *Renderer3D) assembleMesh(m *Mesh, mi, back int32, mat Material, translu
 tris:
 	for t := 0; t < m.TriangleCount(); t++ {
 		ia, ib, ic := m.triangle(t)
-		if ia >= n || ib >= n || ic >= n {
+		if !indicesIn(n, ia, ib, ic) {
 			continue
 		}
 		a, b, c := &r.clipV[ia], &r.clipV[ib], &r.clipV[ic]
@@ -1222,7 +1222,7 @@ func (r *Renderer3D) drawLabels(cnv *Canvas, x, y, w, h int, scene *Scene3D, cam
 	var placed []labelBox
 	for _, l := range scene.Labels {
 		lx, ly, _, ok := cam.Project(l.P, float64(w), float64(h))
-		if !ok {
+		if !ok || !labelInReach(lx, float64(w)) || !labelInReach(ly, float64(h)) {
 			continue
 		}
 		col := l.Color
@@ -1242,6 +1242,17 @@ func (r *Renderer3D) drawLabels(cnv *Canvas, x, y, w, h int, scene *Scene3D, cam
 		cnv.SetColor(col)
 		cnv.DrawText(int(math.Round(lx))-150, int(math.Round(cy))-15, 300, 30, l.Text)
 	}
+}
+
+// labelFar is how far beyond the view, pixels, a label's point may be and
+// the label still be drawn: one farther away can't be seen, and a point at
+// NaN, Inf or 1e300 would overflow the int coordinates of DrawText
+const labelFar = 1 << 16
+
+// labelInReach tells whether the coordinate of a label's point is finite
+// and near the view of the size
+func labelInReach(v, size float64) bool {
+	return v >= -labelFar && v <= size+labelFar
 }
 
 // labelGap keeps labels side by side this far apart, pixels; labelMaxLift

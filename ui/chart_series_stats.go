@@ -107,33 +107,41 @@ func (s *HistogramSeries) compute() {
 	switch {
 	case width > 0:
 	case s.bins > 0:
-		width = (hi - lo) / float64(s.bins)
+		width = histSteps(lo, hi, float64(s.bins))
 	default:
 		// Freedman–Diaconis: 2 IQR / cbrt(n), at least a bin per 4 values
-		iqr := quantileSorted(vals, 0.75) - quantileSorted(vals, 0.25)
+		iqr := histSteps(quantileSorted(vals, 0.25), quantileSorted(vals, 0.75), 1)
 		width = 2 * iqr / math.Cbrt(float64(len(vals)))
-		if !(width > 0) {
-			width = (hi - lo) / math.Max(1, math.Ceil(math.Sqrt(float64(len(vals)))))
+		if !(width > 0) || math.IsInf(width, 0) {
+			width = histSteps(lo, hi, math.Max(1, math.Ceil(math.Sqrt(float64(len(vals))))))
 		}
 	}
-	if !(width > 0) {
+	if !(width > 0) || math.IsInf(width, 0) {
 		width = 1
 	}
-	// Round edges: a nice step close to the width
+	// Round edges: a nice step close to the width (one past the largest
+	// float would round to Inf)
 	if s.width == 0 {
-		width = niceStepAtLeast(width * 0.7)
+		width = math.Min(niceStepAtLeast(width*0.7), math.MaxFloat64)
+	}
+	// At most histMaxBins bins: a wider bin rather than the values past
+	// the last one all counted in it
+	if histSteps(math.Floor(lo/width)*width, hi, width) >= histMaxBins {
+		width = niceStepAtLeast(histSteps(lo, hi, histMaxBins-2))
 	}
 	start := math.Floor(lo/width) * width
-	n := int(math.Floor((hi-start)/width)) + 1
-	n = max(1, min(n, 10000))
+	n := int(math.Floor(histSteps(start, hi, width))) + 1
+	n = max(1, min(n, histMaxBins))
 	s.edges = make([]float64, n+1)
 	for i := range s.edges {
-		s.edges[i] = start + float64(i)*width
+		s.edges[i] = math.Min(start+float64(i)*width, math.MaxFloat64)
 	}
 	s.counts = make([]float64, n)
 	for _, v := range vals {
-		i := min(int((v-start)/width), n-1)
-		s.counts[i]++
+		// The index is clamped as a float: int() of a float past the int
+		// range is undefined
+		f := math.Floor(histSteps(start, v, width))
+		s.counts[int(math.Max(0, math.Min(f, float64(n-1))))]++
 	}
 	switch s.mode {
 	case ChartHistogramDensity:
@@ -145,6 +153,18 @@ func (s *HistogramSeries) compute() {
 			s.counts[i] += s.counts[i-1]
 		}
 	}
+}
+
+// histMaxBins is the most bins a histogram has
+const histMaxBins = 10000
+
+// histSteps returns (b-a)/w; when b-a overflows (values near the largest
+// float of both signs) it is computed in halves
+func histSteps(a, b, w float64) float64 {
+	if d := b - a; !math.IsInf(d, 0) {
+		return d / w
+	}
+	return (b/2 - a/2) / (w / 2)
 }
 
 // quantileSorted returns the quantile q of the sorted values, interpolated
@@ -629,7 +649,8 @@ func (s *BandSeries) Range(axis *ChartAxis, v *ChartViewport) (float64, float64,
 	lo, hi := math.Inf(1), math.Inf(-1)
 	xmin, xmax := v.XRange()
 	for _, b := range s.samples {
-		if b.X >= xmin && b.X <= xmax {
+		// A sample with an Inf or NaN is not drawn, so it is not fitted
+		if b.X >= xmin && b.X <= xmax && chartFinite(b.Y) && chartFinite(b.Low) && chartFinite(b.High) {
 			lo, hi = math.Min(lo, math.Min(b.Low, b.Y)), math.Max(hi, math.Max(b.High, b.Y))
 		}
 	}

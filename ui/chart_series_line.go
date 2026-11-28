@@ -285,14 +285,17 @@ func (s *LineSeries) Range(axis *ChartAxis, v *ChartViewport) (float64, float64,
 		if !p.HasValue() || p.X < xmin || p.X > xmax {
 			continue
 		}
-		l, h := s.stacked(i, p.Low), s.stacked(i, p.High)
-		lo, hi = math.Min(lo, math.Min(l, h)), math.Max(hi, math.Max(l, h))
+		// A sample with an Inf or NaN is not drawn, so it is not fitted
+		if !s.drawable(i) {
+			continue
+		}
+		lo, hi = chartWiden(lo, hi, s.stacked(i, p.Low), s.stacked(i, p.High))
 		if s.fill || s.bases != nil {
 			fb := s.fillBase
 			if s.bases != nil {
 				fb = s.bases[i]
 			}
-			lo, hi = math.Min(lo, fb), math.Max(hi, fb)
+			lo, hi = chartWiden(lo, hi, fb)
 		}
 	}
 	return lo, hi, lo <= hi

@@ -346,9 +346,19 @@ func (c *Canvas) svgFont() string {
 	if strings.Contains(strings.ToLower(fam), "mono") {
 		family = "monospace"
 	} else if fam != "" && fam != FontFamilySans {
-		family = `'` + strings.ReplaceAll(fam, `'`, ``) + `', sans-serif`
+		// The name in a CSS string: what would end it (a quote, a
+		// backslash, a line break) is dropped
+		name := strings.Map(func(r rune) rune {
+			if r == '\'' || r == '\\' || r < 0x20 || r == 0x7f {
+				return -1
+			}
+			return r
+		}, fam)
+		family = `'` + name + `', sans-serif`
 	}
-	s := fmt.Sprintf(`font-family="%s" font-size="%s"`, family, svgNum(c.state.fontSize))
+	// The family comes from the application: escaped for the attribute,
+	// or a quote in it would end the attribute and start others
+	s := fmt.Sprintf(`font-family="%s" font-size="%s"`, svgEscape(family), svgNum(c.state.fontSize))
 	if strings.Contains(style, "bold") {
 		s += ` font-weight="bold"`
 	}

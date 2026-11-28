@@ -4,6 +4,7 @@ package platforms
 
 import (
 	"net/url"
+	"os"
 	"strings"
 	"unsafe"
 )
@@ -216,10 +217,21 @@ func parseURIList(list string) []string {
 			continue
 		}
 		u, err := url.Parse(line)
-		if err != nil || u.Scheme != "file" || u.Path == "" {
+		if err != nil || u.Scheme != "file" || u.Path == "" || !isLocalHost(u.Host) {
 			continue
 		}
 		files = append(files, u.Path)
 	}
 	return files
+}
+
+// isLocalHost reports whether the host of a file URI is this machine: none,
+// "localhost" or its name. A file of another machine (RFC 8089) is not the
+// local file of the same path.
+func isLocalHost(host string) bool {
+	if host == "" || strings.EqualFold(host, "localhost") {
+		return true
+	}
+	name, err := os.Hostname()
+	return err == nil && strings.EqualFold(host, name)
 }

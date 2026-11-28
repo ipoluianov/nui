@@ -48,6 +48,7 @@ func NewToolButton(img image.Image, tooltip string, onClick func()) *ToolButton 
 	c.SetImage(img)
 	c.SetButtonSize(ToolButtonDefaultSize, ToolButtonDefaultSize)
 	c.SetTooltip(tooltip)
+	c.SetOnPaint(c.drawBox)
 	c.SetOnPostPaint(c.drawBottomEdge)
 	c.SetOnButtonClick(func(btn *ButtonImage) {
 		if c.Enabled() && c.onClick != nil {
@@ -75,8 +76,11 @@ func (c *ToolButton) SetImage(img image.Image) {
 	c.showImage()
 }
 
+// SetEnabled enables or disables the button. Its own flag is kept also
+// under a disabled parent (Enabled() is false there either way), so the
+// button stays as set when the parent is enabled again.
 func (c *ToolButton) SetEnabled(enabled bool) {
-	if c.Enabled() == enabled {
+	if c.GetPropBool("enabled", true) == enabled {
 		return
 	}
 	c.ButtonImage.SetEnabled(enabled)
@@ -84,11 +88,27 @@ func (c *ToolButton) SetEnabled(enabled bool) {
 }
 
 func (c *ToolButton) showImage() {
+	c.ButtonImage.SetImage(c.currentImage())
+}
+
+// currentImage is the image for the state now: the gray one while the
+// button, or a parent of it, is disabled
+func (c *ToolButton) currentImage() image.Image {
 	if c.Enabled() {
-		c.ButtonImage.SetImage(c.img)
-	} else {
-		c.ButtonImage.SetImage(c.imgDisabled)
+		return c.img
 	}
+	return c.imgDisabled
+}
+
+// syncImage picks the image while painting, without asking for a repaint:
+// a parent enabled or disabled doesn't tell the button
+func (c *ToolButton) syncImage() {
+	c.ButtonImage.img = c.currentImage()
+}
+
+func (c *ToolButton) drawBox(cnv *Canvas) {
+	c.syncImage()
+	c.ButtonImage.draw(cnv)
 }
 
 func (c *ToolButton) IsChecked() bool {
@@ -121,7 +141,7 @@ func (c *ToolButton) SetFlat(flat bool) {
 	if flat {
 		c.SetOnPaint(c.drawFlat)
 	} else {
-		c.SetOnPaint(c.draw)
+		c.SetOnPaint(c.drawBox)
 	}
 	c.form.Update()
 }
@@ -131,6 +151,7 @@ func (c *ToolButton) IsFlat() bool {
 }
 
 func (c *ToolButton) drawFlat(cnv *Canvas) {
+	c.syncImage()
 	backColor := colorToRGBA(c.BackgroundColor())
 	textColor := colorToRGBA(c.ForegroundColor())
 	var fill color.Color

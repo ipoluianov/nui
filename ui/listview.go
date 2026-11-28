@@ -115,6 +115,10 @@ func (c *ListView) Refresh() {
 		c.current = n - 1
 		changed = true
 	}
+	// The Shift anchor past the end would select rows that are gone
+	if c.anchor >= n {
+		c.anchor = n - 1
+	}
 	c.updateInnerSize()
 	c.form.Update()
 	if changed {
@@ -260,6 +264,8 @@ func (c *ListView) selectRow(row int, mods KeyModifiers) {
 	extend := c.multiselect && mods.Shift && c.anchor >= 0
 	switch {
 	case extend:
+		// The model may have shrunk without a Refresh
+		c.anchor = min(c.anchor, n-1)
 		clear(c.selected)
 		for r := min(c.anchor, row); r <= max(c.anchor, row); r++ {
 			c.selected[r] = true

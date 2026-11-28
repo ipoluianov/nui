@@ -33,9 +33,13 @@ type Form struct {
 	// textScale is the scale of the screen the form is laid out for (see
 	// useTextScale); 0 before its window is created
 	textScale float64
-	// closing runs before the window closes (see onClosing)
+	// closing runs before the window closes (see onClosing), once;
+	// closingKeep before every close (see onEveryClose): the form may be
+	// shown again. closingRan: the window shown now ran them already
 	closing     map[int]func()
+	closingKeep map[int]func()
 	closingNext int
+	closingRan  bool
 
 	width  int
 	height int
@@ -385,7 +389,7 @@ func newWidgetId() string {
 func (c *Form) OpenPopup(w Widgeter) {
 	// A new widget isn't attached to any form yet, and without a form its
 	// children weren't laid out when its size was set
-	w.attachToForm(w, c)
+	c.attachPopup(w)
 	w.updateLayout(w.Width(), w.Height(), w.Width(), w.Height())
 	c.topWidget.AppendPopupWidget(w)
 	c.Update()
@@ -695,6 +699,7 @@ func (c *Form) layoutMenuBar() {
 
 func (c *Form) createWindow(maximized bool) {
 	c.reopen()
+	c.closingRan = false // the new window saves its state at its close
 	// No explicit position and no parent to center on (ShowModal already
 	// resolves posX/posY via centerOnForm before this runs) - center on the
 	// screen instead of leaving it to the OS/window manager's default spot.
@@ -947,10 +952,21 @@ func (c *Form) processWindowClose() bool {
 	return true
 }
 
-// runClosing runs the functions to run before the window closes, once
+// runClosing runs the functions to run before the window closes: the
+// one-shot ones, and the ones of every close once for the window shown
 func (c *Form) runClosing() {
 	closing := c.closing
 	c.closing = nil
+	var keep []func()
+	if !c.closingRan {
+		c.closingRan = true
+		for _, id := range sortedKeys(c.closingKeep) {
+			keep = append(keep, c.closingKeep[id])
+		}
+	}
+	for _, f := range keep {
+		f()
+	}
 	for _, f := range closing {
 		f()
 	}
@@ -1402,6 +1418,13 @@ func (c *Form) forgetWidgets(w Widgeter) {
 	if isRemoved(c.mouseLeftButtonPressedWidget) {
 		c.mouseLeftButtonPressedWidget = nil
 	}
+	// Enter and Esc no longer push the buttons of a removed dialog box
+	if c.acceptButton != nil && removed[c.acceptButton.Id()] {
+		c.acceptButton = nil
+	}
+	if c.cancelButton != nil && removed[c.cancelButton.Id()] {
+		c.cancelButton = nil
+	}
 }
 
 func (c *Form) FocusedWidget() Widgeter {
@@ -1831,4 +1854,16 @@ func (c *Form) onClosing(f func()) (remove func()) {
 	c.closingNext++
 	c.closing[id] = f
 	return func() { delete(c.closing, id) }
+}
+
+// onEveryClose runs f before the window closes, every time: after a close
+// and a new Show too (RememberState). The function returned removes it
+func (c *Form) onEveryClose(f func()) (remove func()) {
+	if c.closingKeep == nil {
+		c.closingKeep = map[int]func(){}
+	}
+	id := c.closingNext
+	c.closingNext++
+	c.closingKeep[id] = f
+	return func() { delete(c.closingKeep, id) }
 }

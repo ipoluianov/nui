@@ -132,6 +132,13 @@ func (c *Form) tooltipShowPopup() bool {
 
 	cursorX, cursorY := c.wnd.ClientToScreen(c.tooltip.x, c.tooltip.y)
 	areaX, areaY, areaW, areaH := c.wnd.ScreenWorkArea(cursorX, cursorY)
+	// A tooltip of a huge text is no larger than the screen
+	if areaW > 0 {
+		w = min(w, areaW)
+	}
+	if areaH > 0 {
+		h = min(h, areaH)
+	}
 
 	x := cursorX + 12
 	y := cursorY + 20

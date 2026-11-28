@@ -346,6 +346,12 @@ func (d *fileDialog) activate(row int) {
 		d.openDir(filepath.Join(d.dir, e.Name()))
 		return
 	}
+	if d.name == nil {
+		// A folder dialog lists only folders: this row stopped being one
+		// (a link whose target went away), so the list is out of date
+		d.openDir(d.dir)
+		return
+	}
 	d.name.SetText(e.Name())
 	d.accept()
 }

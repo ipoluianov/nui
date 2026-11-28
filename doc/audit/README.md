@@ -58,7 +58,33 @@ Notes on the fixes:
 - PRS-3: `DateOnly`, `Calendar.Date` and `DatePicker.Date` return midnight as before; on a day whose midnight is skipped (Chile in September) they return the first instant of the day (01:00). The audit reproducers `TestAuditCalendarDST*` copy the old draw loop into the test, so they still "fail"; the library is fixed.
 - PLT-1: images on the clipboard are limited to 32768 px a side and 64 Mpx (`platforms.ErrClipboardImageTooLarge`).
 - TXT-1: in a multi-line `TextLayout` the paragraph separators break lines; in one-line text (Label, TextBox, DrawText) they are drawn as nothing.
-- Still open from the CHART-5 area: CHART-6 (the y autoscale with Inf/NaN).
+
+2026-11-28, later: the medium findings are fixed too (marked ✅), with root cause 3 (a guard in `drawText`/`blendGlyphMask`, `textCoordOK`). VIEW-10 is fixed in part (◐). The tests are in one file per area:
+
+| Findings | Tests |
+|---|---|
+| TXT-5..8, TXT-12, root cause 3 | ui/text_medium_test.go |
+| VIEW-3..10 | ui/views_medium_test.go |
+| CNV-4..9, CNV-11 | ui/canvas_medium_test.go |
+| CHART-4, 6..10 | ui/chart_medium_test.go |
+| CORE-3, 6, 8, 9, 11, 13, 14 | ui/regression/core_medium_test.go, ui/core_medium_test.go (toast, tooltip) |
+| PRS-4..7 | ui/parsing_medium_test.go, ui/regression/parsing_medium_test.go (PRS-5) |
+| PLT-3, PLT-4, PLT-6 | internal/platforms/clipboard_incr_linux_test.go (X11, opt-in `NUI_TEST_X11=1`), internal/platforms/dnd_uri_linux_test.go |
+| MISC-2..6, MISC-8, PLT-7 | ui/misc_medium_test.go |
+
+Notes on the medium fixes, the behavior an application can notice:
+- VIEW-10, still open: Table `SelectAll` and range selection in cell mode, and ListView `SelectAll`, store one map entry per cell or row (1M×5 takes 1.6 s). A fix needs selections stored as ranges.
+- VIEW-6: widgets added with `AddWidgetOnTable` are not hidden when their cell is removed (they belong to the application).
+- VIEW-5: a Table shrink that moves the current cell emits `OnSelectionChanged`; after a table is emptied, the first row becomes current.
+- TXT-5: `DrawText` above 160 device px draws glyph outlines clipped to the destination (no whole-glyph masks); the system text engine is used only up to 1024 px; sizes above 65536 px, NaN or ≤ 0 are not drawn. Text at a coordinate beyond ±2^30 is not drawn.
+- TXT-8: a single-line TextBox drops the line breaks of `SetText`; `SetMultiline(false)` joins the lines.
+- CHART-6: the y autoscale ignores non-finite samples; a NaN waterfall step is drawn flat.
+- CHART-7: interactive zoom stops at a span of about 4e-12 × |value|. CHART-4: data that would need more than 10000 bins gets wider bins.
+- CORE-8: a menu given to `ShowContextMenu` or a popup given to `OpenPopup` that had no form leaves the form again at its close. CORE-14: a toast is cut at 10 lines.
+- PRS-4: the single-instance wire format changed (`arg <quoted>` lines, then `show`); an older build's second start is ignored. Malformed messages are dropped.
+- PLT-3/PLT-4: the X11 clipboard serves large data through INCR; a paste from an INCR owner fails after 10 s or 256 MB. PLT-6: drag-out sends absolute paths; a drop ignores `file://` URIs of another host.
+- MISC-3: face sizes are rounded to 1/64 px, the face cache is reset at 256 entries; NaN, Inf and negative font sizes return an error from measuring.
+- Not in the medium list, seen while fixing: PLT-5 (Latin-1 `STRING` via INCR not converted, in `convertClipboard`); `drawWideLine` computes a negative step count for a NaN width (harmless).
 
 ## Root causes shared by several findings
 
@@ -107,54 +133,54 @@ Severity: critical, high, medium, low, as the area's file gives it. The suggeste
 
 | ID | Where | What |
 |---|---|---|
-| TXT-5 | ui/text_glyph.go:198-268 | `DrawText` at a large font size makes whole-glyph masks: hundreds of MB, then a fatal OOM; 1e9 panics |
-| TXT-6 | ui/numbox.go:842-848, 250 | NumBox: stepping a large value gives +Inf; `SetValue(+Inf)` is accepted |
-| TXT-7 | ui/textbox.go:815-842 | TextBox: a click on certain pixels (between characters of odd width) is ignored |
-| TXT-8 | ui/textbox.go:1095 | A single-line TextBox keeps the line breaks of `SetText`: hidden lines the user can edit |
-| TXT-12 | ui/canvas_text_layout.go:650-655, ui/textbox.go:1564-1585 | `TextLayout.IndexAt` is quadratic in the line length: a click on a long shaped line freezes |
-| VIEW-3 | ui/treeview.go:1660-1676, 994 | Handlers re-entered during `TreeNode.Remove`: slice panic, or a removed node becomes current |
-| VIEW-4 | ui/listview.go:105, 260 | ListView: the Shift anchor is not clamped when the model shrinks; rows past the end get selected |
-| VIEW-5 | ui/table.go:583, 2456-2475, 1426, 1485 | Table: the current cell is not clamped when rows or columns shrink; no signal; navigation gets stuck |
-| VIEW-6 | ui/table.go:452, 522, 2456 | Table: the cell editor stays open over the header after its row is removed (low-medium) |
-| VIEW-7 | ui/table.go:822, 872, 985, 1576, 2408 | Table: reads create cell objects for arbitrary cells, an unbounded leak (low-medium) |
-| VIEW-8 | ui/combobox.go:195, 454, 586 | ComboBox: a pick from a popup opened before the items changed reports an index that does not exist |
-| VIEW-9 | ui/propertygrid.go:520-525, 573 | PropertyGrid: a float32 field gets ±Inf from the editor (low-medium) |
-| VIEW-10 | ui/table.go:2003, 2073, 483, 1052, 1872; ui/treeview.go:994 | Quadratic cost: many columns, RemoveChildren with a large selection, SelectAll on a big model, an unclamped header span |
-| CNV-4 | ui/canvas_effects.go:140-185, ui/canvas_frame.go:340 | `DrawShadow` panics on NaN/Inf/huge blur, NaN radius, non-finite position (medium/high) |
-| CNV-5 | ui/canvas_effects.go:224-266 | `Canvas.Blur` hangs on a large radius (O(radius) per row) and its uint32 sum overflows |
-| CNV-6 | ui/canvas_path_fill.go:44-106 | Even-odd fill: wrong coverage in the first column of a rasterized rectangle (up to 2x) |
-| CNV-7 | ui/canvas_frame.go:236-261 | `FillTriangle`, `DrawLine` (width > 1) panic at coordinates >= 2^25 |
-| CNV-8 | ui/canvas_transform.go:500-513 | `DrawText` under a large zoom panics in `image.NewRGBA` (`pw*ph` overflows) |
-| CNV-9 | ui/canvas_clip.go:47-53 | `ClipPath` with very large coordinates clips everything away |
-| CNV-11 | ui/canvas_svg.go:340-358 | SVG recorder: the font family is not escaped, so attributes can be injected into the SVG (security) |
-| CHART-4 | ui/chart_series_stats.go:127-137 | Histogram: a far value panics (bin index overflow); values past bin 10000 pile into the last bin |
-| CHART-6 | chart_series_line.go:282-298, chart_series_candle.go:83-90, chart_series_stats.go:631, chart_series_spans.go:158 | One NaN or Inf sample breaks the y autoscale: the axis shows 0..1, the data is off-screen |
-| CHART-7 | ui/chart_scale.go:133-136 | Zooming in far enough makes the view jump out (to about 10 years on a time axis) |
-| CHART-8 | ui/timechart_source.go:100-131 | TimeChart: dates before 1678 or after 2262 are bucketed at wrong times (UnixNano overflow) |
-| CHART-9 | ui/chart_series_spans.go:219-223, ui/chart_view.go:932-950 | A span with a NaN end and a label panics in the text drawing |
-| CHART-10 | ui/chart_series_pie.go:286-300 | Pie: a large start angle makes hover hang (low-medium) |
-| PRS-4 | ui/instance.go:161, 92-104 | Single instance: arguments with a newline or over 64 KB are lost or truncated; "show" can be injected |
-| PRS-5 | ui/filedialog_builtin.go:349 | Built-in folder dialog: nil dereference when a listed symlink stops being a folder |
-| PRS-6 | ui/settings.go:67, 79 | A settings file holding `null` makes every later `Set` panic |
-| PRS-7 | ui/settings.go:140-146 | `Settings.Save`, documented as safe for concurrent use, fails when called concurrently (low-medium) |
-| CORE-3 | ui/widget.go:2675, 2920, 2491 | Grid layout hangs with a huge row or column span |
+| ~~TXT-5~~ ✅ | ui/text_glyph.go:198-268 | `DrawText` at a large font size makes whole-glyph masks: hundreds of MB, then a fatal OOM; 1e9 panics |
+| ~~TXT-6~~ ✅ | ui/numbox.go:842-848, 250 | NumBox: stepping a large value gives +Inf; `SetValue(+Inf)` is accepted |
+| ~~TXT-7~~ ✅ | ui/textbox.go:815-842 | TextBox: a click on certain pixels (between characters of odd width) is ignored |
+| ~~TXT-8~~ ✅ | ui/textbox.go:1095 | A single-line TextBox keeps the line breaks of `SetText`: hidden lines the user can edit |
+| ~~TXT-12~~ ✅ | ui/canvas_text_layout.go:650-655, ui/textbox.go:1564-1585 | `TextLayout.IndexAt` is quadratic in the line length: a click on a long shaped line freezes |
+| ~~VIEW-3~~ ✅ | ui/treeview.go:1660-1676, 994 | Handlers re-entered during `TreeNode.Remove`: slice panic, or a removed node becomes current |
+| ~~VIEW-4~~ ✅ | ui/listview.go:105, 260 | ListView: the Shift anchor is not clamped when the model shrinks; rows past the end get selected |
+| ~~VIEW-5~~ ✅ | ui/table.go:583, 2456-2475, 1426, 1485 | Table: the current cell is not clamped when rows or columns shrink; no signal; navigation gets stuck |
+| ~~VIEW-6~~ ✅ | ui/table.go:452, 522, 2456 | Table: the cell editor stays open over the header after its row is removed (low-medium) |
+| ~~VIEW-7~~ ✅ | ui/table.go:822, 872, 985, 1576, 2408 | Table: reads create cell objects for arbitrary cells, an unbounded leak (low-medium) |
+| ~~VIEW-8~~ ✅ | ui/combobox.go:195, 454, 586 | ComboBox: a pick from a popup opened before the items changed reports an index that does not exist |
+| ~~VIEW-9~~ ✅ | ui/propertygrid.go:520-525, 573 | PropertyGrid: a float32 field gets ±Inf from the editor (low-medium) |
+| VIEW-10 ◐ | ui/table.go:2003, 2073, 483, 1052, 1872; ui/treeview.go:994 | Quadratic cost: many columns, RemoveChildren with a large selection, SelectAll on a big model, an unclamped header span |
+| ~~CNV-4~~ ✅ | ui/canvas_effects.go:140-185, ui/canvas_frame.go:340 | `DrawShadow` panics on NaN/Inf/huge blur, NaN radius, non-finite position (medium/high) |
+| ~~CNV-5~~ ✅ | ui/canvas_effects.go:224-266 | `Canvas.Blur` hangs on a large radius (O(radius) per row) and its uint32 sum overflows |
+| ~~CNV-6~~ ✅ | ui/canvas_path_fill.go:44-106 | Even-odd fill: wrong coverage in the first column of a rasterized rectangle (up to 2x) |
+| ~~CNV-7~~ ✅ | ui/canvas_frame.go:236-261 | `FillTriangle`, `DrawLine` (width > 1) panic at coordinates >= 2^25 |
+| ~~CNV-8~~ ✅ | ui/canvas_transform.go:500-513 | `DrawText` under a large zoom panics in `image.NewRGBA` (`pw*ph` overflows) |
+| ~~CNV-9~~ ✅ | ui/canvas_clip.go:47-53 | `ClipPath` with very large coordinates clips everything away |
+| ~~CNV-11~~ ✅ | ui/canvas_svg.go:340-358 | SVG recorder: the font family is not escaped, so attributes can be injected into the SVG (security) |
+| ~~CHART-4~~ ✅ | ui/chart_series_stats.go:127-137 | Histogram: a far value panics (bin index overflow); values past bin 10000 pile into the last bin |
+| ~~CHART-6~~ ✅ | chart_series_line.go:282-298, chart_series_candle.go:83-90, chart_series_stats.go:631, chart_series_spans.go:158 | One NaN or Inf sample breaks the y autoscale: the axis shows 0..1, the data is off-screen |
+| ~~CHART-7~~ ✅ | ui/chart_scale.go:133-136 | Zooming in far enough makes the view jump out (to about 10 years on a time axis) |
+| ~~CHART-8~~ ✅ | ui/timechart_source.go:100-131 | TimeChart: dates before 1678 or after 2262 are bucketed at wrong times (UnixNano overflow) |
+| ~~CHART-9~~ ✅ | ui/chart_series_spans.go:219-223, ui/chart_view.go:932-950 | A span with a NaN end and a label panics in the text drawing |
+| ~~CHART-10~~ ✅ | ui/chart_series_pie.go:286-300 | Pie: a large start angle makes hover hang (low-medium) |
+| ~~PRS-4~~ ✅ | ui/instance.go:161, 92-104 | Single instance: arguments with a newline or over 64 KB are lost or truncated; "show" can be injected |
+| ~~PRS-5~~ ✅ | ui/filedialog_builtin.go:349 | Built-in folder dialog: nil dereference when a listed symlink stops being a folder |
+| ~~PRS-6~~ ✅ | ui/settings.go:67, 79 | A settings file holding `null` makes every later `Set` panic |
+| ~~PRS-7~~ ✅ | ui/settings.go:140-146 | `Settings.Save`, documented as safe for concurrent use, fails when called concurrently (low-medium) |
+| ~~CORE-3~~ ✅ | ui/widget.go:2675, 2920, 2491 | Grid layout hangs with a huge row or column span |
 | ~~CORE-4~~ ✅ | ui/form.go:1489 | `processKeyDown`: nil dereference when the focused widget's key handler removes it |
-| CORE-6 | ui/widget.go:1891-1892, 2113-2114 | `ProcessMouseDown`/`ProcessMouseDblClick`: index out of range when a handler removes siblings |
-| CORE-8 | ui/widget.go:2267-2352, ui/action.go | Context menus shown and closed stay in the widget registry with their action handlers until the form closes |
-| CORE-9 | ui/widget.go:3238-3241 | `SetContextMenu(nil)` panics; a replaced menu leaks |
-| CORE-11 | ui/form.go:939-946, 419; ui/formstate.go:52; ui/dock.go:281-285 | `RememberState` of a form and of a DockLayout stop saving after the form is closed and shown again |
-| CORE-13 | ui/boxes.go:225-247, ui/form.go:1373, 1553 | Enter/Esc run the OK/Cancel of a DialogButtonBox removed from the form (low/medium) |
-| CORE-14 | ui/toast.go:84-95, 136; ui/tooltip.go:107-113 | Toast: no line limit, so a popup window millions of pixels tall |
-| PLT-3 | internal/platforms/clipboard_linux.go:445-458 | X11: a copied text larger than the request limit (~16 MB) is "delivered" as nothing |
-| PLT-4 | internal/platforms/clipboard_linux.go:328-350 | X11: pasting from a slow INCR owner blocks the UI thread and memory without limit |
-| PLT-6 | internal/platforms/dragout_linux.go:52, dnd_linux.go:219 | Drag-out of a relative path makes its first segment the host; a drop takes `file://otherhost/...` as a local path |
-| PLT-7 (part of MISC-6) | ui/accessible.go:152 | AT-SPI: `CurrentValue = NaN` from any D-Bus client makes a slider's value NaN |
-| MISC-2 | ui/canvas3d_render.go:1243 | A 3D label at a non-finite or far point panics the render |
-| MISC-3 | ui/font_registry.go:136 | The face cache grows without bound: a face per distinct font size (smooth zoom, NaN size) |
-| MISC-4 | ui/tool_button.go:79 | `ToolButton.SetEnabled(false)` is ignored while a parent is disabled |
-| MISC-5 | ui/zoomview.go:132, 181-191, 114 | ZoomView: a NaN zoom or a zoom range from 0 leaves the offset NaN for good (low-medium) |
-| MISC-6 | ui/slider.go:94-160, ui/accessible.go:148 | Slider accepts NaN in the value, range and step, and is then stuck (low-medium) |
-| MISC-8 | ui/canvas3d_render.go:605, canvas3d_mesh.go:100, 218, canvas3d_scene.go:343 | A negative mesh index panics the renderer, `ComputeNormals` and `Pick` (low-medium) |
+| ~~CORE-6~~ ✅ | ui/widget.go:1891-1892, 2113-2114 | `ProcessMouseDown`/`ProcessMouseDblClick`: index out of range when a handler removes siblings |
+| ~~CORE-8~~ ✅ | ui/widget.go:2267-2352, ui/action.go | Context menus shown and closed stay in the widget registry with their action handlers until the form closes |
+| ~~CORE-9~~ ✅ | ui/widget.go:3238-3241 | `SetContextMenu(nil)` panics; a replaced menu leaks |
+| ~~CORE-11~~ ✅ | ui/form.go:939-946, 419; ui/formstate.go:52; ui/dock.go:281-285 | `RememberState` of a form and of a DockLayout stop saving after the form is closed and shown again |
+| ~~CORE-13~~ ✅ | ui/boxes.go:225-247, ui/form.go:1373, 1553 | Enter/Esc run the OK/Cancel of a DialogButtonBox removed from the form (low/medium) |
+| ~~CORE-14~~ ✅ | ui/toast.go:84-95, 136; ui/tooltip.go:107-113 | Toast: no line limit, so a popup window millions of pixels tall |
+| ~~PLT-3~~ ✅ | internal/platforms/clipboard_linux.go:445-458 | X11: a copied text larger than the request limit (~16 MB) is "delivered" as nothing |
+| ~~PLT-4~~ ✅ | internal/platforms/clipboard_linux.go:328-350 | X11: pasting from a slow INCR owner blocks the UI thread and memory without limit |
+| ~~PLT-6~~ ✅ | internal/platforms/dragout_linux.go:52, dnd_linux.go:219 | Drag-out of a relative path makes its first segment the host; a drop takes `file://otherhost/...` as a local path |
+| ~~PLT-7~~ ✅ (part of MISC-6) | ui/accessible.go:152 | AT-SPI: `CurrentValue = NaN` from any D-Bus client makes a slider's value NaN |
+| ~~MISC-2~~ ✅ | ui/canvas3d_render.go:1243 | A 3D label at a non-finite or far point panics the render |
+| ~~MISC-3~~ ✅ | ui/font_registry.go:136 | The face cache grows without bound: a face per distinct font size (smooth zoom, NaN size) |
+| ~~MISC-4~~ ✅ | ui/tool_button.go:79 | `ToolButton.SetEnabled(false)` is ignored while a parent is disabled |
+| ~~MISC-5~~ ✅ | ui/zoomview.go:132, 181-191, 114 | ZoomView: a NaN zoom or a zoom range from 0 leaves the offset NaN for good (low-medium) |
+| ~~MISC-6~~ ✅ | ui/slider.go:94-160, ui/accessible.go:148 | Slider accepts NaN in the value, range and step, and is then stuck (low-medium) |
+| ~~MISC-8~~ ✅ | ui/canvas3d_render.go:605, canvas3d_mesh.go:100, 218, canvas3d_scene.go:343 | A negative mesh index panics the renderer, `ComputeNormals` and `Pick` (low-medium) |
 
 ### Low
 

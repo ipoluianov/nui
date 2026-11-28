@@ -18,7 +18,7 @@ import (
 // for it (SelectionRequest), handled in the event loop with the other
 // events. Pasting asks the owner to convert the selection to UTF8_STRING
 // into a property of the hidden window and waits for the answer
-// (SelectionNotify); large texts come in parts (INCR).
+// (SelectionNotify); large data goes both ways in parts (INCR).
 //
 // Other formats (an image as PNG, the data of an application) are targets
 // named by their MIME types, as GTK and Qt name them.
@@ -32,6 +32,7 @@ const (
 	xInputOnly        = 2
 	xXAString         = 31
 	xPropertyNewValue = 0
+	xPropertyDelete   = 1
 	xCurrentTime      = 0
 
 	// How long an owner has to answer: a hung application must not hang this one
@@ -268,7 +269,7 @@ func atomName(display, atom uintptr) string {
 }
 
 // maxPropertySize is the most data written to a property at once: the
-// largest request of the server. Larger data would need the INCR protocol.
+// largest request of the server. Larger data goes in parts (INCR).
 func maxPropertySize(display uintptr) int {
 	words := xExtendedMaxRequestSize(display)
 	if words == 0 {
@@ -314,26 +315,46 @@ func convertClipboard(display, window, target uintptr) (text string, ok bool, er
 	}
 	data, typ := readClipboardProperty(display, window)
 	if typ == clip.incr {
-		data, err = readClipboardIncr(display, window)
+		if data, err = readClipboardIncr(display, window); err != nil {
+			return "", false, err
+		}
 	}
 	if typ == xXAString {
 		data = latin1ToUTF8(data)
 	}
-	return string(data), true, err
+	return string(data), true, nil
 }
 
+// The bounds of a transfer in parts (INCR): the owner sends the parts at
+// its own pace, so without them a slow one would hold the UI thread, and
+// one that never ends would fill the memory. Variables for the tests.
+var (
+	clipboardIncrTimeout = 5 * clipboardTimeout
+	clipboardMaxSize     = 256 << 20
+)
+
+var errClipboardTooLarge = errors.New("clipboard: the data is too large")
+
 // readClipboardIncr gathers a large text: the owner puts it into the
-// property part by part, each one deleted when read; an empty part ends it
+// property part by part, each one deleted when read; an empty part ends it.
+// The whole transfer is bounded by clipboardIncrTimeout and
+// clipboardMaxSize; past them the parts read are dropped.
 func readClipboardIncr(display, window uintptr) ([]byte, error) {
 	var result []byte
 	newValue := func(e *xEvent) bool {
 		p := (*xPropertyEvent)(unsafe.Pointer(e))
 		return p.Atom == clip.property && p.State == xPropertyNewValue
 	}
+	deadline := time.Now().Add(clipboardIncrTimeout)
 	for {
 		var event xEvent
-		if !waitClipboardEvent(display, window, xPropertyNotify, &event, newValue) {
-			return result, errClipboardTimeout
+		// A part comes within clipboardTimeout, the whole within the deadline
+		partDeadline := time.Now().Add(clipboardTimeout)
+		if partDeadline.After(deadline) {
+			partDeadline = deadline
+		}
+		if !waitClipboardEventUntil(display, window, xPropertyNotify, &event, newValue, partDeadline) {
+			return nil, errClipboardTimeout
 		}
 		part, typ := readClipboardProperty(display, window)
 		// No property: an old event, e.g. of the INCR header written before;
@@ -343,6 +364,9 @@ func readClipboardIncr(display, window uintptr) ([]byte, error) {
 		}
 		if len(part) == 0 {
 			return result, nil
+		}
+		if len(result)+len(part) > clipboardMaxSize {
+			return nil, errClipboardTooLarge
 		}
 		result = append(result, part...)
 	}
@@ -369,7 +393,11 @@ func readClipboardProperty(display, window uintptr) (data []byte, typ uintptr) {
 // the other events queued for the event loop. match, if set, skips the
 // events it returns false for. False on a timeout.
 func waitClipboardEvent(display, window uintptr, eventType int32, event *xEvent, match func(*xEvent) bool) bool {
-	deadline := time.Now().Add(clipboardTimeout)
+	return waitClipboardEventUntil(display, window, eventType, event, match, time.Now().Add(clipboardTimeout))
+}
+
+// waitClipboardEventUntil is waitClipboardEvent with the deadline given
+func waitClipboardEventUntil(display, window uintptr, eventType int32, event *xEvent, match func(*xEvent) bool, deadline time.Time) bool {
 	for {
 		for xCheckTypedWindowEvent(display, window, eventType, unsafe.Pointer(event)) != 0 {
 			if match == nil || match(event) {
@@ -395,6 +423,9 @@ func latin1ToUTF8(b []byte) []byte {
 // processClipboardEvent handles an event of the clipboard window; false if
 // the event is for another window. UI thread only.
 func processClipboardEvent(event *xEvent) bool {
+	if processIncrEvent(event) {
+		return true
+	}
 	if clip.window == 0 || event.window() != clip.window {
 		return false
 	}
@@ -437,12 +468,8 @@ func answerSelectionRequest(r *xSelectionRequestEvent) {
 			xChangeProperty(xDisplay, r.Requestor, property, xXAAtom, 32, xPropModeReplace, unsafe.Pointer(&atoms[0]), int32(len(atoms)))
 			n.Property = property
 		case isItem:
-			// Larger than a request: refused, the INCR protocol isn't done
-			if len(data) <= maxPropertySize(xDisplay) {
-				data = append(data[:len(data):len(data)], 0)
-				xChangeProperty(xDisplay, r.Requestor, property, r.Target, 8, xPropModeReplace, unsafe.Pointer(&data[0]), int32(len(data)-1))
-				n.Property = property
-			}
+			writeSelectionData(r.Requestor, property, r.Target, data)
+			n.Property = property
 		case clip.hasText && (r.Target == clip.utf8 || r.Target == clip.plain || r.Target == clip.textAtom || r.Target == xXAString):
 			typ := r.Target
 			if typ == clip.textAtom {
@@ -452,14 +479,108 @@ func answerSelectionRequest(r *xSelectionRequestEvent) {
 			if typ == xXAString {
 				data = utf8ToLatin1(clip.text)
 			}
-			// The data pointer must point somewhere even for an empty text
-			data = append(data, 0)
-			xChangeProperty(xDisplay, r.Requestor, property, typ, 8, xPropModeReplace, unsafe.Pointer(&data[0]), int32(len(data)-1))
+			writeSelectionData(r.Requestor, property, typ, data)
 			n.Property = property
 		}
 	}
 	xSendEvent(xDisplay, r.Requestor, xFalse, 0, unsafe.Pointer(&reply))
 	xFlush(xDisplay)
+}
+
+// incrTransfer is data larger than one request of the server, given to a
+// requestor in parts (INCR, ICCCM 2.7.2): each part is written when the
+// requestor deletes the one before, and an empty part ends it
+type incrTransfer struct {
+	requestor, property, typ uintptr
+	data                     []byte // what is left to send
+	sent                     time.Time
+}
+
+// incrTransfers are the transfers in progress, served from the event loop
+var incrTransfers []*incrTransfer
+
+// incrPartSize is the most data written in one part of an INCR transfer
+const incrPartSize = 1 << 20
+
+// writeSelectionData writes the data to the requestor's property, in parts
+// (INCR) when it is larger than one request of the server: a single
+// ChangeProperty would be refused (BadLength) and the requestor would get
+// nothing while told it got the data
+func writeSelectionData(requestor, property, typ uintptr, data []byte) {
+	dropIncrTransfer(requestor, property)
+	if len(data) <= maxPropertySize(xDisplay) {
+		writeProperty(requestor, property, typ, data)
+		return
+	}
+	// The requestor deletes the property to ask for the next part
+	xSelectInput(xDisplay, requestor, xPropertyChangeMask)
+	size := uintptr(len(data)) // a lower bound of the size, as ICCCM asks
+	xChangeProperty(xDisplay, requestor, property, clip.incr, 32, xPropModeReplace, unsafe.Pointer(&size), 1)
+	incrTransfers = append(incrTransfers, &incrTransfer{
+		requestor: requestor, property: property, typ: typ, data: data, sent: time.Now(),
+	})
+}
+
+// writeProperty replaces the property with 8-bit data
+func writeProperty(window, property, typ uintptr, data []byte) {
+	// The data pointer must point somewhere even for empty data
+	buf := append(data[:len(data):len(data)], 0)
+	xChangeProperty(xDisplay, window, property, typ, 8, xPropModeReplace, unsafe.Pointer(&buf[0]), int32(len(buf)-1))
+}
+
+// dropIncrTransfer forgets the transfer to the requestor's property, and the
+// transfers whose requestor stopped asking for parts (it quit or gave up)
+func dropIncrTransfer(requestor, property uintptr) {
+	var dropped []uintptr
+	incrTransfers = slices.DeleteFunc(incrTransfers, func(t *incrTransfer) bool {
+		if t.requestor == requestor && t.property == property || time.Since(t.sent) > clipboardIncrTimeout {
+			dropped = append(dropped, t.requestor)
+			return true
+		}
+		return false
+	})
+	for _, w := range dropped {
+		stopIncrEvents(w)
+	}
+}
+
+// stopIncrEvents stops the PropertyNotify events of a requestor's window
+// when no transfer to it is left
+func stopIncrEvents(requestor uintptr) {
+	if !slices.ContainsFunc(incrTransfers, func(t *incrTransfer) bool { return t.requestor == requestor }) {
+		xSelectInput(xDisplay, requestor, 0)
+	}
+}
+
+// processIncrEvent serves the next part of a transfer when its requestor
+// deleted the last one; false if the event is not of a transfer
+func processIncrEvent(event *xEvent) bool {
+	if len(incrTransfers) == 0 || event.eventType() != xPropertyNotify {
+		return false
+	}
+	p := (*xPropertyEvent)(unsafe.Pointer(event))
+	if !slices.ContainsFunc(incrTransfers, func(t *incrTransfer) bool { return t.requestor == p.Window }) {
+		return false
+	}
+	if p.State != xPropertyDelete {
+		return true // a part written here
+	}
+	for i, t := range incrTransfers {
+		if t.requestor != p.Window || t.property != p.Atom {
+			continue
+		}
+		part := t.data[:min(len(t.data), incrPartSize, maxPropertySize(xDisplay))]
+		writeProperty(t.requestor, t.property, t.typ, part)
+		t.data, t.sent = t.data[len(part):], time.Now()
+		if len(part) == 0 {
+			// The empty part was the end
+			incrTransfers = slices.Delete(incrTransfers, i, i+1)
+			stopIncrEvents(t.requestor)
+		}
+		xFlush(xDisplay)
+		break
+	}
+	return true
 }
 
 // utf8ToLatin1 is the text for STRING: the characters out of Latin-1 become '?'
@@ -495,12 +616,24 @@ func clipboardHandOver() {
 	xFlush(display)
 
 	// The manager asks for the text meanwhile: the requests are answered
-	// until it says it is done
-	deadline := time.Now().Add(clipboardTimeout)
+	// until it says it is done; a large text it takes in parts (INCR) may
+	// take longer, up to clipboardIncrTimeout
+	start := time.Now()
+	deadline := start.Add(clipboardTimeout)
 	for time.Now().Before(deadline) {
 		var event xEvent
 		for xCheckTypedWindowEvent(display, window, xSelectionRequest, unsafe.Pointer(&event)) != 0 {
 			answerSelectionRequest((*xSelectionRequestEvent)(unsafe.Pointer(&event)))
+		}
+		for _, t := range slices.Clone(incrTransfers) {
+			for xCheckTypedWindowEvent(display, t.requestor, xPropertyNotify, unsafe.Pointer(&event)) != 0 {
+				processIncrEvent(&event)
+			}
+		}
+		if len(incrTransfers) > 0 {
+			if d := time.Now().Add(clipboardTimeout); d.After(deadline) && d.Before(start.Add(clipboardIncrTimeout)) {
+				deadline = d
+			}
 		}
 		if xCheckTypedWindowEvent(display, window, xSelectionNotify, unsafe.Pointer(&event)) != 0 {
 			if (*xSelectionEvent)(unsafe.Pointer(&event)).Selection == clip.manager {

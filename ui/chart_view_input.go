@@ -439,7 +439,7 @@ func (c *ChartView) finishDrag(x, y float64) {
 			if y2-y1 >= chartDragThreshold {
 				for _, a := range p.axes {
 					lo, hi := a.FromPixel(y2), a.FromPixel(y1)
-					a.setManual(math.Min(lo, hi), math.Max(lo, hi))
+					c.setAxisRange(a, lo, hi)
 				}
 			}
 		}
@@ -692,6 +692,16 @@ func (c *ChartView) panBy(dx, dy float64, axes ChartAxes) {
 // setAxisRange shows the range on a horizontal axis within the limits
 func (c *ChartView) setAxisRange(a *ChartAxis, from, to float64) {
 	l := c.in.limits
+	if from > to {
+		from, to = to, from
+	}
+	// A zoom stops at the shortest span the floats resolve there: a
+	// shorter one counts as a single value for the scale, which widens it
+	// by a tenth of the value (on a time axis, by years)
+	if m := chartMinSpan(from, to); to-from < m {
+		mid := from/2 + to/2
+		from, to = mid-m/2, mid+m/2
+	}
 	span := to - from
 	if a.Horizontal() {
 		if l.MinSpanX > 0 && span < l.MinSpanX {
@@ -730,6 +740,13 @@ func (c *ChartView) setAxisRange(a *ChartAxis, from, to float64) {
 		}
 	}
 	a.setManual(from, to)
+}
+
+// chartMinSpan returns the shortest span of a range around from..to the
+// scales keep as it is: widenDomain takes a span below |min|*1e-12 (or
+// 1e-300) for a single value. Four times that leaves room for rounding.
+func chartMinSpan(from, to float64) float64 {
+	return math.Max(math.Max(math.Abs(from), math.Abs(to))*4e-12, 1e-290)
 }
 
 // dataXExtent returns the range of the data of the series on the axis

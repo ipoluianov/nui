@@ -4,6 +4,7 @@ package platforms
 
 import (
 	"net/url"
+	"path/filepath"
 	"time"
 	"unsafe"
 )
@@ -15,6 +16,24 @@ import (
 // answered with XdndStatus) and drops (XdndDrop). The target asks for the
 // files as text/uri-list through the XdndSelection selection, which this
 // window owns meanwhile, and ends with XdndFinished.
+
+// fileURIList is the text/uri-list of the files. A relative path is made
+// absolute first: a URI of it would read its first folder as the host
+// (file://docs/report.txt). A path that can't be made absolute is left out.
+func fileURIList(files []string) []byte {
+	var list []byte
+	for _, f := range files {
+		if f == "" {
+			continue
+		}
+		abs, err := filepath.Abs(f)
+		if err != nil {
+			continue
+		}
+		list = append(list, (&url.URL{Scheme: "file", Path: filepath.ToSlash(abs)}).String()+"\r\n"...)
+	}
+	return list
+}
 
 const (
 	xGrabModeAsync = 1
@@ -48,8 +67,9 @@ func (c *nativeWindow) startFileDragSync(files []string) (effect DragEffect, dro
 	}
 	display, window := c.platform.display, c.platform.window
 	d := &dragOut{c: c}
-	for _, f := range files {
-		d.uriList = append(d.uriList, (&url.URL{Scheme: "file", Path: f}).String()+"\r\n"...)
+	d.uriList = fileURIList(files)
+	if len(d.uriList) == 0 {
+		return DragEffectNone, false, false
 	}
 	const mask = xButtonPressMask | xButtonReleaseMask | xPointerMotionMask
 	if xGrabPointer(display, window, xFalse, mask, xGrabModeAsync, xGrabModeAsync, xNone,

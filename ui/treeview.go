@@ -990,17 +990,29 @@ func (c *TreeView) nodeCollapsed(node *TreeNode) {
 }
 
 // nodeRemoved forgets the removed node and its children: the focus goes to
-// the next shown node (or the previous one, or the parent).
-func (c *TreeView) nodeRemoved(node *TreeNode, parent *TreeNode, index int) {
+// the next shown node (or the previous one, or the parent). It is called
+// after the node was unlinked and detached, and emits nothing: it returns
+// whether the selection changed, and Remove fires the signal last, so that a
+// handler sees the tree in its final state.
+func (c *TreeView) nodeRemoved(node *TreeNode, parent *TreeNode, index int) bool {
 	if c.editNode != nil && (c.editNode == node || c.editNode.isDescendantOf(node)) {
 		c.cancelEdit()
 	}
 	changed := false
-	for n := range c.selected {
-		if n == node || n.isDescendantOf(node) {
+	// Walk the removed subtree, not the selection: removing many selected
+	// nodes one by one stays linear.
+	var forget func(n *TreeNode)
+	forget = func(n *TreeNode) {
+		if c.selected[n] {
 			delete(c.selected, n)
 			changed = true
 		}
+		for _, child := range n.children {
+			forget(child)
+		}
+	}
+	if len(c.selected) > 0 {
+		forget(node)
 	}
 	if c.anchor == node || (c.anchor != nil && c.anchor.isDescendantOf(node)) {
 		c.anchor = nil
@@ -1024,9 +1036,7 @@ func (c *TreeView) nodeRemoved(node *TreeNode, parent *TreeNode, index int) {
 		}
 		changed = true
 	}
-	if changed {
-		c.fireSelectionChanged()
-	}
+	return changed
 }
 
 // ---------------------------------------------------------------- Mouse
@@ -1666,15 +1676,24 @@ func (n *TreeNode) Remove() {
 		return
 	}
 	index := n.Index()
+	if index < 0 {
+		return
+	}
 	parent := n.parent
 	if parent != nil {
 		parent.children = append(parent.children[:index], parent.children[index+1:]...)
 	} else {
 		tree.nodes = append(tree.nodes[:index], tree.nodes[index+1:]...)
 	}
-	tree.nodeRemoved(n, parent, index)
+	// Detach before any handler runs: a handler of the selection signal must
+	// see the node out of the tree (Tree() == nil), so that it can neither
+	// remove it again nor make it current.
 	n.detach()
+	changed := tree.nodeRemoved(n, parent, index)
 	tree.structureChanged()
+	if changed {
+		tree.fireSelectionChanged()
+	}
 }
 
 // RemoveChildren removes all the children.

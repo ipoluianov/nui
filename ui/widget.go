@@ -104,6 +104,9 @@ type Widget struct {
 	//autoFillBackground bool
 
 	contextMenu *ContextMenu
+	// detachOnPopupClose: the popup was attached to the form only to be
+	// shown (Form.attachPopup), its close detaches it again
+	detachOnPopupClose bool
 
 	canBeFocused bool
 
@@ -385,6 +388,12 @@ func (c *Widget) FullPath() []string {
 		path[i], path[j] = path[j], path[i]
 	}
 	return path
+}
+
+// hasChild tells whether w is still a child of c: the loops over a snapshot
+// of the children skip the ones an event handler removed
+func (c *Widget) hasChild(w Widgeter) bool {
+	return w.ParentWidgetId() == c.Id()
 }
 
 func (c *Widget) ParentWidgetId() string {
@@ -1888,8 +1897,12 @@ func (c *Widget) ProcessMouseDown(button MouseButton, x int, y int, mods KeyModi
 	processed := false
 	childHit := false
 
-	for i := len(c.widgets) - 1; i >= 0; i-- { // the topmost first
-		w := c.widgets[i]
+	children := slices.Clone(c.widgets)       // a handler may remove children
+	for i := len(children) - 1; i >= 0; i-- { // the topmost first
+		w := children[i]
+		if !c.hasChild(w) {
+			continue
+		}
 		if x >= w.X() && x < w.X()+w.Width() && y >= w.Y() && y < w.Y()+w.Height() {
 			processed = w.ProcessMouseDown(button, x-w.X(), y-w.Y(), mods)
 			if processed {
@@ -1906,8 +1919,11 @@ func (c *Widget) ProcessMouseDown(button MouseButton, x int, y int, mods KeyModi
 		//if event.Button == MouseButtonRight {
 		if button == MouseButtonRight {
 			wX, wY := c.RectClientAreaOnWindow()
-			if c.ContextMenu() != nil {
-				c.ContextMenu().ShowMenu(wX+x-c.scrollX, wY+y-c.scrollY)
+			if menu := c.ContextMenu(); menu != nil && c.form != nil {
+				// A menu shared with a widget that left the form may be
+				// detached: it is attached for the time it is open
+				c.form.attachPopup(menu)
+				menu.ShowMenu(wX+x-c.scrollX, wY+y-c.scrollY)
 				contextMenuFound = true
 			} /*else {
 				if c.OnContextMenuNeed != nil {
@@ -1962,8 +1978,10 @@ func (c *Widget) ProcessMouseUp(button MouseButton, x int, y int, mods KeyModifi
 	x += c.scrollX
 	y += c.scrollY
 
-	for _, w := range c.widgets {
-		w.ProcessMouseUp(button, x-w.X(), y-w.Y(), mods, onlyForWidgetId)
+	for _, w := range slices.Clone(c.widgets) { // a handler may remove children
+		if c.hasChild(w) {
+			w.ProcessMouseUp(button, x-w.X(), y-w.Y(), mods, onlyForWidgetId)
+		}
 	}
 
 	if c.onMouseUp != nil && onlyForWidgetId == c.Id() {
@@ -2019,7 +2037,10 @@ func (c *Widget) ProcessMouseMove(x int, y int, mods KeyModifiers) bool {
 
 	processed := false
 
-	for _, w := range c.widgets {
+	for _, w := range slices.Clone(c.widgets) { // a handler may remove children
+		if !c.hasChild(w) {
+			continue
+		}
 		// Temporary process in the all widgets - perrormance issue
 		//inWidget := true
 
@@ -2110,8 +2131,12 @@ func (c *Widget) ProcessMouseDblClick(button MouseButton, x int, y int, mods Key
 
 	processed := false
 
-	for i := len(c.widgets) - 1; i >= 0; i-- { // the topmost first
-		w := c.widgets[i]
+	children := slices.Clone(c.widgets)       // a handler may remove children
+	for i := len(children) - 1; i >= 0; i-- { // the topmost first
+		w := children[i]
+		if !c.hasChild(w) {
+			continue
+		}
 		if x >= w.X() && x < w.X()+w.Width() && y >= w.Y() && y < w.Y()+w.Height() {
 			processed = w.ProcessMouseDblClick(button, x-w.X(), y-w.Y(), mods)
 			if processed {
@@ -2296,8 +2321,8 @@ func (c *Widget) CloseAfterPopupWidget(w Widgeter) {
 	if foundIndex > -1 {
 		foundIndex++
 
-		for i := foundIndex; i < len(c.PopupWidgets); i++ {
-			popupWidget := c.PopupWidgets[i]
+		closed := slices.Clone(c.PopupWidgets[foundIndex:])
+		for _, popupWidget := range closed {
 			previousFocusedWidget := popupWidget.getPreviousFocusedWidget()
 			popupWidget.ProcessClosePopup()
 			if previousFocusedWidget != nil {
@@ -2312,11 +2337,13 @@ func (c *Widget) CloseAfterPopupWidget(w Widgeter) {
 		c.form.syncPopupWindows()
 		c.form.updateHover()
 		c.form.Update()
+		releasePopups(closed)
 	}
 }
 
 func (c *Widget) CloseAllPopup() {
-	for _, popupWidget := range c.PopupWidgets {
+	closed := c.PopupWidgets
+	for _, popupWidget := range closed {
 		previousFocusedWidget := popupWidget.getPreviousFocusedWidget()
 		popupWidget.ProcessClosePopup()
 		if previousFocusedWidget != nil {
@@ -2330,6 +2357,7 @@ func (c *Widget) CloseAllPopup() {
 	c.form.syncPopupWindows()
 	c.form.updateHover()
 	c.form.Update()
+	releasePopups(closed)
 }
 
 func (c *Widget) CloseTopPopup() {
@@ -2340,8 +2368,9 @@ func (c *Widget) CloseTopPopup() {
 
 	c.ClearFocus()
 
-	previousFocusedWidget := c.PopupWidgets[len(c.PopupWidgets)-1].getPreviousFocusedWidget()
-	c.PopupWidgets[len(c.PopupWidgets)-1].ProcessClosePopup()
+	top := c.PopupWidgets[len(c.PopupWidgets)-1]
+	previousFocusedWidget := top.getPreviousFocusedWidget()
+	top.ProcessClosePopup()
 	c.PopupWidgets = c.PopupWidgets[:len(c.PopupWidgets)-1]
 	c.form.syncPopupWindows()
 	if previousFocusedWidget != nil {
@@ -2349,6 +2378,21 @@ func (c *Widget) CloseTopPopup() {
 	}
 	// The mouse is now over what was under the popup
 	c.form.updateHover()
+	releasePopups([]Widgeter{top})
+}
+
+// releasePopups detaches from the form the closed popups that were attached
+// only to be shown (see Form.attachPopup): a menu built for one right click
+// leaves the registry of the widgets, and its items the actions they follow.
+// The menus a widget or the menu bar owns stay attached with their owner.
+func releasePopups(closed []Widgeter) {
+	for _, w := range closed {
+		b := w.widgetBase()
+		if b.detachOnPopupClose && !b.isOpenPopupWidget() {
+			b.detachOnPopupClose = false
+			w.attachToForm(w, nil)
+		}
+	}
 }
 
 func (c *Widget) ProcessClosePopup() {
@@ -2486,12 +2530,12 @@ func (c *Widget) layoutGrid(fullWidth, fullHeight int) {
 	}
 	// extent returns the start and the size of the lines [first, first+span)
 	// that exist, the padding between them included
-	extent := func(starts, sizes map[int]int, first, span int) (int, int) {
+	colKeys, rowKeys := sortedKeys(colX), sortedKeys(rowY)
+	extent := func(starts, sizes map[int]int, keys []int, first, span int) (int, int) {
 		start, end := starts[first], starts[first]+sizes[first]
-		for line := first + 1; line < first+span; line++ {
-			if lineStart, ok := starts[line]; ok {
-				end = lineStart + sizes[line]
-			}
+		if lines := spannedLines(keys, first, span); len(lines) > 0 {
+			last := lines[len(lines)-1]
+			end = max(end, starts[last]+sizes[last])
 		}
 		return start, end - start
 	}
@@ -2505,8 +2549,8 @@ func (c *Widget) layoutGrid(fullWidth, fullHeight int) {
 		}
 		for _, w := range ws {
 			b := w.widgetBase()
-			cX, wWidth := extent(colX, colW, cell.x, b.gridColSpanOrOne())
-			cY, wHeight := extent(rowY, rowH, cell.y, b.gridRowSpanOrOne())
+			cX, wWidth := extent(colX, colW, colKeys, cell.x, b.gridColSpanOrOne())
+			cY, wHeight := extent(rowY, rowH, rowKeys, cell.y, b.gridRowSpanOrOne())
 			wWidth = min(wWidth, w.MaxWidth())
 			wHeight = min(wHeight, w.MaxHeight())
 			w.SetPosition(cX, cY)
@@ -2664,18 +2708,16 @@ func (c *Widget) makeColumnsInfo(fullWidth int, cells map[gridCell][]Widgeter) (
 
 	// The widgets spanning lines: the lines they span get the room they need
 	// (the last one gets what is missing), and grow if they do
+	colKeys := sortedKeys(columnsInfo)
 	for _, ws := range cells {
 		for _, w := range ws {
 			span := w.widgetBase().gridColSpanOrOne()
 			if span <= 1 {
 				continue
 			}
-			first := w.GridX()
 			var spanned []*ContainerGridColumnInfo
-			for line := first; line < first+span; line++ {
-				if info, ok := columnsInfo[line]; ok {
-					spanned = append(spanned, info)
-				}
+			for _, line := range spannedLines(colKeys, w.GridX(), span) {
+				spanned = append(spanned, columnsInfo[line])
 			}
 			if len(spanned) == 0 {
 				continue
@@ -2915,18 +2957,16 @@ func (c *Widget) makeRowsInfo(fullHeight int, cells map[gridCell][]Widgeter) (ma
 
 	// The widgets spanning lines: the lines they span get the room they need
 	// (the last one gets what is missing), and grow if they do
+	rowKeys := sortedKeys(rowsInfo)
 	for _, ws := range cells {
 		for _, w := range ws {
 			span := w.widgetBase().gridRowSpanOrOne()
 			if span <= 1 {
 				continue
 			}
-			first := w.GridY()
 			var spanned []*ContainerGridRowInfo
-			for line := first; line < first+span; line++ {
-				if info, ok := rowsInfo[line]; ok {
-					spanned = append(spanned, info)
-				}
+			for _, line := range spannedLines(rowKeys, w.GridY(), span) {
+				spanned = append(spanned, rowsInfo[line])
 			}
 			if len(spanned) == 0 {
 				continue
@@ -3245,9 +3285,22 @@ func (c *Widget) BackgroundColorForRole(role string) color.Color {
 	return ThemeBackgroundColor(c.CurrentElevation(), role)
 }
 
+// SetContextMenu sets the menu a right click on the widget opens; nil
+// takes it away. The menu replaced leaves the form (when it is open, at its
+// close): one shared by several widgets is attached again when it is shown.
 func (c *Widget) SetContextMenu(menu *ContextMenu) {
+	old := c.contextMenu
 	c.contextMenu = menu
-	c.contextMenu.attachToForm(c.contextMenu, c.form)
+	if old != nil && old != menu && old.form != nil {
+		if old.isOpenPopupWidget() {
+			old.detachOnPopupClose = true
+		} else {
+			old.attachToForm(old, nil)
+		}
+	}
+	if menu != nil && c.form != nil {
+		menu.attachToForm(menu, c.form)
+	}
 }
 
 func (c *Widget) ContextMenu() *ContextMenu {
@@ -3528,6 +3581,22 @@ func occupiedLines(cells map[gridCell][]Widgeter) gridLines {
 	slices.Sort(l.cols)
 	slices.Sort(l.rows)
 	return l
+}
+
+// spannedLines returns the lines of keys (sorted) within [first, first+span):
+// it goes over the lines that exist, not over the numbers of the span, which
+// may be huge (a span from a layout file), and first+span does not overflow
+func spannedLines(keys []int, first, span int) []int {
+	end := math.MaxInt
+	if first < 0 || span < math.MaxInt-first {
+		end = first + span
+	}
+	lo, _ := slices.BinarySearch(keys, first)
+	hi, _ := slices.BinarySearch(keys, end)
+	if hi < lo {
+		return nil
+	}
+	return keys[lo:hi]
 }
 
 // sortedKeys returns the keys of the map, sorted

@@ -46,6 +46,13 @@ type Table struct {
 	rowCount    int
 	columnCount int
 
+	// colOffsets[i] is the offset of the column i, for i in [0, columnCount]
+	// (the prefix sums of the widths, the stretched column not stretched);
+	// nil when a width or the number of columns changed. colOffsetsMonotonic:
+	// no width is negative, so the offsets can be binary-searched.
+	colOffsets          []int
+	colOffsetsMonotonic bool
+
 	columnResizingIndex int
 
 	cellBorderWidth int
@@ -480,32 +487,58 @@ func (c *Table) headerCell2(rowIndex int, colIndex int) *tableHeaderCell {
 	return cell
 }
 
-func (c *Table) headerCellShadowed2(rowIndex int, colIndex int) bool {
-	result := false
+// emptyHeaderCell is what lookupHeaderCell gives for a cell never set
+var emptyHeaderCell = &tableHeaderCell{}
 
-	for headerRowIndex := 0; headerRowIndex < c.headerRowsCount; headerRowIndex++ {
-		for headerColIndex := 0; headerColIndex < c.columnCount; headerColIndex++ {
-			if headerRowIndex == rowIndex && headerColIndex == colIndex {
+// lookupHeaderCell is the header cell, emptyHeaderCell if it was never set:
+// unlike headerCell2 it creates nothing. Not to be changed.
+func (c *Table) lookupHeaderCell(rowIndex int, colIndex int) *tableHeaderCell {
+	if headerRow, exists := c.headerRows[rowIndex]; exists {
+		if cell, exists := headerRow.cells[colIndex]; exists {
+			return cell
+		}
+	}
+	return emptyHeaderCell
+}
+
+// headerSpan is the span of the header cell, within the header and the
+// columns: a span past them would make a paint loop over it
+func (c *Table) headerSpan(rowIndex, colIndex int, cell *tableHeaderCell) (spanCol, spanRow int) {
+	spanCol = max(1, min(cell.SpanCol(), c.columnCount-colIndex))
+	spanRow = max(1, min(cell.SpanRow(), c.headerRowsCount-rowIndex))
+	return spanCol, spanRow
+}
+
+// headerShadowedCells is the set of the header cells covered by the span
+// of another one. Only the cells that were set are looked at, so it costs
+// the cells covered, not the square of the header's cells.
+func (c *Table) headerShadowedCells() map[TableCellPos]bool {
+	var shadowed map[TableCellPos]bool
+	for rowIndex, headerRow := range c.headerRows {
+		if rowIndex < 0 || rowIndex >= c.headerRowsCount {
+			continue
+		}
+		for colIndex, cell := range headerRow.cells {
+			if colIndex < 0 || colIndex >= c.columnCount {
 				continue
 			}
-			headerCell := c.headerCell2(headerRowIndex, headerColIndex)
-			spanX := headerCell.SpanCol()
-			spanY := headerCell.SpanRow()
-			if spanX > 1 || spanY > 1 {
-				cellSpanX1 := headerColIndex
-				cellSpanX2 := headerColIndex + spanX - 1
-				cellSpanY1 := headerRowIndex
-				cellSpanY2 := headerRowIndex + spanY - 1
-				if colIndex >= cellSpanX1 && colIndex <= cellSpanX2 &&
-					rowIndex >= cellSpanY1 && rowIndex <= cellSpanY2 {
-					result = true
-					break
+			spanCol, spanRow := c.headerSpan(rowIndex, colIndex, cell)
+			if spanCol == 1 && spanRow == 1 {
+				continue
+			}
+			if shadowed == nil {
+				shadowed = make(map[TableCellPos]bool)
+			}
+			for r := rowIndex; r < rowIndex+spanRow; r++ {
+				for col := colIndex; col < colIndex+spanCol; col++ {
+					if r != rowIndex || col != colIndex {
+						shadowed[TableCellPos{Row: r, Col: col}] = true
+					}
 				}
 			}
 		}
 	}
-
-	return result
+	return shadowed
 }
 
 /*func (c *Table) columnWidth(col int) int {
@@ -581,25 +614,102 @@ func (c *Table) ClearRows() {
 }
 
 func (c *Table) SetRowCount(count int) {
+	count = max(count, 0)
+	wasRow, wasCol := c.CurrentRow(), c.CurrentColumn()
 	c.rowCount = count
 	c.updateInnerSize()
 	c.updateInnerWidgetsLayout()
-
-	// Preserve the historical default of the first cell/row being selected
-	// as soon as data exists, as long as nothing has been selected yet.
-	if len(c.selectedRows) == 0 && len(c.selectedCells) == 0 {
-		c.syncSelectionToCurrent()
-	}
+	c.fitToSize(wasRow, wasCol)
 }
 
 func (c *Table) SetColumnCount(count int) {
+	count = max(count, 0)
+	wasRow, wasCol := c.CurrentRow(), c.CurrentColumn()
 	c.columnCount = count
+	c.colOffsets = nil
 	c.updateInnerSize()
 	c.updateInnerWidgetsLayout()
+	c.fitToSize(wasRow, wasCol)
+}
+
+// fitToSize keeps the editors, the current cell, the anchor and the
+// selection within the rows and columns after their number changed:
+// wasRow, wasCol are CurrentRow and CurrentColumn before the change.
+// An editor whose cell is gone is closed without applying it; the current
+// cell past the end moves to the last row or column (as in ClearRows,
+// to the first cell when the table is empty), the selection loses what is
+// gone, and OnSelectionChanged is emitted once if the current cell or the
+// selection changed.
+func (c *Table) fitToSize(wasRow, wasCol int) {
+	c.closeEditorsOutside()
+	// An editor's handler may have changed the table: what follows reads
+	// the table again.
+
+	changed := false
+	if c.currentCellY >= c.rowCount {
+		c.currentCellY = max(c.rowCount-1, 0)
+	}
+	if c.currentCellX >= c.columnCount {
+		c.currentCellX = max(c.columnCount-1, 0)
+	}
+	c.selectionAnchorRow = max(min(c.selectionAnchorRow, c.rowCount-1), 0)
+	c.selectionAnchorCol = max(min(c.selectionAnchorCol, c.columnCount-1), 0)
+	for row := range c.selectedRows {
+		if row >= c.rowCount {
+			delete(c.selectedRows, row)
+			changed = true
+		}
+	}
+	for pos := range c.selectedCells {
+		if pos.Row >= c.rowCount || pos.Col >= c.columnCount {
+			delete(c.selectedCells, pos)
+			changed = true
+		}
+	}
+	// The first cell/row is selected as soon as data exists, as long as
+	// nothing is selected (also when the selected cells are gone)
+	if len(c.selectedRows) == 0 && len(c.selectedCells) == 0 {
+		c.syncSelectionToCurrent()
+	}
+	// The current cell moved or is gone. (Not when the first rows or columns
+	// come: the first cell becomes current without a signal, as it always did.)
+	if row, col := c.CurrentRow(), c.CurrentColumn(); wasRow >= 0 && wasCol >= 0 && (row != wasRow || col != wasCol) {
+		changed = true
+	}
+	if changed {
+		c.Update()
+		c.selectionChanged(c.CurrentRow(), c.CurrentColumn())
+	}
+}
+
+// closeEditorsOutside closes, without applying them, the editors whose
+// cells are no longer in the table: laid out by a row out of range they
+// would lie over the header, and their text would be dropped anyway.
+func (c *Table) closeEditorsOutside() {
+	outside := func(w Widgeter) bool {
+		for _, in := range c.innerWidgets {
+			if in.widget == w {
+				return in.posCellRow+in.heightInCells > c.rowCount || in.posCellCol+in.widthInCells > c.columnCount
+			}
+		}
+		return false
+	}
+	if editor := c.editorTextBox; editor != nil && outside(editor) {
+		hadFocus := c.form != nil && c.form.FocusedWidget() == Widgeter(editor)
+		c.editorTextBox = nil
+		c.removeInnerWidget(editor)
+		if hadFocus {
+			c.Focus()
+		}
+	}
+	if c.cellEditor != nil && outside(c.cellEditor) {
+		c.CancelCellEditor()
+	}
 }
 
 func (c *Table) SetColumnWidth(col int, width int) {
 	c.columnsWidths[col] = width
+	c.colOffsets = nil
 
 	c.updateInnerSize()
 	c.updateInnerWidgetsLayout()
@@ -677,8 +787,7 @@ func (c *Table) ColumnName(col int) string {
 	if col < 0 || col >= c.columnCount {
 		return ""
 	}
-	headerCell := c.headerCell2(0, col)
-	return headerCell.name
+	return c.lookupHeaderCell(0, col).name
 }
 
 func (c *Table) newTableCell() *tableCell {
@@ -703,6 +812,22 @@ func (c *Table) getCellObj(row int, col int) *tableCell {
 		rowObj.cells[col] = cellObj
 	}
 	return cellObj
+}
+
+// lookupCell is the table's own cell, nil if it has none: unlike
+// getCellObj it creates nothing, for the reads (a read of every hovered or
+// navigated cell would keep a cell object for each of them)
+func (c *Table) lookupCell(row int, col int) *tableCell {
+	if rowObj, exists := c.rows[row]; exists {
+		return rowObj.cells[col]
+	}
+	return nil
+}
+
+// cellSelectionDisabled reports whether the cell can't be selected
+func (c *Table) cellSelectionDisabled(row int, col int) bool {
+	cellObj := c.lookupCell(row, col)
+	return cellObj != nil && cellObj.selectionDisabled
 }
 
 func (c *Table) SetCellText2(row int, col int, text string) {
@@ -816,17 +941,15 @@ func (c *Table) SetCurrentCell2(row int, col int) {
 	c.form.UpdateBlockPush()
 	defer c.form.UpdateBlockPop()
 
-	c.previousCurrentCellX = c.currentCellX
-	c.previousCurrentCellY = c.currentCellY
-
-	cellObj := c.getCellObj(row, col)
-	if cellObj.selectionDisabled {
-		return
-	}
-
 	if row < 0 || row >= c.rowCount || col < 0 || col >= c.columnCount {
 		return
 	}
+	if c.cellSelectionDisabled(row, col) {
+		return
+	}
+
+	c.previousCurrentCellX = c.currentCellX
+	c.previousCurrentCellY = c.currentCellY
 	c.currentCellX = col
 	c.currentCellY = row
 
@@ -869,8 +992,7 @@ func (c *Table) navigateTo(row int, col int, extend bool) {
 	if row < 0 || row >= c.rowCount || col < 0 || col >= c.columnCount {
 		return
 	}
-	cellObj := c.getCellObj(row, col)
-	if cellObj.selectionDisabled {
+	if c.cellSelectionDisabled(row, col) {
 		return
 	}
 
@@ -982,8 +1104,7 @@ func (c *Table) toggleSelectionItem(row int, col int) {
 // Ctrl toggles a single item (and Ctrl+Shift extends additively), and any of
 // them arms drag-to-extend for the following mouse moves.
 func (c *Table) handleSelectionMouseDown(row int, col int, mods KeyModifiers) {
-	cellObj := c.getCellObj(row, col)
-	if cellObj.selectionDisabled {
+	if c.cellSelectionDisabled(row, col) {
 		return
 	}
 
@@ -1562,7 +1683,7 @@ func (c *Table) onMouseMove(x int, y int, mods KeyModifiers) bool {
 	}
 	if c.hotTracking && !c.selectionDragging {
 		col, row := c.cellByPosition(x, y)
-		if row >= 0 && col >= 0 && !c.getCellObj(row, col).selectionDisabled {
+		if row >= 0 && col >= 0 && !c.cellSelectionDisabled(row, col) {
 			// A hand over the items that can be chosen, as over links
 			c.SetMouseCursor(MouseCursorPointer)
 			if row != c.currentCellY || col != c.currentCellX {
@@ -1573,8 +1694,7 @@ func (c *Table) onMouseMove(x int, y int, mods KeyModifiers) bool {
 	if c.selectionDragging && c.selectionDragStarted {
 		col, row := c.cellByPositionClamped(x, y)
 		if row >= 0 && col >= 0 {
-			cellObj := c.getCellObj(row, col)
-			if !cellObj.selectionDisabled {
+			if !c.cellSelectionDisabled(row, col) {
 				if c.multiselect {
 					c.applyRangeSelection(c.selectionAnchorRow, c.selectionAnchorCol, row, col, c.selectionDragBaseRows, c.selectionDragBaseCells)
 					c.moveCurrentCellForSelection(row, col)
@@ -1670,11 +1790,15 @@ func (c *Table) draw(cnv *Canvas) {
 		altRowBackColor = MixColors(rowBackColor, p.Text, 0.035)
 	}
 
+	// Only the columns in the view: a table of many columns paints as fast
+	// as one of a few
+	visibleCol1, visibleCol2 := c.visibleColumns(c.scrollX, c.Width())
+
 	for rowIndex := visibleRow1; rowIndex < visibleRow2; rowIndex++ {
 		rowObj1, rowExists := c.rows[rowIndex]
 		{
 			_ = rowExists
-			for colIndex := 0; colIndex < c.columnCount; colIndex++ {
+			for colIndex := visibleCol1; colIndex < visibleCol2; colIndex++ {
 				var cellObj *tableCell
 				var cellExists bool
 				if rowObj1 != nil {
@@ -1850,21 +1974,22 @@ func (c *Table) drawPost(cnv *Canvas) {
 	// Draw header, in the view: not over the scroll bars
 	cnv.Save()
 	c.clipToViewport(cnv)
+	shadowed := c.headerShadowedCells()
+	viewLeft, viewRight := c.scrollX, c.scrollX+c.Width()
 	for headerRowIndex := 0; headerRowIndex < c.headerRowsCount; headerRowIndex++ {
 		for colIndex := 0; colIndex < c.columnCount; colIndex++ {
-			needToDisplay := true
-			if c.headerCellShadowed2(headerRowIndex, colIndex) {
-				needToDisplay = false
-			}
-
-			if !needToDisplay {
+			if shadowed[TableCellPos{Row: headerRowIndex, Col: colIndex}] {
 				continue
 			}
 
-			headerCell := c.headerCell2(headerRowIndex, colIndex)
+			headerCell := c.lookupHeaderCell(headerRowIndex, colIndex)
+			cellSpanX, cellSpanY := c.headerSpan(headerRowIndex, colIndex, headerCell)
 
-			cellSpanX := headerCell.SpanCol()
-			cellSpanY := headerCell.SpanRow()
+			// Only the cells in the view (a cell spanning into it from
+			// the left included)
+			if c.columnOffset(colIndex+cellSpanX) < viewLeft || c.columnOffset(colIndex) >= viewRight {
+				continue
+			}
 
 			headerRowOffset := c.headerRowOffset(headerRowIndex)
 			//headerRowHeight := c.headerRowHeight(headerRowIndex)
@@ -2007,26 +2132,91 @@ func (c *Table) contentWidth() int {
 }
 
 func (c *Table) columnOffset(col int) int {
-	result := 0
-	for i := 0; i < col; i++ {
-		colWidth := c.defaultColumnWidth
-		if colWidthValue, exists := c.columnsWidths[i]; exists {
-			colWidth = colWidthValue
-		}
-		result += colWidth
+	if col <= 0 {
+		return 0
+	}
+	offsets := c.columnOffsets()
+	if col < len(offsets) {
+		return offsets[col]
+	}
+	// Past the columns
+	result := offsets[len(offsets)-1]
+	for i := len(offsets) - 1; i < col; i++ {
+		result += c.ownColumnWidth(i)
 	}
 	return result
 }
 
-func (c *Table) updateInnerSize() {
-	width := 0
-	for i := 0; i < c.columnCount; i++ {
-		colWidth := c.defaultColumnWidth
-		if colWidthValue, exists := c.columnsWidths[i]; exists {
-			colWidth = colWidthValue
-		}
-		width += colWidth
+// ownColumnWidth is the width set for the column, not stretched
+func (c *Table) ownColumnWidth(col int) int {
+	if w, exists := c.columnsWidths[col]; exists {
+		return w
 	}
+	return c.defaultColumnWidth
+}
+
+// columnOffsets is colOffsets, worked out again if they changed: so that
+// columnOffset is O(1), and painting and hit-testing a table of many columns
+// are not quadratic in them
+func (c *Table) columnOffsets() []int {
+	n := max(c.columnCount, 0)
+	if len(c.colOffsets) == n+1 {
+		return c.colOffsets
+	}
+	offsets := make([]int, n+1)
+	monotonic := true
+	for i := range n {
+		w := c.ownColumnWidth(i)
+		if w < 0 {
+			monotonic = false
+		}
+		offsets[i+1] = offsets[i] + w
+	}
+	c.colOffsets, c.colOffsetsMonotonic = offsets, monotonic
+	return offsets
+}
+
+// columnAtX is the column under the content x, -1 if none
+func (c *Table) columnAtX(x int) int {
+	if c.columnCount <= 0 {
+		return -1
+	}
+	offsets := c.columnOffsets()
+	if !c.colOffsetsMonotonic {
+		for col := range c.columnCount {
+			if off := offsets[col]; x >= off && x < off+c.columnWidth(col) {
+				return col
+			}
+		}
+		return -1
+	}
+	// The last column whose start is at or before x (of the columns at one
+	// offset, the last one: the others are of width 0)
+	col := sort.Search(c.columnCount, func(i int) bool { return offsets[i] > x }) - 1
+	if col < 0 || x >= offsets[col]+c.columnWidth(col) {
+		return -1
+	}
+	return col
+}
+
+// visibleColumns is the range [first, last) of the columns that a part of
+// the view from the content x to x+width shows (all of them for widths
+// that are negative)
+func (c *Table) visibleColumns(x, width int) (first, last int) {
+	offsets := c.columnOffsets()
+	if !c.colOffsetsMonotonic {
+		return 0, c.columnCount
+	}
+	// The first column that ends after x: the stretched last one may end
+	// past its offset, so it is never skipped
+	first = sort.Search(c.columnCount, func(i int) bool { return offsets[i+1] > x })
+	first = min(first, max(c.columnCount-1, 0))
+	last = sort.Search(c.columnCount, func(i int) bool { return offsets[i] >= x+width })
+	return first, max(last, first)
+}
+
+func (c *Table) updateInnerSize() {
+	width := c.columnOffset(c.columnCount)
 	c.SetInnerSize(width, c.headerHeight()+c.rowCount*c.rowHeight1)
 	c.checkScrolls()
 }
@@ -2077,16 +2267,8 @@ func (c *Table) headerColumnByPosition(x int, y int) int {
 }
 
 func (c *Table) cellByPosition(x, y int) (row int, col int) {
-	col = 0
-	for col < c.columnCount {
-		colOffset := c.columnOffset(col)
-		colWidth := c.columnWidth(col)
-		if x >= colOffset && x < colOffset+colWidth {
-			break
-		}
-		col++
-	}
-	if col >= c.columnCount {
+	col = c.columnAtX(x)
+	if col < 0 {
 		return -1, -1
 	}
 	// The grid line drawn at the top of a row looks like the bottom edge of
@@ -2411,7 +2593,7 @@ func (c *Table) applyThemeMetrics() {
 // editKey reports whether the key (Enter or F2) opens the editor of the
 // current cell: by the trigger of the table or of the cell
 func (c *Table) editKey(key Key) bool {
-	cellObj := c.getCellObj(c.currentCellY, c.currentCellX)
+	cellObj := c.lookupCell(c.currentCellY, c.currentCellX)
 	switch key {
 	case KeyEnter:
 		return c.editTriggerEnter || cellObj != nil && cellObj.editTriggerEnter
@@ -2471,12 +2653,8 @@ func (c *Table) RefreshModel() {
 			c.SetColumnName(col, namer.ColumnName(col))
 		}
 	}
-	rows := c.model.RowCount()
-	if rows != c.rowCount {
+	if rows := c.model.RowCount(); rows != c.rowCount {
 		c.SetRowCount(rows)
-		if c.currentCellY >= rows {
-			c.SetCurrentCell2(max(0, rows-1), max(0, c.currentCellX))
-		}
 	}
 	c.Update()
 }

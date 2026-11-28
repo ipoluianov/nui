@@ -110,7 +110,7 @@ func (c *Canvas) AdjustPixels(x, y, w, h int, f func(color.RGBA) color.RGBA) {
 // own picture repaints all of itself (Update), and so does not see it.
 func (c *Canvas) Blur(x, y, w, h int, radius float64) {
 	b := c.pixelBox(x, y, w, h)
-	if b.Empty() || radius <= 0 {
+	if b.Empty() || !(radius > 0) { // NaN too
 		return
 	}
 	sigma := radius * c.scale / 2
@@ -139,20 +139,35 @@ func (c *Canvas) Blur(x, y, w, h int, radius float64) {
 // The transform is not applied.
 func (c *Canvas) DrawShadow(x, y, w, h, radius, blur float64, col color.Color) {
 	cr, cg, cb, ca := straightRGBA8(col)
-	if ca == 0 || w <= 0 || h <= 0 || c.clipEmpty() {
+	finite := func(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) }
+	// A non-finite place or size draws nothing
+	if ca == 0 || !(w > 0 && h > 0) || c.clipEmpty() || !finite(x) || !finite(y) || !finite(w) || !finite(h) {
 		return
 	}
+	if !(blur > 0) {
+		blur = 0
+	}
+	if !(radius > 0) {
+		radius = 0
+	}
 	s := c.scale
-	sigma := max(blur, 0) * s / 2
-	pad := int(math.Ceil(sigma*3)) + 1
-	// The shape in pixels, in a mask with room for the blur around it
+	sigma := blur * s / 2
+	// The shape in pixels, in a mask with room for the blur around it. Its
+	// size is checked in float64 before any int: a huge blur or shape
+	// would overflow the product and pass the check.
+	fpad := math.Ceil(sigma*3) + 1
+	fw, fh := math.Ceil(w*s)+fpad*2+1, math.Ceil(h*s)+fpad*2+1
 	x0 := float64(c.state.translateX) + x*s
 	y0 := float64(c.state.translateY) + y*s
+	if !(fw*fh <= 1<<24) || math.Abs(x0) > 1e9 || math.Abs(y0) > 1e9 {
+		return // a mask too large, or far out of any image
+	}
+	pad := int(fpad)
 	ox, oy := int(math.Floor(x0))-pad, int(math.Floor(y0))-pad
-	mw, mh := int(math.Ceil(w*s))+pad*2+1, int(math.Ceil(h*s))+pad*2+1
+	mw, mh := int(fw), int(fh)
 	area := image.Rect(ox, oy, ox+mw, oy+mh)
 	visible := area.Intersect(c.clipRect()).Intersect(c.rgba.Rect)
-	if visible.Empty() || mw*mh > 1<<24 {
+	if visible.Empty() {
 		return
 	}
 	ras := rasterizers.Get().(*rasterizer)
@@ -187,6 +202,10 @@ func (c *Canvas) DrawShadow(x, y, w, h, radius, blur float64, col color.Color) {
 // blurChannels blurs the image of w x h pixels of n channels in buf (0..255
 // each) by three box blurs that make a Gaussian of the sigma, in pixels
 func blurChannels(buf []uint32, w, h, n int, sigma float64) {
+	// Past the size of any image a larger blur changes nothing that shows
+	// (the edge pixels repeated outweigh the rest), and the radii of the
+	// boxes stay far within an int
+	sigma = min(sigma, maxBlurSigma)
 	for _, r := range boxesForGauss(sigma) {
 		if r <= 0 {
 			continue
@@ -219,22 +238,38 @@ func boxesForGauss(sigma float64) [3]int {
 	return r
 }
 
+// maxBlurSigma is the largest standard deviation, in pixels, blurChannels
+// blurs by
+const maxBlurSigma = 1 << 24
+
+// windowSum returns the sum of at(i) for i from -r to r, with at of the
+// samples 0..n-1, the edge ones repeated past the edges: the copies of the
+// edges are counted, not added one by one, so a large r costs no more
+func windowSum(at func(int) uint32, n, r int) uint64 {
+	sum := uint64(r) * uint64(at(0)) // -r..-1
+	inner := min(r, n-1)
+	for i := 0; i <= inner; i++ {
+		sum += uint64(at(i))
+	}
+	if r > inner {
+		sum += uint64(r-inner) * uint64(at(n-1))
+	}
+	return sum
+}
+
 // boxBlurH averages every pixel with r on each side of it along the rows,
 // the edge pixels repeated past the edges
 func boxBlurH(buf []uint32, w, h, n, r int) {
 	tmp := make([]uint32, w*n)
-	div := uint32(2*r + 1)
+	div := uint64(2*r + 1)
 	for y := 0; y < h; y++ {
 		row := buf[y*w*n : (y+1)*w*n]
 		for ch := 0; ch < n; ch++ {
 			at := func(x int) uint32 { return row[max(0, min(x, w-1))*n+ch] }
-			var sum uint32
-			for x := -r; x <= r; x++ {
-				sum += at(x)
-			}
+			sum := windowSum(at, w, r)
 			for x := 0; x < w; x++ {
-				tmp[x*n+ch] = (sum + div/2) / div
-				sum += at(x+r+1) - at(x-r)
+				tmp[x*n+ch] = uint32((sum + div/2) / div)
+				sum += uint64(at(x+r+1)) - uint64(at(x-r))
 			}
 		}
 		copy(row, tmp)
@@ -244,17 +279,14 @@ func boxBlurH(buf []uint32, w, h, n, r int) {
 // boxBlurV is boxBlurH along the columns
 func boxBlurV(buf []uint32, w, h, n, r int) {
 	tmp := make([]uint32, h)
-	div := uint32(2*r + 1)
+	div := uint64(2*r + 1)
 	for x := 0; x < w; x++ {
 		for ch := 0; ch < n; ch++ {
 			at := func(y int) uint32 { return buf[(max(0, min(y, h-1))*w+x)*n+ch] }
-			var sum uint32
-			for y := -r; y <= r; y++ {
-				sum += at(y)
-			}
+			sum := windowSum(at, h, r)
 			for y := 0; y < h; y++ {
-				tmp[y] = (sum + div/2) / div
-				sum += at(y+r+1) - at(y-r)
+				tmp[y] = uint32((sum + div/2) / div)
+				sum += uint64(at(y+r+1)) - uint64(at(y-r))
 			}
 			for y := 0; y < h; y++ {
 				buf[(y*w+x)*n+ch] = tmp[y]

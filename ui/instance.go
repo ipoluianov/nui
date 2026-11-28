@@ -4,9 +4,11 @@ import (
 	"bufio"
 	"crypto/sha256"
 	"encoding/hex"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -39,6 +41,13 @@ const (
 	// instanceDialTimeout is how long a second start tries to reach the
 	// running copy, which may be starting up itself
 	instanceDialTimeout = 3 * time.Second
+	// instanceMaxMessage caps what the running copy reads from one
+	// connection: the arguments of a start with room to spare, and no more
+	// memory for whatever else writes to the socket
+	instanceMaxMessage = 16 << 20
+	// instanceIOTimeout is how long one side waits for the whole message
+	// of a start
+	instanceIOTimeout = 2 * time.Second
 )
 
 // AcquireSingleInstance makes this process the running copy of the
@@ -90,23 +99,47 @@ func (c *SingleInstance) OnActivate(f func(args []string)) {
 			if err != nil {
 				return // closed
 			}
-			conn.SetReadDeadline(time.Now().Add(time.Second))
-			var args []string
-			sc := bufio.NewScanner(conn)
-			for sc.Scan() {
-				line := sc.Text()
-				if arg, ok := strings.CutPrefix(line, instanceArgCommand); ok {
-					args = append(args, arg)
-					continue
-				}
-				if strings.TrimSpace(line) == instanceShowCommand {
-					Invoke(func() { f(args) })
-				}
-				break
+			if args, ok := readInstanceMessage(conn); ok {
+				Invoke(func() { f(args) })
 			}
 			conn.Close()
 		}
 	}()
+}
+
+// readInstanceMessage reads the message of a second start: one line
+// "arg <quoted>" per argument, then "show". ok is false for a message that
+// is cut short, too long or holds anything else: the start is ignored
+// rather than delivered with arguments it did not send.
+func readInstanceMessage(conn net.Conn) (args []string, ok bool) {
+	conn.SetReadDeadline(time.Now().Add(instanceIOTimeout))
+	sc := bufio.NewScanner(io.LimitReader(conn, instanceMaxMessage))
+	sc.Buffer(make([]byte, 0, 4096), instanceMaxMessage)
+	for sc.Scan() {
+		line := sc.Text()
+		if quoted, isArg := strings.CutPrefix(line, instanceArgCommand); isArg {
+			arg, err := strconv.Unquote(quoted)
+			if err != nil {
+				return nil, false
+			}
+			args = append(args, arg)
+			continue
+		}
+		return args, line == instanceShowCommand
+	}
+	return nil, false
+}
+
+// writeInstanceMessage gives the message readInstanceMessage reads. Each
+// argument is quoted, so a line break in it (legal in a Unix file name)
+// can't end it early or pass for a command.
+func writeInstanceMessage(args []string) []byte {
+	var msg strings.Builder
+	for _, arg := range args {
+		msg.WriteString(instanceArgCommand + strconv.Quote(arg) + "\n")
+	}
+	msg.WriteString(instanceShowCommand + "\n")
+	return []byte(msg.String())
 }
 
 // Close releases the lock: another start becomes the running copy
@@ -158,13 +191,8 @@ func askToShow(socketPath string, args []string) error {
 		conn, err := net.DialTimeout("unix", socketPath, time.Second)
 		if err == nil {
 			defer conn.Close()
-			conn.SetWriteDeadline(time.Now().Add(time.Second))
-			var msg strings.Builder
-			for _, arg := range args {
-				msg.WriteString(instanceArgCommand + arg + "\n")
-			}
-			msg.WriteString(instanceShowCommand + "\n")
-			_, err = conn.Write([]byte(msg.String()))
+			conn.SetWriteDeadline(time.Now().Add(instanceIOTimeout))
+			_, err = conn.Write(writeInstanceMessage(args))
 			return err
 		}
 		if time.Now().After(deadline) {

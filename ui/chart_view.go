@@ -930,6 +930,11 @@ func (c *ChartView) drawRibbon(cnv *Canvas, a *ChartAxis, lineH float64) {
 // chartDrawLabel writes the line of text with the point of the alignment at
 // (x, y): the text as other widgets draw it, on whole pixels
 func chartDrawLabel(cnv *Canvas, text string, x, y float64, h HAlign, v VAlign, col color.RGBA) {
+	// A label far off the plot (or at a NaN or Inf position) is not drawn:
+	// its position would not fit an int
+	if !(math.Abs(x) <= chartPixelLimit) || !(math.Abs(y) <= chartPixelLimit) {
+		return
+	}
 	w, th := cnv.MeasureTextRotated(text, 0)
 	switch h {
 	case HAlignCenter:

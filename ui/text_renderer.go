@@ -190,9 +190,23 @@ func DrawText(rgba *image.RGBA, text string, textColor color.Color, fontFamily s
 	drawText(rgba, text, textColor, fontFamily, fontSize, x, y, image.Rect(clipX, clipY, clipX+clipWidth, clipY+clipHeight), 0)
 }
 
+// maxTextSize is the largest size in pixels text is drawn at (many times
+// the height of any screen): the metrics of a font are 26.6 fixed point,
+// which a larger size overflows
+const maxTextSize = 1 << 16
+
+// maxSystemTextSize is the largest size in pixels the system's text engine
+// draws text at: it makes a bitmap of each whole glyph
+const maxSystemTextSize = 1024
+
 // drawText is DrawText on a screen whose pixels have the stripes lcd (see
 // Canvas.lcd)
 func drawText(rgba *image.RGBA, text string, textColor color.Color, fontFamily string, fontSize float64, x, y int, clip image.Rectangle, lcd int) {
+	// Not drawn: a size that is not a size or is beyond any screen, and a
+	// place no picture has (int(NaN) of a caller is -2^63)
+	if !(fontSize > 0 && fontSize <= maxTextSize) || !textCoordOK(x, y) {
+		return
+	}
 	clipX, clipY, clipWidth, clipHeight := clip.Min.X, clip.Min.Y, clip.Dx(), clip.Dy()
 	// Right to left, joined, combined: through the shaper
 	if needsShaping(text) {
@@ -200,13 +214,19 @@ func drawText(rgba *image.RGBA, text string, textColor color.Color, fontFamily s
 		return
 	}
 	// A system font is drawn straight onto the pixels under it: its subpixel
-	// antialiasing depends on them, so there is no image to cache
-	if sf := systemFontFor(fontFamily, fontSize, text); sf != nil {
-		sf.Draw(rgba, text, colorToRGBA(textColor), x, y, clip)
-		return
+	// antialiasing depends on them, so there is no image to cache. Its
+	// glyphs are bitmaps as large as they are: huge text is filled as
+	// nui's outlines.
+	if fontSize <= maxSystemTextSize {
+		if sf := systemFontFor(fontFamily, fontSize, text); sf != nil {
+			sf.Draw(rgba, text, colorToRGBA(textColor), x, y, clip)
+			return
+		}
 	}
-	// nui's own glyphs, fitted to the pixels, in the stripes of the screen
-	if TextHinting || lcd != 0 {
+	// nui's own glyphs, fitted to the pixels, in the stripes of the screen;
+	// large ones as outlines within the clip (renderText makes an image of
+	// the whole text)
+	if TextHinting || lcd != 0 || fontSize > maxMaskSize {
 		drawTextGlyphs(rgba, text, textColor, fontFamily, fontSize, x, y, clip, lcd)
 		return
 	}

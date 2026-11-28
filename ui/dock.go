@@ -37,6 +37,7 @@ type DockLayout struct {
 	// once the layout is in a form
 	pendingSave func()
 	saveHooked  *Form
+	unhookSave  func()
 }
 
 // DockWidget is a panel of a DockLayout: a title bar with a menu and a
@@ -213,7 +214,10 @@ func (d *DockWidget) titleBar() Widgeter {
 	more := d.titleButton("…", nil)
 	more.SetOnClick(func() {
 		x, y := more.RectClientAreaOnWindow()
-		menu.attachToForm(menu, more.Form())
+		if more.Form() == nil {
+			return
+		}
+		more.Form().attachPopup(menu)
 		menu.ShowMenu(x, y+more.Height())
 	})
 	bar.Add(more)
@@ -280,8 +284,17 @@ func (c *DockLayout) RememberState(settings *Settings, key string) {
 // hookSave makes the form save the state when it closes
 func (c *DockLayout) hookSave() {
 	if c.pendingSave != nil && c.form != nil && c.saveHooked != c.form {
+		// Every close of the form saves, a form shown again too; a layout
+		// moved to another form saves at its close only
+		if c.unhookSave != nil {
+			c.unhookSave()
+		}
 		c.saveHooked = c.form
-		c.form.onClosing(c.pendingSave)
+		c.unhookSave = c.form.onEveryClose(func() {
+			if c.pendingSave != nil {
+				c.pendingSave()
+			}
+		})
 	}
 }
 

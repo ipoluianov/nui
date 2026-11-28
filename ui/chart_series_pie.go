@@ -111,9 +111,12 @@ func (s *PieSeries) SetInnerRadius(part float64) *PieSeries {
 
 // SetAngles sets where the first slice starts (radians, 0 - to the right,
 // growing clockwise; -π/2, the top, by default) and the angle of the whole:
-// π for a half circle
+// π for a half circle. A start of Inf or NaN is ignored; any other is
+// taken within one turn.
 func (s *PieSeries) SetAngles(start, sweep float64) *PieSeries {
-	s.start = start
+	if chartFinite(start) {
+		s.start = math.Mod(start, 2*math.Pi)
+	}
 	if sweep > 0 {
 		s.sweep = math.Min(sweep, 2*math.Pi)
 	}
@@ -291,14 +294,10 @@ func (s *PieSeries) sliceAt(px, py float64) int {
 	}
 	a := math.Atan2(dy, dx)
 	for i, sl := range s.drawn {
-		// The angle brought into the slice's turn
-		x := a
-		for x < sl.a0 {
-			x += 2 * math.Pi
-		}
-		for x >= sl.a0+2*math.Pi {
-			x -= 2 * math.Pi
-		}
+		// The angle brought into the slice's turn [a0, a0+2π), in closed
+		// form: a loop adding 2π ran for ages for a far start, and forever
+		// where adding 2π no longer changed it
+		x := sl.a0 + math.Mod(math.Mod(a-sl.a0, 2*math.Pi)+2*math.Pi, 2*math.Pi)
 		if x < sl.a1 {
 			return i
 		}

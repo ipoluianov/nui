@@ -2,6 +2,7 @@ package ui
 
 import (
 	"math"
+	"math/bits"
 	"sort"
 	"sync"
 	"time"
@@ -81,34 +82,56 @@ func TimeChartDownsample(points []TimeChartPoint, from, to time.Time, groupDurat
 // them straight from its storage without building a slice of all of them first.
 type TimeChartAggregator struct {
 	group    int64
+	shift    time.Duration // the Unix epoch minus the zero time of time.Time, modulo the group
 	res      []TimeChartPoint
-	bucket   int64
+	bucket   time.Time
 	inBucket bool
 }
 
+// unixEpochSeconds is the Unix epoch in seconds since the zero time of time.Time
+const unixEpochSeconds = 62135596800
+
 // NewTimeChartAggregator creates an aggregator; capacity is a hint for the number of result points
 func NewTimeChartAggregator(groupDuration time.Duration, capacity int) *TimeChartAggregator {
+	g := max(int64(groupDuration), 1)
+	hi, lo := bits.Mul64(unixEpochSeconds, 1e9)
 	return &TimeChartAggregator{
-		group: max(int64(groupDuration), 1),
+		group: g,
+		shift: time.Duration(bits.Rem64(hi, lo, uint64(g))),
 		res:   make([]TimeChartPoint, 0, max(capacity, 0)),
 	}
 }
 
+// bucketStart returns the start of the bucket of the time: a multiple of
+// the group since the Unix epoch
+func (c *TimeChartAggregator) bucketStart(t time.Time) time.Time {
+	g := c.group
+	if s := t.Unix(); s > -9e9 && s < 9e9 && g < 1e17 {
+		ns := t.UnixNano()
+		b := ns / g
+		if ns < 0 && ns%g != 0 {
+			b--
+		}
+		return time.Unix(0, b*g)
+	}
+	// Before 1678 or after 2262 UnixNano does not fit int64 (it wraps
+	// around): Truncate works for any time, but on the grid from the zero
+	// time of time.Time, so the time is moved by the offset of the Unix
+	// epoch on that grid
+	r := t.Add(-c.shift).Truncate(time.Duration(g)).Add(c.shift)
+	return time.Unix(r.Unix(), int64(r.Nanosecond()))
+}
+
 // Add adds the next point; points must come sorted by DT
 func (c *TimeChartAggregator) Add(p TimeChartPoint) {
-	g := c.group
-	ns := p.DT.UnixNano()
-	b := ns / g
-	if ns < 0 && ns%g != 0 {
-		b--
-	}
+	b := c.bucketStart(p.DT)
 	if p.IsGap() {
-		c.res = append(c.res, NewTimeChartGap(time.Unix(0, b*g)))
+		c.res = append(c.res, NewTimeChartGap(b))
 		c.inBucket = false
 		return
 	}
 	good := p.HasValue()
-	if c.inBucket && b == c.bucket {
+	if c.inBucket && b.Equal(c.bucket) {
 		last := &c.res[len(c.res)-1]
 		last.HasBad = last.HasBad || p.HasBad
 		switch {
@@ -125,7 +148,7 @@ func (c *TimeChartAggregator) Add(p TimeChartPoint) {
 	}
 	c.bucket = b
 	c.inBucket = true
-	q := TimeChartPoint{DT: time.Unix(0, b*g), HasBad: p.HasBad}
+	q := TimeChartPoint{DT: b, HasBad: p.HasBad}
 	if good {
 		q.First, q.Last, q.High, q.Low = p.First, p.Last, p.High, p.Low
 		q.HasGood = true

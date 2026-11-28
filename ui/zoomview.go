@@ -98,8 +98,11 @@ func (c *ZoomView) SetPainter(paint func(p *ZoomPaint)) {
 }
 
 // SetContentSize sets the size of the content, for a painter without an
-// image: the view keeps it in reach
+// image: the view keeps it in reach. A NaN or infinite size is ignored.
 func (c *ZoomView) SetContentSize(width, height float64) {
+	if !finiteValue(width) || !finiteValue(height) {
+		return
+	}
 	c.contentW, c.contentH = width, height
 	c.clampOffset()
 	c.form.Update()
@@ -110,8 +113,12 @@ func (c *ZoomView) SetPanWithLeftButton(pan bool) {
 	c.panLeft = pan
 }
 
-// SetZoomRange sets the smallest and the largest zoom
+// SetZoomRange sets the smallest and the largest zoom; a range that is not
+// 0 < minZoom <= maxZoom, both finite, is ignored
 func (c *ZoomView) SetZoomRange(minZoom, maxZoom float64) {
+	if !(minZoom > 0) || !(minZoom <= maxZoom) || math.IsInf(maxZoom, 1) {
+		return
+	}
 	c.minZoom, c.maxZoom = minZoom, maxZoom
 	c.SetZoom(c.zoom)
 }
@@ -126,8 +133,12 @@ func (c *ZoomView) SetZoom(zoom float64) {
 	c.ZoomAt(zoom, c.Width()/2, c.Height()/2)
 }
 
-// ZoomAt zooms keeping the content point at the view's point x, y where it is
+// ZoomAt zooms keeping the content point at the view's point x, y where it
+// is, kept in the zoom range; a zoom that is NaN or not above 0 is ignored
 func (c *ZoomView) ZoomAt(zoom float64, x, y int) {
+	if !(zoom > 0) {
+		return
+	}
 	c.fitPending = false // a zoom asked for later than the fit
 	zoom = math.Max(c.minZoom, math.Min(c.maxZoom, zoom))
 	cx, cy := c.ToContent(x, y)
@@ -179,8 +190,15 @@ func (c *ZoomView) ToView(x, y float64) (int, int) {
 }
 
 // clampOffset keeps the content in reach: a content smaller than the view
-// is centered, a larger one can't leave the view
+// is centered, a larger one can't leave the view. An offset gone NaN or
+// infinite (CenterOn at NaN) starts again from 0.
 func (c *ZoomView) clampOffset() {
+	if !finiteValue(c.offX) {
+		c.offX = 0
+	}
+	if !finiteValue(c.offY) {
+		c.offY = 0
+	}
 	clamp := func(off, content, view float64) float64 {
 		if content*c.zoom <= view {
 			return -(view/c.zoom - content) / 2

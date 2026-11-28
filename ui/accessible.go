@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"image"
+	"math"
 	"slices"
 	"strings"
 )
@@ -144,9 +145,9 @@ func (n *AccessibleNode) SetText(text string) bool {
 }
 
 // SetCurrent changes the value of a slider, a spin button, a scroll bar;
-// false if it has none
+// false if it has none, or for NaN (±Inf are clamped to Min and Max)
 func (n *AccessibleNode) SetCurrent(v float64) bool {
-	if n.setValue == nil || !n.Enabled {
+	if n.setValue == nil || !n.Enabled || math.IsNaN(v) {
 		return false
 	}
 	n.setValue(max(n.Min, min(n.Max, v)))

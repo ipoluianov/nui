@@ -247,10 +247,14 @@ func (c *NumBox) clamp(v float64) float64 {
 }
 
 func (c *NumBox) SetValue(v float64) {
-	if math.IsNaN(v) {
+	// A number box holds a finite number: NaN and ±Inf are ignored
+	if !numBoxFinite(v) {
 		return
 	}
 	v = c.clamp(v)
+	if !numBoxFinite(v) {
+		return
+	}
 
 	changed := !c.hasValue || v != c.value
 	c.value = v
@@ -361,7 +365,7 @@ func (c *NumBox) ProcessPropChange(key string, value interface{}) {
 	case "value":
 		// Update internal state without setting the prop again.
 		v := c.GetPropFloat64("value", c.value)
-		if !math.IsNaN(v) {
+		if numBoxFinite(v) && numBoxFinite(c.clamp(v)) {
 			v = c.clamp(v)
 			changed := !c.hasValue || v != c.value
 			c.value = v
@@ -572,27 +576,7 @@ func (c *NumBox) cursorPosFromPixel(px int) int {
 	if err != nil || len(charPos) == 0 {
 		return len(runes)
 	}
-	if len(charPos) == 1 {
-		return 0
-	}
-	if px <= (charPos[1]-charPos[0])/2 {
-		return 0
-	}
-	for i := 1; i < len(charPos)-1; i++ {
-		left := charPos[i] - (charPos[i]-charPos[i-1])/2
-		right := charPos[i] + (charPos[i+1]-charPos[i])/2
-		if px >= left && px < right {
-			return i
-		}
-	}
-	lastW := 0
-	if len(charPos) > 1 {
-		lastW = charPos[len(charPos)-1] - charPos[len(charPos)-2]
-	}
-	if px >= charPos[len(charPos)-1]-lastW/2 {
-		return len(charPos) - 1
-	}
-	return len(runes)
+	return nearestCaret(charPos, px)
 }
 
 func (c *NumBox) onKeyDown(key Key, mods KeyModifiers) bool {
@@ -839,10 +823,13 @@ func (c *NumBox) stepBy(delta float64) {
 	c.commitText()
 
 	v := c.clamp(c.value + delta)
-	// Round to decimals to stabilize drift.
+	// Round to decimals to stabilize drift; a value too large to scale
+	// by 10^decimals (v*p overflows) has no fraction to round
 	if c.decimals >= 0 && c.decimals <= 16 {
 		p := math.Pow10(c.decimals)
-		v = math.Round(v*p) / p
+		if r := math.Round(v*p) / p; numBoxFinite(r) {
+			v = r
+		}
 	}
 	c.setValueByUser(v)
 }
@@ -851,4 +838,9 @@ func (c *NumBox) stepBy(delta float64) {
 // shortcuts (see Form.AddShortcut)
 func (c *NumBox) handlesKey(key Key, mods KeyModifiers) bool {
 	return textEditingKey(key, mods)
+}
+
+// numBoxFinite tells whether v is neither NaN nor ±Inf
+func numBoxFinite(v float64) bool {
+	return !math.IsNaN(v) && !math.IsInf(v, 0)
 }

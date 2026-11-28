@@ -520,11 +520,22 @@ func (c *PropertyGrid) addField(f reflect.StructField, fv reflect.Value, name, c
 	case reflect.Float32, reflect.Float64:
 		p := c.AddFloat(category, name, fv.Float(), int(tagFloat("decimals", 2)))
 		box := p.editor.(*NumBox)
-		box.SetMin(tagFloat("min", -math.MaxFloat64))
-		box.SetMax(tagFloat("max", math.MaxFloat64))
+		// A float32 field takes no more than ±MaxFloat32: a larger value
+		// would be stored as ±Inf.
+		limit := floatLimitOf(fv.Kind())
+		box.SetMin(max(tagFloat("min", -limit), -limit))
+		box.SetMax(min(tagFloat("max", limit), limit))
 		return p
 	}
 	return nil
+}
+
+// floatLimitOf is the largest finite value of a float kind
+func floatLimitOf(kind reflect.Kind) float64 {
+	if kind == reflect.Float32 {
+		return math.MaxFloat32
+	}
+	return math.MaxFloat64
 }
 
 func minIntOf(t reflect.Type) int64 {
@@ -572,6 +583,9 @@ func (p *Property) writeField() {
 		return
 	case reflect.Float32, reflect.Float64:
 		if f, ok := toFloat64(v); ok {
+			if limit := floatLimitOf(fv.Kind()); !math.IsNaN(f) {
+				f = max(-limit, min(f, limit))
+			}
 			fv.SetFloat(f)
 		}
 		return

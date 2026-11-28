@@ -176,6 +176,25 @@ func TextCaretX(fontFamily string, fontSize float64, text string, i int) int {
 	return toLogicalText(int(math.Round(l.CaretRect(runeOffset(text, max(0, i))).MinX)), s)
 }
 
+// textCaretXs returns TextCaretX of each rune index of the text, 0 to its
+// length, in one pass: TextCaretX of every index is quadratic
+func textCaretXs(fontFamily string, fontSize float64, text string) []int {
+	if !needsShaping(text) {
+		positions, _ := GetCharPositions(fontFamily, fontSize, text)
+		if len(positions) == 0 {
+			return []int{0}
+		}
+		return positions
+	}
+	s := textScale()
+	xs := shapedLine(text, fontFamily, fontSize*s).caretXsAll()
+	out := make([]int, len(xs))
+	for i, x := range xs {
+		out[i] = toLogicalText(int(math.Round(x)), s)
+	}
+	return out
+}
+
 // TextIndexAt returns the index of the character (in runes) whose caret is
 // nearest the x of a line of text, measured as GetCharPositions measures:
 // where a click lands. It knows text written right to left.

@@ -267,6 +267,18 @@ func chartFinite(v float64) bool {
 	return !math.IsNaN(v) && !math.IsInf(v, 0)
 }
 
+// chartWiden widens lo..hi to the finite values of vals: an Inf or NaN (a
+// missing reading, a division by zero) is left out of the autoscale, where
+// math.Min and math.Max would pass it through and spoil the whole range
+func chartWiden(lo, hi float64, vals ...float64) (float64, float64) {
+	for _, v := range vals {
+		if chartFinite(v) {
+			lo, hi = math.Min(lo, v), math.Max(hi, v)
+		}
+	}
+	return lo, hi
+}
+
 // nearestSampleIndex returns the index of the sample of the sorted slice
 // whose X is nearest to x; -1 for an empty one
 func nearestSampleIndex(samples []ChartSample, x float64) int {
