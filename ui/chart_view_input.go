@@ -203,8 +203,12 @@ func (c *ChartView) Selection() (from, to float64, ok bool) {
 	return c.selFrom, c.selTo, c.hasSel
 }
 
-// SetSelection selects the range of the horizontal axis
+// SetSelection selects the range of the horizontal axis; a non-finite
+// range is ignored
 func (c *ChartView) SetSelection(from, to float64) {
+	if !chartFinite(from) || !chartFinite(to) {
+		return
+	}
 	if from > to {
 		from, to = to, from
 	}

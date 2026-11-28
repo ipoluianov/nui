@@ -143,22 +143,51 @@ func (s *ChartMemorySource) SetSamples(samples []ChartSample) {
 // A sample out of order is put in its place, slower.
 func (s *ChartMemorySource) Append(samples ...ChartSample) {
 	s.mtx.Lock()
+	start, sorted := len(s.samples), true
 	for _, p := range samples {
-		n := len(s.samples)
-		if n == 0 || p.X >= s.samples[n-1].X {
-			s.samples = append(s.samples, p)
-			continue
+		if n := len(s.samples); n > 0 && !(p.X >= s.samples[n-1].X) {
+			sorted = false
 		}
-		i := sort.Search(n, func(i int) bool { return s.samples[i].X > p.X })
-		s.samples = append(s.samples, ChartSample{})
-		copy(s.samples[i+1:], s.samples[i:])
-		s.samples[i] = p
+		s.samples = append(s.samples, p)
+	}
+	if !sorted {
+		s.mergeLocked(start)
 		s.levels = nil
 	}
 	s.trimLocked()
 	s.version++
 	s.mtx.Unlock()
 	s.changed()
+}
+
+// chartSampleLess orders samples by X, a NaN X after all the others
+func chartSampleLess(a, b ChartSample) bool {
+	return a.X < b.X || (math.IsNaN(b.X) && !math.IsNaN(a.X))
+}
+
+// mergeLocked puts the samples from start on, appended out of order, in
+// their places: the batch is sorted and merged after the old samples of the
+// same X, in O(n + k log k) for the whole batch rather than a copy of the
+// tail per sample
+func (s *ChartMemorySource) mergeLocked(start int) {
+	batch := s.samples[start:]
+	sort.SliceStable(batch, func(i, j int) bool { return chartSampleLess(batch[i], batch[j]) })
+	old := s.samples[:start]
+	lo := sort.Search(start, func(i int) bool { return chartSampleLess(batch[0], old[i]) })
+	merged := make([]ChartSample, 0, len(s.samples)-lo)
+	i, j := lo, 0
+	for i < start && j < len(batch) {
+		if chartSampleLess(batch[j], old[i]) {
+			merged = append(merged, batch[j])
+			j++
+		} else {
+			merged = append(merged, old[i])
+			i++
+		}
+	}
+	merged = append(merged, old[i:start]...)
+	merged = append(merged, batch[j:]...)
+	copy(s.samples[lo:], merged)
 }
 
 // AppendValue adds a good sample of the value at x

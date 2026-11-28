@@ -601,7 +601,13 @@ func (p *ChartPane) AddBand(name string) *BandSeries {
 // points are kept sorted by x
 func (s *BandSeries) Add(x, y, low, high float64) *BandSeries {
 	b := BandSample{X: x, Y: y, Low: math.Min(low, high), High: math.Max(low, high)}
-	i := sort.Search(len(s.samples), func(i int) bool { return s.samples[i].X > x })
+	n := len(s.samples)
+	if n == 0 || x >= s.samples[n-1].X {
+		s.samples = append(s.samples, b)
+		s.update()
+		return s
+	}
+	i := sort.Search(n, func(i int) bool { return s.samples[i].X > x })
 	s.samples = append(s.samples, BandSample{})
 	copy(s.samples[i+1:], s.samples[i:])
 	s.samples[i] = b
@@ -678,8 +684,9 @@ func (s *BandSeries) Draw(cnv *Canvas, v *ChartViewport) {
 	defer pathPool.Put(p)
 	// The points to draw, in pixels: a point with an Inf or NaN is skipped
 	type pt struct{ x, y, high, low float64 }
-	pts := make([]pt, 0, len(s.samples))
-	for _, b := range s.samples {
+	vis := s.visibleSamples(v)
+	pts := make([]pt, 0, len(vis))
+	for _, b := range vis {
 		if chartFinite(b.X) && chartFinite(b.Y) && chartFinite(b.Low) && chartFinite(b.High) {
 			pts = append(pts, pt{chartPx(v.PX(b.X)), chartPx(v.PY(b.Y)), chartPx(v.PY(b.High)), chartPx(v.PY(b.Low))})
 		}
@@ -731,6 +738,23 @@ func (s *BandSeries) Draw(cnv *Canvas, v *ChartViewport) {
 		}
 		cnv.StrokePath(p, StrokeStyle{Width: 1.5, Join: LineJoinRound}, col)
 	}
+}
+
+// visibleSamples returns the samples over the plot, with a whisker's margin
+// and one more on each side for the band to reach the edges: a long series
+// zoomed in does not draw all its points every paint
+func (s *BandSeries) visibleSamples(v *ChartViewport) []BandSample {
+	a, b := v.DataX(v.X-8), v.DataX(v.X+v.W+8)
+	if a > b {
+		a, b = b, a
+	}
+	if !chartFinite(a) || !chartFinite(b) {
+		return s.samples
+	}
+	n := len(s.samples)
+	i0 := sort.Search(n, func(i int) bool { return s.samples[i].X >= a })
+	i1 := sort.Search(n, func(i int) bool { return s.samples[i].X > b })
+	return s.samples[max(i0-1, 0):min(i1+1, n)]
 }
 
 // Nearest implements ChartSeries

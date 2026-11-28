@@ -727,16 +727,31 @@ func ParseHexColor(s string) (color.RGBA, bool) {
 	if len(s) != 6 && len(s) != 8 {
 		return color.RGBA{}, false
 	}
+	// Hex digits only: no spaces, signs or "0x" inside
 	var v [4]uint8
 	v[3] = 0xFF
 	for i := 0; i < len(s)/2; i++ {
-		var b uint8
-		if _, err := fmt.Sscanf(s[i*2:i*2+2], "%02x", &b); err != nil {
+		hi, ok1 := hexDigit(s[i*2])
+		lo, ok2 := hexDigit(s[i*2+1])
+		if !ok1 || !ok2 {
 			return color.RGBA{}, false
 		}
-		v[i] = b
+		v[i] = hi<<4 | lo
 	}
 	return color.RGBA{v[0], v[1], v[2], v[3]}, true
+}
+
+// hexDigit is the value of a hex digit, false if the byte isn't one
+func hexDigit(b byte) (uint8, bool) {
+	switch {
+	case b >= '0' && b <= '9':
+		return b - '0', true
+	case b >= 'a' && b <= 'f':
+		return b - 'a' + 10, true
+	case b >= 'A' && b <= 'F':
+		return b - 'A' + 10, true
+	}
+	return 0, false
 }
 
 func colorToHexString(col color.RGBA, withAlpha bool) string {

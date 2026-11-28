@@ -24,6 +24,11 @@ const (
 
 var dockAreaNames = []string{"Left", "Right", "Bottom"}
 
+// valid tells whether the area is one of DockLeft..DockBottom
+func (a DockArea) valid() bool {
+	return a >= DockLeft && a <= DockBottom
+}
+
 // DockLayout is the main area of a window with the dock panels around it
 type DockLayout struct {
 	Panel
@@ -78,8 +83,12 @@ func NewDockLayout(central Widgeter) *DockLayout {
 	return c
 }
 
-// AddDock adds a panel with the title and the content in the area, shown
+// AddDock adds a panel with the title and the content in the area, shown.
+// An unknown area is taken as DockLeft.
 func (c *DockLayout) AddDock(title string, content Widgeter, area DockArea) *DockWidget {
+	if !area.valid() {
+		area = DockLeft
+	}
 	d := &DockWidget{layout: c, title: title, content: content, area: area, shown: true}
 	d.frame = NewVBox()
 	d.frame.SetCellPadding(0)
@@ -180,8 +189,11 @@ func (d *DockWidget) SetShown(shown bool) {
 	d.layout.rebuild()
 }
 
-// MoveTo moves the panel to the area, shown
+// MoveTo moves the panel to the area, shown. An unknown area is ignored.
 func (d *DockWidget) MoveTo(area DockArea) {
+	if !area.valid() {
+		return
+	}
 	d.area = area
 	d.shown = true
 	d.toggle.SetChecked(true)
@@ -260,7 +272,12 @@ func (c *DockLayout) RememberState(settings *Settings, key string) {
 		}
 		for _, d := range c.docks {
 			if s, ok := state.Docks[d.title]; ok {
-				d.area, d.shown = s.Area, s.Shown
+				// An area out of range (a corrupt file) would put the
+				// panel nowhere while it says shown: it stays where it is
+				if s.Area.valid() {
+					d.area = s.Area
+				}
+				d.shown = s.Shown
 				d.toggle.SetChecked(s.Shown)
 			}
 		}

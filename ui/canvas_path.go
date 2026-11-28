@@ -3,7 +3,6 @@ package ui
 import (
 	"image"
 	"image/color"
-	"image/draw"
 	"math"
 	"sync"
 
@@ -1079,10 +1078,8 @@ func boxPixels(box [4]float64) image.Rectangle {
 func (c *Canvas) rasterizeRect(pb *polyBuilder, b image.Rectangle, only []int, clip image.Rectangle, blend coverRow) {
 	ras := rasterizers.Get().(*rasterizer)
 	defer rasterizers.Put(ras)
-	var z pathSink = ras.reset(b.Dx(), b.Dy())
-	if pb.evenOdd {
-		z = ras.eo.reset(b.Dx(), b.Dy())
-	}
+	// The rasterizer of nui for both rules, see evenOddRasterizer
+	z := ras.eo.reset(b.Dx(), b.Dy(), !pb.evenOdd)
 	ox, oy := float64(b.Min.X), float64(b.Min.Y)
 	// Clipped to the rectangle with a margin: the rasterizer walks every row
 	// between the ends of a line, those far above it too
@@ -1121,12 +1118,7 @@ func (c *Canvas) rasterizeRect(pb *polyBuilder, b image.Rectangle, only []int, c
 		return
 	}
 	mask := ras.mask(b.Dx(), b.Dy())
-	if pb.evenOdd {
-		ras.eo.accumulate(mask)
-	} else {
-		ras.z.DrawOp = draw.Src
-		ras.z.Draw(mask, mask.Rect, image.Opaque, image.Point{})
-	}
+	ras.eo.accumulate(mask)
 	// The rows and the columns of b within the clip
 	clip = clip.Intersect(b)
 	for yy := clip.Min.Y - b.Min.Y; yy < clip.Max.Y-b.Min.Y; yy++ {
@@ -1269,14 +1261,6 @@ type rasterizer struct {
 	z     vector.Rasterizer
 	eo    evenOddRasterizer
 	alpha image.Alpha
-}
-
-// pathSink takes the lines of a polygon: the rasterizer of x/image/vector
-// or the even-odd one
-type pathSink interface {
-	MoveTo(x, y float32)
-	LineTo(x, y float32)
-	ClosePath()
 }
 
 var rasterizers = sync.Pool{New: func() any { return &rasterizer{} }}

@@ -137,7 +137,8 @@ func DrawSparkline(cnv *Canvas, x, y, w, h float64, values []float64, kind Chart
 		lo, hi = math.Min(lo, 0), math.Max(hi, 0)
 	}
 	if hi-lo < 1e-300 {
-		lo, hi = lo-1, hi+1
+		// widened relatively: v±1 is v itself past 2^53
+		lo, hi = widenDomain(lo, hi, 1)
 	}
 	n := len(values)
 	p := pathPool.Get().(*Path)

@@ -9,8 +9,9 @@ import (
 // MarkdownView shows Markdown text, wrapped to its width and scrolled:
 // headings, paragraphs, bulleted and numbered lists, quotes, code blocks,
 // horizontal rules; **bold**, *italic*, `code` and [links](url) in the
-// text. A click on a link emits OnLinkClicked; without a handler the link
-// opens in the browser.
+// text. A click on a link emits OnLinkClicked; without a handler a link to
+// http, https or mailto opens in the browser, and other links (a file, a
+// program) do nothing.
 //
 //	help := ui.NewMarkdownView()
 //	help.SetMarkdown("# Help\n\nPress **Ctrl+S** to save. See [the site](https://example.com).")
@@ -24,7 +25,10 @@ type MarkdownView struct {
 	blocks   []mdBlock
 	lines    []mdLine // the layout at layoutWidth
 	width    int      // the width the lines are laid out for
-	hover    string   // the link under the mouse
+	// the font the lines are laid out with: a new one lays them out again
+	layoutFamily string
+	layoutSize   float64
+	hover        string // the link under the mouse
 }
 
 type mdBlockKind int
@@ -86,6 +90,13 @@ func NewMarkdownView() *MarkdownView {
 	c.SetOnMouseDown(c.mouseDown)
 	c.OnResize.Connect(func(Size) { c.relayout() })
 	return &c
+}
+
+// ProcessPropChange lays the text out again for a new font (SetFontSize,
+// SetFontFamily...), which resizes nothing
+func (c *MarkdownView) ProcessPropChange(key string, value any) {
+	c.relayout()
+	c.Update()
 }
 
 // SetMarkdown shows the text
@@ -193,6 +204,9 @@ func parseInline(text string) []mdRun {
 	var runs []mdRun
 	var cur strings.Builder
 	bold, italic := false, false
+	// A search that found nothing finds nothing later in the text either:
+	// not searched again, or many "[" or "`" take quadratic time
+	noBacktick, noLinkText, noLinkURL := false, false, false
 	emit := func() {
 		if cur.Len() > 0 {
 			runs = append(runs, mdRun{text: cur.String(), bold: bold, italic: italic})
@@ -210,7 +224,12 @@ func parseInline(text string) []mdRun {
 			italic = !italic
 			i++
 		case text[i] == '`':
-			if end := strings.IndexByte(text[i+1:], '`'); end >= 0 {
+			end := -1
+			if !noBacktick {
+				end = strings.IndexByte(text[i+1:], '`')
+				noBacktick = end < 0
+			}
+			if end >= 0 {
 				emit()
 				runs = append(runs, mdRun{text: text[i+1 : i+1+end], code: true})
 				i += end + 2
@@ -219,10 +238,16 @@ func parseInline(text string) []mdRun {
 			cur.WriteByte(text[i])
 			i++
 		case text[i] == '[':
-			closeText := strings.Index(text[i:], "](")
-			closeURL := -1
-			if closeText > 0 {
+			closeText, closeURL := -1, -1
+			if !noLinkText && !noLinkURL {
+				closeText = strings.Index(text[i:], "](")
+				noLinkText = closeText < 0
+			}
+			// The ")" after the first "](" from here: the "](" of a later
+			// "[" is not before it
+			if closeText > 0 && !noLinkURL {
 				closeURL = strings.IndexByte(text[i+closeText:], ')')
+				noLinkURL = closeURL < 0
 			}
 			if closeText > 0 && closeURL > 0 {
 				emit()
@@ -251,13 +276,13 @@ const mdIndent = 22
 func (c *MarkdownView) relayout() {
 	vw, _ := c.viewportSize()
 	width := vw - 2*themeTextInset
-	if width <= 0 || width == c.width {
-		return
-	}
-	c.width = width
-	c.lines = c.lines[:0]
 	base := c.FontSize()
 	family := c.FontFamily()
+	if width <= 0 || width == c.width && family == c.layoutFamily && base == c.layoutSize {
+		return
+	}
+	c.width, c.layoutFamily, c.layoutSize = width, family, base
+	c.lines = c.lines[:0]
 	_, lineHeight, _ := MeasureText(family, base, "Ag")
 	y := themeTextInset
 	for i, block := range c.blocks {
@@ -353,9 +378,9 @@ func splitWords(text string) []string {
 // ---------------------------------------------------------------- Painting
 
 func (c *MarkdownView) draw(cnv *Canvas) {
-	if c.width == 0 {
-		c.relayout()
-	}
+	// Laid out again for a new width or font (a font change resizes
+	// nothing)
+	c.relayout()
 	p := CurrentPalette()
 	vw, vh := c.viewportSize()
 	codeBack := MixColors(p.Base, p.Text, 0.06)
@@ -440,8 +465,20 @@ func (c *MarkdownView) mouseDown(button MouseButton, x, y int, mods KeyModifiers
 	}
 	if c.OnLinkClicked.Connected() {
 		c.OnLinkClicked.Emit(link)
-	} else {
-		OpenURL(link)
+	} else if markdownLinkOpens(link) {
+		markdownOpenURL(link)
 	}
 	return true
+}
+
+// markdownOpenURL opens a link clicked without a handler; a variable for
+// the tests
+var markdownOpenURL = OpenURL
+
+// markdownLinkOpens reports whether a link without a handler is opened:
+// only web and mail addresses, not a file or a program a text could point
+// to
+func markdownLinkOpens(link string) bool {
+	link = strings.ToLower(link)
+	return strings.HasPrefix(link, "http://") || strings.HasPrefix(link, "https://") || strings.HasPrefix(link, "mailto:")
 }

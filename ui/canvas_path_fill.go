@@ -7,26 +7,50 @@ import (
 )
 
 // evenOddRasterizer computes how much of every pixel a polygon covers by
-// FillRuleEvenOdd. Each line adds its signed area to the cells it crosses;
-// the sum along a row is then how many times the path winds around the
-// pixel, of which the even-odd rule takes the fractional parity.
+// FillRuleEvenOdd or, with nonZero, by FillRuleNonZero. Each line adds its
+// signed area to the cells it crosses; the sum along a row is then how many
+// times the path winds around the pixel, of which the even-odd rule takes
+// the fractional parity and the nonzero one the magnitude up to 1.
+//
+// It is in float32 for both rules: the fixed-point math x/image/vector uses
+// for the masks up to 512 pixels gives the pixels near a sharp vertex too
+// much coverage.
 type evenOddRasterizer struct {
-	w, h       int
-	acc        []float32 // (w + 2) per row: a line may reach past the last pixel
+	w, h    int
+	nonZero bool
+	acc     []float32 // (w + 2) per row: a line may reach past the last pixel
+	// span is the first and the last cell of each row a line added to;
+	// before it the sum is 0, after it the sum does not change
+	span       [][2]int32
 	penX, penY float32
 	startX     float32
 	startY     float32
 }
 
-func (r *evenOddRasterizer) reset(w, h int) *evenOddRasterizer {
+func (r *evenOddRasterizer) reset(w, h int, nonZero bool) *evenOddRasterizer {
 	r.w, r.h = w, h
+	r.nonZero = nonZero
 	n := (w + 2) * h
 	if cap(r.acc) < n {
 		r.acc = make([]float32, n)
 	}
 	r.acc = r.acc[:n]
 	clear(r.acc)
+	if cap(r.span) < h {
+		r.span = make([][2]int32, h)
+	}
+	r.span = r.span[:h]
+	for i := range r.span {
+		r.span[i] = [2]int32{math.MaxInt32, -1}
+	}
 	return r
+}
+
+// touch widens the span of the row y to the cells lo..hi
+func (r *evenOddRasterizer) touch(y, lo, hi int) {
+	sp := &r.span[y]
+	sp[0] = min(sp[0], int32(lo))
+	sp[1] = max(sp[1], int32(hi))
 }
 
 func (r *evenOddRasterizer) MoveTo(x, y float32) {
@@ -80,6 +104,7 @@ func (r *evenOddRasterizer) LineTo(bx, by float32) {
 		if x0 < 0 && x1 > 0 {
 			left := d * (-x0 / (x1 - x0))
 			row[0] += left
+			r.touch(y, 0, 0)
 			d -= left
 			x0 = 0
 		}
@@ -96,6 +121,7 @@ func (r *evenOddRasterizer) LineTo(bx, by float32) {
 			xmf := (x0+x1)/2 - float32(x0i)
 			row[x0i] += d - d*xmf
 			row[x0i+1] += d * xmf
+			r.touch(y, x0i, x0i+1)
 		} else {
 			s := 1 / (x1 - x0)
 			a0 := 0.5 * s * (1 - x0f) * (1 - x0f)
@@ -114,6 +140,7 @@ func (r *evenOddRasterizer) LineTo(bx, by float32) {
 				row[x1i-1] += d * (1 - a2 - am)
 			}
 			row[x1i] += d * am
+			r.touch(y, x0i, x1i)
 		}
 		x = xNext
 	}
@@ -126,18 +153,72 @@ func (r *evenOddRasterizer) accumulate(mask *image.Alpha) {
 	for y := 0; y < r.h; y++ {
 		row := r.acc[y*stride : y*stride+r.w]
 		out := mask.Pix[y*mask.Stride : y*mask.Stride+r.w]
-		var sum float32
-		for x, v := range row {
-			sum += v
-			a := float32(math.Abs(float64(sum)))
-			// The parity: 0 at an even winding, 1 at an odd one, the
-			// fraction between them at the edges
-			a = a - 2*float32(math.Floor(float64(a/2)))
-			if a > 1 {
-				a = 2 - a
-			}
-			out[x] = uint8(a*255 + 0.5)
+		out = out[:len(row)]
+		// Before the span of the row the pixels are 0, after it the last
+		// pixel of it again
+		lo, hi := int(r.span[y][0]), min(int(r.span[y][1]), len(row)-1)
+		if hi < lo {
+			clear(out)
+			continue
 		}
+		clear(out[:lo])
+		var sum float32
+		var last uint8
+		for x := lo; x <= hi; {
+			// Within a shape and outside it most cells add nothing: the
+			// run of them repeats the pixel before it, written as a block
+			if row[x] == 0 {
+				end := x + 1
+				for end <= hi && row[end] == 0 {
+					end++
+				}
+				fillBytes(out[x:end], last)
+				x = end
+				continue
+			}
+			sum += row[x]
+			last = r.coverage(sum)
+			out[x] = last
+			x++
+		}
+		fillBytes(out[hi+1:], last)
+	}
+}
+
+// coverage is the mask value of a pixel whose winding sum is sum, without
+// float64 math in the common case: it runs for many pixels of every fill
+func (r *evenOddRasterizer) coverage(sum float32) uint8 {
+	a := sum
+	if a < 0 {
+		a = -a
+	}
+	if r.nonZero {
+		a = min(a, 1)
+	} else {
+		// The parity: 0 at an even winding, 1 at an odd one, the fraction
+		// between them at the edges
+		if a >= 2 {
+			a -= 2 * float32(math.Floor(float64(a/2)))
+		}
+		if a > 1 {
+			a = 2 - a
+		}
+	}
+	return uint8(a*255 + 0.5)
+}
+
+// fillBytes sets every byte of b to v
+func fillBytes(b []byte, v byte) {
+	if len(b) == 0 {
+		return
+	}
+	if v == 0 {
+		clear(b)
+		return
+	}
+	b[0] = v
+	for n := 1; n < len(b); n *= 2 {
+		copy(b[n:], b[:n])
 	}
 }
 

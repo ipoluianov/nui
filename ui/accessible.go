@@ -71,7 +71,7 @@ var roleNames = [...]string{"none", "window", "dialog", "group", "button", "chec
 	"image", "canvas", "splitter", "calendar"}
 
 func (r AccessibleRole) String() string {
-	if int(r) < len(roleNames) {
+	if r >= 0 && int(r) < len(roleNames) {
 		return roleNames[r]
 	}
 	return fmt.Sprintf("role %d", int(r))

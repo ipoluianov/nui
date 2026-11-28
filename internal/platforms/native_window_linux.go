@@ -9,6 +9,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"math"
 	"os"
 	"os/exec"
 	"sync"
@@ -16,6 +17,8 @@ import (
 	"syscall"
 	"time"
 	"unsafe"
+
+	"golang.org/x/image/draw"
 )
 
 type windowId uintptr
@@ -1382,6 +1385,10 @@ func (c *nativeWindow) SetAppIcon(icon *image.RGBA) {
 	if c.platform.closed {
 		return
 	}
+	// The property is written in one request: a larger icon (2048x2048 and
+	// up with the usual limit) was refused by the server and the window had
+	// none. It is scaled down to fit.
+	icon = fitIcon(icon, maxPropertySize(c.platform.display)/4-2)
 	width := icon.Bounds().Dx()
 	height := icon.Bounds().Dy()
 
@@ -1419,6 +1426,50 @@ func (c *nativeWindow) SetAppIcon(icon *image.RGBA) {
 		unsafe.Pointer(&data[0]),
 		int32(len(data)),
 	)
+}
+
+// fitIcon returns the icon, scaled down keeping its proportions when it
+// has more than maxPixels pixels
+func fitIcon(icon *image.RGBA, maxPixels int) *image.RGBA {
+	b := icon.Bounds()
+	w, h := iconSizeToFit(b.Dx(), b.Dy(), maxPixels)
+	if w == b.Dx() && h == b.Dy() {
+		return icon
+	}
+	scaled := image.NewRGBA(image.Rect(0, 0, w, h))
+	draw.CatmullRom.Scale(scaled, scaled.Bounds(), icon, b, draw.Src, nil)
+	return scaled
+}
+
+// iconSizeToFit is the largest size of the proportions of w x h with at
+// most maxPixels pixels, w x h itself if it has no more
+func iconSizeToFit(w, h, maxPixels int) (int, int) {
+	if w <= 0 || h <= 0 || w*h <= maxPixels {
+		return w, h
+	}
+	maxPixels = max(maxPixels, 1)
+	k := math.Sqrt(float64(maxPixels) / (float64(w) * float64(h)))
+	fw := max(1, int(float64(w)*k))
+	fh := max(1, int(float64(h)*k))
+	// Rounding down keeps it within maxPixels, but for an error of the
+	// floats or a side, less than one pixel, made one: the other side gets
+	// the rest then
+	switch {
+	case fw*fh <= maxPixels:
+	case fh == 1:
+		fw = maxPixels
+	case fw == 1:
+		fh = maxPixels
+	default:
+		for fw*fh > maxPixels {
+			if fw >= fh {
+				fw--
+			} else {
+				fh--
+			}
+		}
+	}
+	return fw, fh
 }
 
 func (c *nativeWindow) drawImageRGBA(display uintptr, window uintptr, img image.Image) {

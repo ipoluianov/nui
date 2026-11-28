@@ -95,8 +95,7 @@ func (s *BarSeries) Set(category string, value float64) *BarSeries {
 	}
 	i := cs.Index(category)
 	if i < 0 {
-		cs.SetCategories(append(append([]string(nil), cs.categories...), category))
-		i = len(cs.categories) - 1
+		i = cs.addCategory(category)
 	}
 	s.SetAt(i, value)
 	return s

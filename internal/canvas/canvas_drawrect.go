@@ -12,8 +12,16 @@ func (c *Canvas) DrawRect(x, y, w, h float64) {
 }
 
 func (c *Canvas) FillRect(x, y, w, h int, alpha float64) {
+	// The color is premultiplied: alpha scales all of its channels
+	if !(alpha > 0) {
+		return
+	}
+	alpha = min(alpha, 1)
 	col := c.CurrentState().col
-	col.A = uint8(alpha * 255)
+	col.R = uint8(float64(col.R)*alpha + 0.5)
+	col.G = uint8(float64(col.G)*alpha + 0.5)
+	col.B = uint8(float64(col.B)*alpha + 0.5)
+	col.A = uint8(float64(col.A)*alpha + 0.5)
 	for j := 0; j < h; j++ {
 		for i := 0; i < w; i++ {
 			c.BlendPixel(x+i, y+j, col)

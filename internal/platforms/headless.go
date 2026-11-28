@@ -53,7 +53,17 @@ func SetHeadlessScreen(width, height int, scale float64) {
 	headlessMu.Lock()
 	defer headlessMu.Unlock()
 	headlessScreenW, headlessScreenH = width, height
-	headlessScale = max(scale, 1)
+	headlessScale = headlessValidScale(scale)
+}
+
+// headlessValidScale is the scale, 1 for one below 1 or not a number, and
+// at most 16: max(NaN, 1) is NaN and +Inf passes it, and either made the
+// size of the window's pixels nonsense, a panic in Render
+func headlessValidScale(scale float64) float64 {
+	if !(scale >= 1) {
+		return 1
+	}
+	return min(scale, 16)
 }
 
 // RunHeadlessPosted runs the functions posted so far (see Post), and those
@@ -468,7 +478,7 @@ func (w *HeadlessWindow) Updates() int { return int(w.updates.Load()) }
 
 // MoveToScreen moves the window to a screen of the scale, as the user
 // dragging it to another monitor; the form sees it at its next paint
-func (w *HeadlessWindow) MoveToScreen(scale float64) { w.scale = max(scale, 1) }
+func (w *HeadlessWindow) MoveToScreen(scale float64) { w.scale = headlessValidScale(scale) }
 
 func (w *HeadlessWindow) Close() bool {
 	if w.closed {

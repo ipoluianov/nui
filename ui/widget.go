@@ -3538,12 +3538,13 @@ func (c *Widget) AddWidgetSpan(row, col, rowSpan, colSpan int, w Widgeter) {
 
 // SetColumnStretch sets the share of the free width the column gets (or
 // gives up) against the other columns: 2 grows twice as fast as 1. A
-// weight makes the column expandable; 0 returns it to its widgets.
+// weight makes the column expandable; 0 returns it to its widgets. Weights
+// above maxStretch are taken as maxStretch.
 func (c *Widget) SetColumnStretch(col, weight int) {
 	if c.columnStretch == nil {
 		c.columnStretch = map[int]int{}
 	}
-	c.columnStretch[col] = max(0, weight)
+	c.columnStretch[col] = clampStretch(weight)
 	c.form.UpdateLayout()
 }
 
@@ -3552,8 +3553,17 @@ func (c *Widget) SetRowStretch(row, weight int) {
 	if c.rowStretch == nil {
 		c.rowStretch = map[int]int{}
 	}
-	c.rowStretch[row] = max(0, weight)
+	c.rowStretch[row] = clampStretch(weight)
 	c.form.UpdateLayout()
+}
+
+// maxStretch is the largest stretch weight: the layout adds the weights
+// and multiplies the free room by them, so huge weights overflowed int (a
+// sum of 0 divided by zero)
+const maxStretch = 1 << 16
+
+func clampStretch(weight int) int {
+	return min(max(0, weight), maxStretch)
 }
 
 // gridLines are the occupied columns and rows of a grid, sorted: the layout

@@ -1,6 +1,9 @@
 package ui
 
-import "strings"
+import (
+	"strings"
+	"unicode"
+)
 
 // EditableComboBox is a text field with a list of suggestions: typing shows
 // the items that contain the typed text (the ones that start with it
@@ -432,16 +435,16 @@ func (c *completionPopup) draw(cnv *Canvas) {
 		}
 		x := comboBoxItemPadding
 		cnv.SetColor(textColor)
-		start := -1
+		start, end := -1, -1
 		if c.filtered && needle != "" {
-			start = strings.Index(strings.ToLower(text), needle)
+			start, end = lowerMatch(text, needle)
 		}
-		if start < 0 || len(strings.ToLower(text)) != len(text) {
+		if start < 0 {
 			cnv.DrawText(x, y, width-x, rowH, truncateTextToWidth(c.FontFamily(), c.FontSize(), text, width-x*2))
 			continue
 		}
 		// The matched part in the accent color, underlined
-		parts := []string{text[:start], text[start : start+len(needle)], text[start+len(needle):]}
+		parts := []string{text[:start], text[start:end], text[end:]}
 		for pi, part := range parts {
 			w, _, _ := MeasureText(c.FontFamily(), c.FontSize(), part)
 			col := textColor
@@ -465,4 +468,39 @@ func (c *completionPopup) draw(cnv *Canvas) {
 	}
 	cnv.SetColor(p.Border)
 	cnv.DrawRect(0, 0, c.Width(), c.Height())
+}
+
+// lowerMatch returns the bytes [start, end) of text whose lower case (as
+// strings.ToLower makes it) is the first match of needle, a lower-case
+// string; -1, -1 if there is none. The offsets are of text itself: a
+// letter may change its length in UTF-8 when lower-cased (Ⱥ 2 bytes, ⱥ 3).
+func lowerMatch(text, needle string) (start, end int) {
+	var lower strings.Builder
+	// The byte offsets of each rune in the lower case and in text, and
+	// the ends of both
+	var lowerOffs, textOffs []int
+	for i, r := range text {
+		lowerOffs = append(lowerOffs, lower.Len())
+		textOffs = append(textOffs, i)
+		lower.WriteRune(unicode.ToLower(r))
+	}
+	lowerOffs = append(lowerOffs, lower.Len())
+	textOffs = append(textOffs, len(text))
+	ls := strings.Index(lower.String(), needle)
+	if ls < 0 {
+		return -1, -1
+	}
+	start, end = -1, -1
+	for k, off := range lowerOffs {
+		if off == ls {
+			start = textOffs[k]
+		}
+		if off == ls+len(needle) {
+			end = textOffs[k]
+		}
+	}
+	if start < 0 || end < 0 {
+		return -1, -1
+	}
+	return start, end
 }

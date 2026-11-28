@@ -987,19 +987,19 @@ func CohenSutherland(x1, y1, x2, y2, left, top, right, bottom int) (int, int, in
 		y := 0
 
 		if (code & 2) != 0 {
-			x = x1 + (x2-x1)*(top-y1)/(y2-y1)
+			x = csCross(x1, x2, y1, y2, top)
 			y = top
 		} else {
 			if (code & 1) != 0 {
-				x = x1 + (x2-x1)*(bottom-y1)/(y2-y1)
+				x = csCross(x1, x2, y1, y2, bottom)
 				y = bottom
 			} else {
 				if (code & 4) != 0 {
-					y = y1 + (y2-y1)*(right-x1)/(x2-x1)
+					y = csCross(y1, y2, x1, x2, right)
 					x = right
 				} else {
 					if (code & 8) != 0 {
-						y = y1 + (y2-y1)*(left-x1)/(x2-x1)
+						y = csCross(y1, y2, x1, x2, left)
 						x = left
 					}
 				}
@@ -1016,6 +1016,28 @@ func CohenSutherland(x1, y1, x2, y2, left, top, right, bottom int) (int, int, in
 	}
 
 	return x1, y1, x2, y2, !invalid
+}
+
+// csCross returns a1 + (a2-a1)*(edge-b1)/(b2-b1): where the line from
+// (a1, b1) to (a2, b2) crosses the edge b = edge, truncated toward zero.
+// With small coordinates in ints, as always; with large ones in float, where
+// the product would overflow an int, kept between a1 and a2.
+func csCross(a1, a2, b1, b2, edge int) int {
+	const small = 1 << 30
+	if a1 > -small && a1 < small && a2 > -small && a2 < small &&
+		b1 > -small && b1 < small && b2 > -small && b2 < small && edge > -small && edge < small {
+		return a1 + (a2-a1)*(edge-b1)/(b2-b1)
+	}
+	fa1, fa2 := float64(a1), float64(a2)
+	f := fa1 + (fa2-fa1)*((float64(edge)-float64(b1))/(float64(b2)-float64(b1)))
+	lo, hi := min(a1, a2), max(a1, a2)
+	if !(f > float64(lo)) {
+		return lo
+	}
+	if f >= float64(hi) {
+		return hi
+	}
+	return int(f)
 }
 
 func (c *Canvas) FillRect(x int, y int, width int, height int, colr color.Color) {

@@ -719,7 +719,8 @@ func LoadSTL(r io.Reader) (*Mesh, error) {
 	}
 	var tri [3]Vec3
 	var nrm Vec3
-	k := 0
+	// The corners read of the facet; -1 outside a facet
+	k := -1
 	for i, l := range strings.Split(string(data), "\n") {
 		fields := strings.Fields(l)
 		if len(fields) == 0 {
@@ -728,11 +729,14 @@ func LoadSTL(r io.Reader) (*Mesh, error) {
 		switch fields[0] {
 		case "facet":
 			k = 0
+			// A facet without a normal of its own gets one made from its
+			// corners, not the previous facet's
+			nrm = Vec3{}
 			if len(fields) >= 5 {
 				nrm = parseVec3(fields[2:5])
 			}
 		case "vertex":
-			if len(fields) < 4 || k > 2 {
+			if len(fields) < 4 || k < 0 || k > 2 {
 				return m, fmt.Errorf("%w: line %d", ErrModel, i+1)
 			}
 			tri[k] = parseVec3(fields[1:4])
@@ -741,6 +745,7 @@ func LoadSTL(r io.Reader) (*Mesh, error) {
 			if k == 3 {
 				addSTLTriangle(m, tri, nrm)
 			}
+			k = -1
 		}
 	}
 	if len(m.Positions) == 0 {

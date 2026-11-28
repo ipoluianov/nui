@@ -31,12 +31,14 @@ func (c *Canvas) Height() int {
 	return c.rgba.Bounds().Dy()
 }
 
+// Clear fills the whole image with col
 func (c *Canvas) Clear(col color.Color) {
-	dataSize := c.rgba.Bounds().Dx() * c.rgba.Bounds().Dy() * 4
-	for i := 0; i < dataSize; i += 4 {
-		c.rgba.Pix[i] = col.(color.RGBA).R
-		c.rgba.Pix[i+1] = col.(color.RGBA).G
-		c.rgba.Pix[i+2] = col.(color.RGBA).B
-		c.rgba.Pix[i+3] = col.(color.RGBA).A
+	v := color.RGBAModel.Convert(col).(color.RGBA)
+	r := c.rgba.Rect
+	for y := r.Min.Y; y < r.Max.Y; y++ {
+		row := c.rgba.Pix[c.rgba.PixOffset(r.Min.X, y):c.rgba.PixOffset(r.Max.X, y)]
+		for i := 0; i < len(row); i += 4 {
+			row[i], row[i+1], row[i+2], row[i+3] = v.R, v.G, v.B, v.A
+		}
 	}
 }

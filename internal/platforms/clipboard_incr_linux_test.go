@@ -120,6 +120,12 @@ func TestClipboardIncrServesLargeText(t *testing.T) {
 // in parts: chunk(i) gives the part i, the delay before it, and false for
 // the end
 func incrOwner(t *testing.T, chunk func(i int) ([]byte, time.Duration, bool), stop <-chan struct{}) {
+	incrOwnerOf(t, "UTF8_STRING", chunk, stop)
+}
+
+// incrOwnerOf is incrOwner answering the target named (of the same type)
+// and refusing the others
+func incrOwnerOf(t *testing.T, targetName string, chunk func(i int) ([]byte, time.Duration, bool), stop <-chan struct{}) {
 	d2 := xOpenDisplay(0)
 	if d2 == 0 {
 		t.Error("no display")
@@ -129,7 +135,7 @@ func incrOwner(t *testing.T, chunk func(i int) ([]byte, time.Duration, bool), st
 	root := xRootWindow(d2, xDefaultScreen(d2))
 	win := xCreateWindow(d2, root, 0, 0, 1, 1, 0, 0, xInputOnly, 0, 0, nil)
 	clipAtom := xInternAtom(d2, "CLIPBOARD", xFalse)
-	utf8 := xInternAtom(d2, "UTF8_STRING", xFalse)
+	target := xInternAtom(d2, targetName, xFalse)
 	incr := xInternAtom(d2, "INCR", xFalse)
 	xSetSelectionOwner(d2, clipAtom, win, xCurrentTime)
 	xFlush(d2)
@@ -151,7 +157,7 @@ func incrOwner(t *testing.T, chunk func(i int) ([]byte, time.Duration, bool), st
 		var reply xEvent
 		n := (*xSelectionEvent)(unsafe.Pointer(&reply))
 		n.Type, n.Requestor, n.Selection, n.Target, n.Time, n.Property = xSelectionNotify, r.Requestor, r.Selection, r.Target, r.Time, xNone
-		if r.Target != utf8 {
+		if r.Target != target {
 			xSendEvent(d2, r.Requestor, xFalse, 0, unsafe.Pointer(&reply))
 			xFlush(d2)
 			continue
@@ -183,7 +189,7 @@ func incrOwner(t *testing.T, chunk func(i int) ([]byte, time.Duration, bool), st
 				data = nil
 			}
 			buf := append(data[:len(data):len(data)], 0)
-			xChangeProperty(d2, r.Requestor, r.Property, utf8, 8, xPropModeReplace, unsafe.Pointer(&buf[0]), int32(len(buf)-1))
+			xChangeProperty(d2, r.Requestor, r.Property, target, 8, xPropModeReplace, unsafe.Pointer(&buf[0]), int32(len(buf)-1))
 			xFlush(d2)
 			if !more {
 				break

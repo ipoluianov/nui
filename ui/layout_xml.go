@@ -33,10 +33,9 @@ import (
 // mistakes in a *LayoutError, with their lines.
 
 type uiNode struct {
-	XMLName   xml.Name
-	Attrs     []xml.Attr
-	Nodes     []uiNode
-	InnerText string
+	XMLName xml.Name
+	Attrs   []xml.Attr
+	Nodes   []uiNode
 	// Line is the line of the element in the XML
 	Line int
 }
@@ -110,10 +109,6 @@ func parseLayoutXML(text string) (*uiNode, error) {
 			if len(stack) > 0 {
 				parent := stack[len(stack)-1]
 				parent.Nodes = append(parent.Nodes, *n)
-			}
-		case xml.CharData:
-			if len(stack) > 0 {
-				stack[len(stack)-1].InnerText += string(t)
 			}
 		}
 	}

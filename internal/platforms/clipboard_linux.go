@@ -3,6 +3,7 @@
 package platforms
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"slices"
@@ -141,7 +142,9 @@ func clipboardSet(items []ClipboardItem) error {
 		if isTextMIME(item.MIME) {
 			clip.text, clip.hasText = string(item.Data), true
 		} else {
-			clip.items[xInternAtom(display, item.MIME, xFalse)] = item.Data
+			// A copy: the caller may reuse its buffer, and the data is
+			// served later, from the event loop
+			clip.items[xInternAtom(display, item.MIME, xFalse)] = bytes.Clone(item.Data)
 		}
 	}
 	xSetSelectionOwner(display, clip.clipboard, window, xCurrentTime)
@@ -174,7 +177,7 @@ func clipboardGet(mime string) ([]byte, bool, error) {
 	target := xInternAtom(display, mime, xFalse)
 	if owner == window && clip.owned {
 		data, ok := clip.items[target]
-		return data, ok, nil
+		return bytes.Clone(data), ok, nil
 	}
 	data, ok, err := convertClipboard(display, window, target)
 	return []byte(data), ok, err
@@ -315,7 +318,8 @@ func convertClipboard(display, window, target uintptr) (text string, ok bool, er
 	}
 	data, typ := readClipboardProperty(display, window)
 	if typ == clip.incr {
-		if data, err = readClipboardIncr(display, window); err != nil {
+		// The type of the text is that of its parts, not INCR
+		if data, typ, err = readClipboardIncr(display, window); err != nil {
 			return "", false, err
 		}
 	}
@@ -338,9 +342,9 @@ var errClipboardTooLarge = errors.New("clipboard: the data is too large")
 // readClipboardIncr gathers a large text: the owner puts it into the
 // property part by part, each one deleted when read; an empty part ends it.
 // The whole transfer is bounded by clipboardIncrTimeout and
-// clipboardMaxSize; past them the parts read are dropped.
-func readClipboardIncr(display, window uintptr) ([]byte, error) {
-	var result []byte
+// clipboardMaxSize; past them the parts read are dropped. typ is the type
+// of the parts (UTF8_STRING, STRING, ...).
+func readClipboardIncr(display, window uintptr) (result []byte, typ uintptr, err error) {
 	newValue := func(e *xEvent) bool {
 		p := (*xPropertyEvent)(unsafe.Pointer(e))
 		return p.Atom == clip.property && p.State == xPropertyNewValue
@@ -354,20 +358,21 @@ func readClipboardIncr(display, window uintptr) ([]byte, error) {
 			partDeadline = deadline
 		}
 		if !waitClipboardEventUntil(display, window, xPropertyNotify, &event, newValue, partDeadline) {
-			return nil, errClipboardTimeout
+			return nil, xNone, errClipboardTimeout
 		}
-		part, typ := readClipboardProperty(display, window)
+		part, partType := readClipboardProperty(display, window)
 		// No property: an old event, e.g. of the INCR header written before;
 		// the end is a part of zero length
-		if typ == xNone {
+		if partType == xNone {
 			continue
 		}
 		if len(part) == 0 {
-			return result, nil
+			return result, typ, nil
 		}
 		if len(result)+len(part) > clipboardMaxSize {
-			return nil, errClipboardTooLarge
+			return nil, xNone, errClipboardTooLarge
 		}
+		typ = partType
 		result = append(result, part...)
 	}
 }

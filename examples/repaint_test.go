@@ -29,6 +29,11 @@ func TestRepaintMonkey(t *testing.T) {
 	if testing.Short() {
 		steps, scales = 30, []float64{1.5}
 	}
+	// The race detector makes a run about ten times slower: the full one
+	// took more than the 10 minutes of go test's default timeout
+	if raceEnabled {
+		steps, scales = 10, []float64{1.5}
+	}
 	if os.Getenv("NUI_MONKEY") == "long" {
 		steps, scales = 400, []float64{1, 1.5, 2}
 	}

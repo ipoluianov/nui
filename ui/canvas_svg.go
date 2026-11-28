@@ -368,9 +368,15 @@ func (c *Canvas) svgFont() string {
 	return s
 }
 
+// svgEscape escapes s for the text or an attribute of the SVG. What XML
+// 1.0 does not allow at all (the control characters but tab and the line
+// breaks, U+FFFE, U+FFFF) is dropped: an escape would not make it valid.
 func svgEscape(s string) string {
 	var b strings.Builder
 	for _, r := range s {
+		if r < 0x20 && r != '\t' && r != '\n' && r != '\r' || r == 0xfffe || r == 0xffff {
+			continue
+		}
 		switch r {
 		case '<':
 			b.WriteString("&lt;")

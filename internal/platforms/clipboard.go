@@ -1,6 +1,9 @@
 package platforms
 
-import "slices"
+import (
+	"bytes"
+	"slices"
+)
 
 // The clipboard of the system. Each platform talks to it in pure Go, so
 // the library needs no cgo: X11 selections on Linux (clipboard_linux.go),
@@ -48,8 +51,17 @@ func ClipboardGetText() (string, error) {
 // ClipboardSet replaces the clipboard with the data in the formats
 func ClipboardSet(items []ClipboardItem) error {
 	if IsHeadless() {
+		// As the platforms do: the data is copied, the caller may reuse its
+		// buffers, and the variants of the text MIME are the text
+		clone := make([]ClipboardItem, len(items))
+		for i, item := range items {
+			if isTextMIME(item.MIME) {
+				item.MIME = MIMEText
+			}
+			clone[i] = ClipboardItem{item.MIME, bytes.Clone(item.Data)}
+		}
 		headlessMu.Lock()
-		headlessClipboard = slices.Clone(items)
+		headlessClipboard = clone
 		headlessMu.Unlock()
 		return nil
 	}
@@ -64,9 +76,12 @@ func ClipboardGet(mime string) (data []byte, ok bool, err error) {
 	if IsHeadless() {
 		headlessMu.Lock()
 		defer headlessMu.Unlock()
+		if isTextMIME(mime) {
+			mime = MIMEText
+		}
 		for _, item := range headlessClipboard {
 			if item.MIME == mime {
-				return item.Data, true, nil
+				return bytes.Clone(item.Data), true, nil
 			}
 		}
 		return nil, false, nil
@@ -84,7 +99,9 @@ func ClipboardFormats() ([]string, error) {
 		defer headlessMu.Unlock()
 		var formats []string
 		for _, item := range headlessClipboard {
-			formats = append(formats, item.MIME)
+			if !slices.Contains(formats, item.MIME) {
+				formats = append(formats, item.MIME)
+			}
 		}
 		return formats, nil
 	}

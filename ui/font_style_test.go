@@ -2,8 +2,10 @@ package ui
 
 import (
 	"bytes"
+	"fmt"
 	"image"
 	"image/color"
+	"sync/atomic"
 	"testing"
 
 	"golang.org/x/image/font/gofont/goregular"
@@ -72,29 +74,35 @@ func isRegisteredFace(name string) bool {
 	return ok
 }
 
+var synthRuns atomic.Int32
+
 // A family with the regular face only gets the other styles synthesized
 func TestSynthesizedStyles(t *testing.T) {
-	if err := RegisterFont("test-synth", goregular.TTF); err != nil {
+	// A family of its own for each run: the end of the test registers a
+	// bold face, which a later run (-count=2) would measure instead of the
+	// synthesized one
+	family := fmt.Sprintf("test-synth-%d", synthRuns.Add(1))
+	if err := RegisterFont(family, goregular.TTF); err != nil {
 		t.Fatal(err)
 	}
 	text := "Hello"
-	regular, h1, _ := MeasureText("test-synth", 20, text)
-	bold, h2, _ := MeasureText("test-synth:bold", 20, text)
-	italic, _, _ := MeasureText("test-synth:italic", 20, text)
+	regular, h1, _ := MeasureText(family, 20, text)
+	bold, h2, _ := MeasureText(family+":bold", 20, text)
+	italic, _, _ := MeasureText(family+":italic", 20, text)
 	if bold != regular+len(text) { // one pixel per glyph at 20 px
 		t.Errorf("bold width %d, regular %d", bold, regular)
 	}
 	if italic != regular || h1 != h2 {
 		t.Errorf("italic width %d, regular %d; heights %d %d", italic, regular, h1, h2)
 	}
-	positions, _ := GetCharPositions("test-synth:bold", 20, text)
+	positions, _ := GetCharPositions(family+":bold", 20, text)
 	if positions[len(positions)-1] != bold {
 		t.Errorf("positions end at %d, width %d", positions[len(positions)-1], bold)
 	}
 
-	r := renderText("l", color.Black, "test-synth", 20)
-	b := renderText("l", color.Black, "test-synth:bold", 20)
-	i := renderText("l", color.Black, "test-synth:italic", 20)
+	r := renderText("l", color.Black, family, 20)
+	b := renderText("l", color.Black, family+":bold", 20)
+	i := renderText("l", color.Black, family+":italic", 20)
 	if ink(b) <= ink(r) {
 		t.Errorf("bold ink %d, regular %d", ink(b), ink(r))
 	}
@@ -105,16 +113,16 @@ func TestSynthesizedStyles(t *testing.T) {
 	}
 
 	// The top of the last italic letter stands out of its advance: not cut off
-	advance, _, _ := MeasureText("test-synth:italic", 20, "I")
-	if img := renderText("I", color.Black, "test-synth:italic", 20); img.Rect.Max.X <= advance {
+	advance, _, _ := MeasureText(family+":italic", 20, "I")
+	if img := renderText("I", color.Black, family+":italic", 20); img.Rect.Max.X <= advance {
 		t.Errorf("italic I: image to x %d, advance %d", img.Rect.Max.X, advance)
 	}
 
 	// A face registered later replaces the synthesized one
-	if err := RegisterFont("test-synth:bold", goregular.TTF); err != nil {
+	if err := RegisterFont(family+":bold", goregular.TTF); err != nil {
 		t.Fatal(err)
 	}
-	if w, _, _ := MeasureText("test-synth:bold", 20, text); w != regular {
+	if w, _, _ := MeasureText(family+":bold", 20, text); w != regular {
 		t.Errorf("registered bold width %d, want %d", w, regular)
 	}
 }

@@ -302,7 +302,8 @@ func (c *TextBox) GetPropString(key string, defaultValue string) string {
 }
 
 // SetText replaces the text; the cursor goes to the start, the undo
-// history starts anew
+// history starts anew. Invalid UTF-8 is replaced with U+FFFD here, once:
+// an edit then keeps the bytes of the text it did not touch.
 func (c *TextBox) SetText(text string) {
 	// The selection is of the old text
 	c.clearSelection()
@@ -1035,6 +1036,10 @@ func (c *TextBox) clearSelection() {
 }
 
 func (c *TextBox) modifyText(cmd textboxModifyCommand, modifiers KeyModifiers, data interface{}) {
+	// An edit that changes nothing (Backspace at the start, an empty
+	// paste) leaves the history as it was: no step to undo, Redo kept
+	undoStack, redoStack := c.undoStack, c.redoStack
+	lastEdit, lastEditActive, lastEditTime := c.lastEdit, c.lastEditActive, c.lastEditTime
 	c.recordUndo(cmd)
 
 	changed := false
@@ -1091,7 +1096,9 @@ func (c *TextBox) modifyText(cmd textboxModifyCommand, modifiers KeyModifiers, d
 			changed = true
 		}
 	case textboxModifyCommandSetText:
-		lines := splitLines(data.(string))
+		// Every line is valid UTF-8, so the rune arithmetic of the edits
+		// rewrites no bytes (see SetText)
+		lines := splitLines(strings.ToValidUTF8(data.(string), "\uFFFD"))
 		// A single-line box holds one line: the breaks are dropped, as
 		// typing and InsertText drop them
 		if !c.Multiline() && len(lines) > 1 {
@@ -1148,6 +1155,9 @@ func (c *TextBox) modifyText(cmd textboxModifyCommand, modifiers KeyModifiers, d
 
 	if changed {
 		c.textValid = false
+	} else if cmd != textboxModifyCommandSetText {
+		c.undoStack, c.redoStack = undoStack, redoStack
+		c.lastEdit, c.lastEditActive, c.lastEditTime = lastEdit, lastEditActive, lastEditTime
 	}
 	c.updateInnerSize()
 	c.moveCursor(curPosX, curPosY, modifiers)

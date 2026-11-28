@@ -84,7 +84,9 @@ func (s *CandleSeries) Range(axis *ChartAxis, v *ChartViewport) (float64, float6
 	xmin, xmax := v.XRange()
 	for _, p := range s.samples {
 		if p.HasValue() && p.X >= xmin && p.X <= xmax {
-			lo, hi = chartWiden(lo, hi, p.Low, p.High)
+			// all four values: a feed may give high below low, or open and
+			// close outside high..low, and Draw draws them all
+			lo, hi = chartWiden(lo, hi, p.Low, p.High, p.First, p.Last)
 		}
 	}
 	return lo, hi, lo <= hi

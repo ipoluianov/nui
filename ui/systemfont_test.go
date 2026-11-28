@@ -106,15 +106,31 @@ func TestUnknownFamilyFromSystem(t *testing.T) {
 	if !isSystemFamily("dejavu sans mono") || sys == def {
 		t.Fatalf("not the system font: width %d, default %d", sys, def)
 	}
+	// Undoes all of RegisterFont and of the lookup of the system font, so
+	// that a later run (-count=2) finds the system font again
+	t.Cleanup(func() {
+		const family = "dejavu sans mono"
+		fontsMu.Lock()
+		delete(fonts, family)
+		faceCache = make(map[faceKey]*faceEntry)
+		fontsMu.Unlock()
+		systemFontsMu.Lock()
+		delete(nativeFamilies, family)
+		for key := range nativeFaces {
+			if isFaceOf(key.family, family) {
+				delete(nativeFaces, key)
+			}
+		}
+		systemFontsMu.Unlock()
+		systemLookupMu.Lock()
+		delete(systemLookups, family)
+		systemLookupMu.Unlock()
+		resolvedFonts.Delete(name)
+		clearAllRenderedTexts()
+	})
 	if err := RegisterFont(name, goregular.TTF); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		fontsMu.Lock()
-		delete(fonts, "dejavu sans mono")
-		faceCache = make(map[faceKey]*faceEntry)
-		fontsMu.Unlock()
-	})
 	if isSystemFamily("dejavu sans mono") {
 		t.Error("the registered file doesn't replace the system font")
 	}

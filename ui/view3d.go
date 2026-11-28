@@ -345,10 +345,11 @@ func (v *View3D) Camera() Camera {
 
 // SetView places the camera: looking at the target from the distance,
 // turned by yaw around the vertical (0 - from +z, the front) and raised by
-// pitch (math.Pi/2 - from the top), in radians
+// pitch (math.Pi/2 - from the top), in radians. A NaN or infinite distance
+// keeps the current one; the distance is kept in 1e-9..1e15.
 func (v *View3D) SetView(target Vec3, distance, yaw, pitch float64) {
 	v.target = target
-	v.distance = math.Max(distance, 1e-9)
+	v.setDistance(distance, 1e-9)
 	v.yaw = yaw
 	v.pitch = clampPitch(pitch)
 	v.viewChanged()
@@ -357,6 +358,33 @@ func (v *View3D) SetView(target Vec3, distance, yaw, pitch float64) {
 // View returns the target, the distance, the yaw and the pitch of the camera
 func (v *View3D) View() (target Vec3, distance, yaw, pitch float64) {
 	return v.target, v.distance, v.yaw, v.pitch
+}
+
+// The largest distance of the camera from the target: farther, the camera
+// position and the pan step (see panBy) overflow to Inf, and the target
+// becomes NaN
+const maxView3DDistance = 1e15
+
+// The smallest distance the wheel and the zoom keys go to
+const minView3DZoomDistance = 1e-6
+
+// setDistance sets the distance of the camera, kept in lo..maxView3DDistance;
+// a NaN or infinite d is ignored
+func (v *View3D) setDistance(d, lo float64) {
+	if math.IsNaN(d) || math.IsInf(d, 0) {
+		return
+	}
+	v.distance = math.Max(lo, math.Min(maxView3DDistance, d))
+}
+
+// zoomFactor returns the factor the wheel or a zoom key multiplies the
+// distance by, k cut so the distance stays in its limits
+func (v *View3D) zoomFactor(k float64) float64 {
+	if v.distance <= 0 || math.IsNaN(k) || math.IsInf(k, 0) {
+		return 1
+	}
+	d := math.Max(minView3DZoomDistance, math.Min(maxView3DDistance, v.distance*k))
+	return d / v.distance
 }
 
 func clampPitch(p float64) float64 {
@@ -372,7 +400,7 @@ func (v *View3D) FitToScene() {
 		if lo, hi, ok := v.scene.fitBounds(); ok {
 			v.target = lo.Add(hi).Scale(0.5)
 			radius := math.Max(hi.Sub(lo).Length()/2, 1e-6)
-			v.distance = radius / math.Sin(v.fov/2) * 1.05
+			v.setDistance(radius/math.Sin(v.fov/2)*1.05, 1e-9)
 		}
 	}
 	if !v.homeSet {
@@ -613,14 +641,14 @@ func (v *View3D) wheel(e *WheelEvent) {
 		return
 	}
 	e.Handled = true
-	k := math.Pow(0.85, float64(e.DY))
+	k := v.zoomFactor(math.Pow(0.85, float64(e.DY)))
 	// Towards the point under the pointer: what is under it stays there
 	w, h := float64(v.Width()), float64(v.Height())
 	if w > 0 && h > 0 {
 		px, py := float64(e.X)-w/2, float64(e.Y)-h/2
 		v.panBy(-px*(1-k), -py*(1-k))
 	}
-	v.distance = math.Max(v.distance*k, 1e-6)
+	v.setDistance(v.distance*k, minView3DZoomDistance)
 	v.moving()
 	v.viewChanged()
 }
@@ -650,9 +678,9 @@ func (v *View3D) keyDown(key Key, mods KeyModifiers) bool {
 			v.pitch = clampPitch(v.pitch - dy*step)
 		}
 	case KeyEqual, KeyNumpadPlus, KeyPageUp:
-		v.distance *= 0.85
+		v.setDistance(v.distance*0.85, minView3DZoomDistance)
 	case KeyMinus, KeyNumpadMinus, KeyPageDown:
-		v.distance /= 0.85
+		v.setDistance(v.distance/0.85, minView3DZoomDistance)
 	case KeyHome, KeyR:
 		v.ResetView()
 		return true

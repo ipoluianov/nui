@@ -71,12 +71,17 @@ func acquireSingleInstance(dir string, args []string) (*SingleInstance, bool) {
 	}
 	if !tryLockFile(lock) {
 		lock.Close()
-		askToShow(instanceSocketPath(dir), args)
+		if socket := instanceSocketPath(dir); socket != "" {
+			askToShow(socket, args)
+		}
 		return nil, false
 	}
 	c.lock = lock
-	// A socket left by a copy that crashed: the lock shows no one uses it
 	socket := instanceSocketPath(dir)
+	if socket == "" {
+		return c, true // no private place for it: a second start can't show this copy
+	}
+	// A socket left by a copy that crashed: the lock shows no one uses it
 	os.Remove(socket)
 	if c.listener, err = net.Listen("unix", socket); err != nil {
 		c.listener = nil // still the only copy, a second start just can't show it
@@ -164,10 +169,13 @@ func (c *SingleInstance) Close() {
 const maxSocketPath = 103
 
 // instanceSocketPath returns where the running copy of the directory
-// listens. A unix socket path is limited to about 100 bytes, which a long
-// home path can exceed, so the short runtime directory is used when there
-// is one (Linux), and the per-user temporary directory when the path in the
+// listens, "" if there is no place only the user can write to. A unix
+// socket path is limited to about 100 bytes, which a long home path can
+// exceed, so the short runtime directory is used when there is one (Linux),
+// and a private temporary directory of the user when the path in the
 // settings directory is too long (macOS: ~/Library/Application Support/...).
+// Not the shared /tmp itself: another user could take the name first and
+// get the arguments of every later start.
 func instanceSocketPath(dir string) string {
 	sum := sha256.Sum256([]byte(dir))
 	name := "nui-" + hex.EncodeToString(sum[:8]) + ".sock"
@@ -177,7 +185,11 @@ func instanceSocketPath(dir string) string {
 	if path := filepath.Join(dir, "instance.sock"); len(path) <= maxSocketPath {
 		return path
 	}
-	return filepath.Join(os.TempDir(), name)
+	tmp, err := privateTempDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(tmp, name)
 }
 
 // askToShow gives the arguments to the running copy and asks it to show its

@@ -111,7 +111,9 @@ func (c *Slider) Max() float64       { return c.max }
 
 // SetStep makes the value a multiple of step from the minimum; 0 (the
 // default) allows any value, and the keys move by 1/100 of the range.
-// A NaN or infinite step is ignored.
+// The maximum is always allowed, also when the range is not a multiple of
+// step (0..10 by 4 allows 0, 4, 8 and 10), so End and a drag to the end
+// reach it. A NaN or infinite step is ignored.
 func (c *Slider) SetStep(step float64) {
 	if !finiteValue(step) {
 		return
@@ -165,13 +167,24 @@ func (c *Slider) SetOnValueChanged(f func()) {
 	c.onValueChanged = f
 }
 
-// snap keeps v in the range and on the step; a NaN v keeps the value
+// snap keeps v in the range and on the step, taking the nearest of the
+// multiples of step from the minimum and the maximum itself (see SetStep);
+// a NaN v keeps the value
 func (c *Slider) snap(v float64) float64 {
 	if math.IsNaN(v) {
 		return c.value
 	}
 	v = math.Max(c.min, math.Min(c.max, v))
 	if c.step > 0 {
+		// The last multiple of step within the range: past it, the
+		// maximum is the next allowed value
+		last := c.min + math.Floor((c.max-c.min)/c.step)*c.step
+		if v > last {
+			if c.max-v <= v-last {
+				return c.max
+			}
+			return math.Min(last, c.max)
+		}
 		v = c.min + math.Round((v-c.min)/c.step)*c.step
 		v = math.Min(v, c.max)
 	}

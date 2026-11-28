@@ -105,12 +105,19 @@ func (c *TimePicker) SetDuration(d time.Duration) {
 // SetShowSeconds adds the seconds segment.
 func (c *TimePicker) SetShowSeconds(show bool) {
 	c.showSeconds = show
+	changed := false
 	if !show {
+		changed = c.values[2] != 0
 		c.values[2] = 0
 		c.segment = min(c.segment, 1)
 	}
 	c.updateWidth()
 	c.form.UpdateLayout()
+	// The seconds dropped change the value: told as SetTime tells it
+	if changed {
+		c.form.Update()
+		c.OnTimeChanged.Emit(c.Duration())
+	}
 }
 
 // SetOnTimeChanged sets the function called when the user changes the time.

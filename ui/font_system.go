@@ -263,10 +263,14 @@ func openSystemFont(path string, families []string) (*sfnt.Font, error) {
 // openFontFile opens the font file, reading it on demand as openSystemFont,
 // and picks the font of the PostScript name from a collection. exact is
 // false if no font of the file has the name: the first one is returned.
-func openFontFile(path, postScriptName string) (f *sfnt.Font, exact bool, err error) {
+//
+// The file stays open while the font is in use: the application's lifetime.
+// A caller that doesn't use the font calls discard, which closes the file;
+// on an error the file is closed already and discard is nil.
+func openFontFile(path, postScriptName string) (f *sfnt.Font, exact bool, discard func(), err error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, false, err
+		return nil, false, nil, err
 	}
 	var src io.ReaderAt = file
 	if patches := cmapEncodingPatches(file); len(patches) > 0 {
@@ -275,19 +279,31 @@ func openFontFile(path, postScriptName string) (f *sfnt.Font, exact bool, err er
 	collection, err := sfnt.ParseCollectionReaderAt(src)
 	if err != nil || collection.NumFonts() == 0 {
 		file.Close()
-		return nil, false, fmt.Errorf("font file %s: %v", path, err)
+		return nil, false, nil, fmt.Errorf("font file %s: %v", path, err)
 	}
 	var buf sfnt.Buffer
 	for i := 0; i < collection.NumFonts(); i++ {
 		if f, err := collection.Font(i); err == nil && fontName(f, &buf, sfnt.NameIDPostScript) == postScriptName {
 			setFontSource(f, fontSource{path: path, index: i})
-			return f, true, nil
+			return f, true, closeFontFile(file, f), nil
 		}
 	}
-	// The file stays open while the font is in use: the application's lifetime
 	f, err = collection.Font(0)
+	if err != nil {
+		file.Close()
+		return nil, false, nil, fmt.Errorf("font file %s: %v", path, err)
+	}
 	setFontSource(f, fontSource{path: path})
-	return f, false, err
+	return f, false, closeFontFile(file, f), nil
+}
+
+// closeFontFile returns the discard of openFontFile: it closes the file
+// and forgets the source of its font
+func closeFontFile(file *os.File, f *sfnt.Font) func() {
+	return func() {
+		fontSources.Delete(f)
+		file.Close()
+	}
 }
 
 // Older fonts of Apple (Helvetica Neue) map the characters only in a cmap

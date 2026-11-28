@@ -53,7 +53,9 @@ func (c *Canvas) SetLineWidth(w float64) {
 }
 
 func (c *Canvas) Save() {
-	c.statesStack = append(c.statesStack, c.CurrentState())
+	// A copy: what changes after Save must not change the saved state
+	s := *c.CurrentState()
+	c.statesStack = append(c.statesStack, &s)
 }
 
 func (c *Canvas) Restore() {

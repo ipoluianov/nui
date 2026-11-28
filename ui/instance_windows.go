@@ -22,3 +22,9 @@ func allowSetForeground() {
 	const asfwAny = ^uintptr(0)
 	procAllowSetForegroundWindow.Call(asfwAny)
 }
+
+// privateTempDir returns the temporary directory: on Windows it is the
+// user's own
+func privateTempDir() (string, error) {
+	return os.TempDir(), nil
+}

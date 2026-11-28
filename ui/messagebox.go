@@ -183,7 +183,8 @@ func newMessageBoxForm(title string, text string) (*Form, *Panel) {
 }
 
 func showMessageBoxForm(c *Form, parentWidget Widgeter) {
-	if parentWidget != nil {
+	// A parent widget that is not in a form yet has no window to block
+	if parentWidget != nil && parentWidget.Form() != nil {
 		c.ShowModal(parentWidget.Form())
 	} else {
 		c.Show()

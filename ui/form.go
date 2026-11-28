@@ -703,7 +703,9 @@ func (c *Form) createWindow(maximized bool) {
 	// No explicit position and no parent to center on (ShowModal already
 	// resolves posX/posY via centerOnForm before this runs) - center on the
 	// screen instead of leaving it to the OS/window manager's default spot.
-	centerOnScreen := c.posX < 0 && c.posY < 0
+	// A state of SetState is a place even when negative (a screen left of or
+	// above the main one)
+	centerOnScreen := c.posX < 0 && c.posY < 0 && !c.clampOnShow
 	// A window closed before is gone: the new one gets the minimum size
 	c.wnd = nil
 	c.growToMinSize()
@@ -753,7 +755,7 @@ func (c *Form) createWindow(maximized bool) {
 	} else if appIcon != nil {
 		c.wnd.SetAppIcon(appIcon)
 	}
-	if c.posX >= 0 && c.posY >= 0 {
+	if c.posX >= 0 && c.posY >= 0 || c.clampOnShow {
 		if c.clampOnShow {
 			c.clampToScreen()
 		}
@@ -830,7 +832,7 @@ func (c *Form) ShowModal(parent *Form) {
 		parent.giveMouseToModal()
 		// Centered with the size it opens with
 		c.growToMinSize()
-		if c.posX < 0 && c.posY < 0 {
+		if c.posX < 0 && c.posY < 0 && !c.clampOnShow {
 			c.centerOnForm(parent)
 		}
 		c.createWindow(false)

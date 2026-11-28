@@ -175,7 +175,7 @@ func (c *ChartView) axisKeys() map[string]*ChartAxis {
 func (c *ChartView) SaveState() []byte {
 	st := chartStateJSON{Axes: map[string]chartAxisJSON{}}
 	for k, a := range c.axisKeys() {
-		if a.manual {
+		if a.manual && chartFinite(a.manMin) && chartFinite(a.manMax) {
 			st.Axes[k] = chartAxisJSON{Manual: true, Min: a.manMin, Max: a.manMax}
 		}
 	}
@@ -186,7 +186,7 @@ func (c *ChartView) SaveState() []byte {
 			}
 		}
 	}
-	if c.hasSel {
+	if c.hasSel && chartFinite(c.selFrom) && chartFinite(c.selTo) {
 		st.Selection = []float64{c.selFrom, c.selTo}
 	}
 	data, _ := json.Marshal(st)

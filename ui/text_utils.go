@@ -1,5 +1,10 @@
 package ui
 
+import (
+	"strings"
+	"unicode/utf8"
+)
+
 // truncateTextToWidth shortens text with a trailing "..." so its rendered
 // width fits within maxWidth pixels for the given font. Returns text
 // unchanged if it already fits, or if maxWidth/measurement isn't usable.
@@ -46,91 +51,48 @@ func truncateTextToWidth(fontFamily string, fontSize float64, text string, maxWi
 }
 
 func MakeLinesFromStringWithWordWrapping(text string, maxChars int) []string {
-	// Local helpers as closures to keep a single top-level function
-	splitOnNewlines := func(s string) []string {
-		res := make([]string, 0)
-		cur := ""
-		for _, r := range s {
-			if r == '\n' {
-				res = append(res, cur)
-				cur = ""
-			} else {
-				cur += string(r)
-			}
-		}
-		res = append(res, cur)
-		return res
+	// Strings are split and sliced, not built rune by rune: that was
+	// quadratic in the length of a word
+	isSpace := func(r rune) bool {
+		return r == ' ' || r == '\t' || r == '\n' || r == '\r' || r == '\v' || r == '\f'
 	}
-
-	fields := func(s string) []string {
-		res := make([]string, 0)
-		cur := ""
-		inField := false
-		for _, r := range s {
-			if r == ' ' || r == '\t' || r == '\n' || r == '\r' || r == '\v' || r == '\f' {
-				if inField {
-					res = append(res, cur)
-					cur = ""
-					inField = false
-				}
-			} else {
-				cur += string(r)
-				inField = true
-			}
-		}
-		if inField {
-			res = append(res, cur)
-		}
-		return res
-	}
-
-	splitPreserveNewlines := func(s string) []string { return splitOnNewlines(s) }
 
 	// If maxChars <= 0, do not wrap — just preserve existing newlines
 	if maxChars <= 0 {
-		return splitPreserveNewlines(text)
+		return strings.Split(text, "\n")
 	}
 
 	result := make([]string, 0)
 
 	// Split on mandatory newlines first
-	paragraphs := splitOnNewlines(text)
-	for _, p := range paragraphs {
+	for _, p := range strings.Split(text, "\n") {
+		words := strings.FieldsFunc(p, isSpace)
 		// An empty paragraph corresponds to an empty line
-		if p == "" {
-			result = append(result, "")
-			continue
-		}
-
-		words := fields(p)
 		if len(words) == 0 {
 			result = append(result, "")
 			continue
 		}
 
-		current := ""
+		var current strings.Builder
+		currentLen := 0 // in runes
 		for _, w := range words {
-			wLen := len([]rune(w))
+			wLen := utf8.RuneCountInString(w)
 
-			if current == "" {
-				// start new line with the word (even if it exceeds maxChars)
-				current = w
-				continue
-			}
-
-			// length of current + 1 space + word
-			if len([]rune(current))+1+wLen <= maxChars {
-				current = current + " " + w
-			} else {
+			if currentLen > 0 && currentLen+1+wLen > maxChars {
 				// push current and start new line with word
-				result = append(result, current)
-				current = w
+				result = append(result, current.String())
+				current.Reset()
+				currentLen = 0
 			}
+			if currentLen > 0 {
+				current.WriteByte(' ')
+				currentLen++
+			}
+			// A word longer than maxChars has a line of its own
+			current.WriteString(w)
+			currentLen += wLen
 		}
-
-		if current != "" {
-			result = append(result, current)
-		}
+		result = append(result, current.String())
 	}
 
 	return result

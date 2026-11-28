@@ -16,6 +16,8 @@ import (
 type PieSeries struct {
 	ChartSeriesBase
 	slices []pieSlice
+	// byName is the index of a slice in slices by its name
+	byName map[string]int
 
 	inner      float64 // the hole, a part of the radius
 	start      float64 // the angle of the first slice, radians
@@ -69,13 +71,15 @@ func NewPieSeries(name string) *PieSeries {
 // Add adds a slice of the value; a slice of a name it has already is
 // given the value
 func (s *PieSeries) Add(name string, value float64) *PieSeries {
-	for i := range s.slices {
-		if s.slices[i].name == name {
-			s.slices[i].value = value
-			s.update()
-			return s
-		}
+	if i, ok := s.byName[name]; ok {
+		s.slices[i].value = value
+		s.update()
+		return s
 	}
+	if s.byName == nil {
+		s.byName = map[string]int{}
+	}
+	s.byName[name] = len(s.slices)
 	s.slices = append(s.slices, pieSlice{name: name, value: value})
 	s.update()
 	return s
@@ -87,6 +91,7 @@ func (s *PieSeries) Set(name string, value float64) *PieSeries { return s.Add(na
 // Clear removes all the slices
 func (s *PieSeries) Clear() *PieSeries {
 	s.slices = nil
+	s.byName = nil
 	s.update()
 	return s
 }

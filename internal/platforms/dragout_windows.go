@@ -58,6 +58,13 @@ type stgMedium struct {
 	pUnkForRelease uintptr
 }
 
+// comCall calls the method of the COM object. The arguments are often
+// pointers to Go variables passed as uintptr: go:uintptrescapes keeps what
+// they point to alive and in place (on the heap) until the call returns,
+// as for syscall.SyscallN itself. Without it the variables stayed on the
+// stack, which could move while the method used them.
+//
+//go:uintptrescapes
 func comCall(obj uintptr, method int, args ...uintptr) uintptr {
 	vtbl := *(*[16]uintptr)(unsafe.Pointer(*(*uintptr)(unsafe.Pointer(obj))))
 	ret, _, _ := syscall.SyscallN(vtbl[method], append([]uintptr{obj}, args...)...)

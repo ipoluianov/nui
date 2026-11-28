@@ -184,6 +184,9 @@ func (a *ChartAxis) SetRange(min, max float64) *ChartAxis {
 }
 
 func (a *ChartAxis) setManual(min, max float64) {
+	if !chartFinite(min) || !chartFinite(max) {
+		return // a non-finite range is ignored: it could not be saved or drawn
+	}
 	if min > max {
 		min, max = max, min
 	}

@@ -231,7 +231,11 @@ func TextSelectionSpans(fontFamily string, fontSize float64, text string, from, 
 		if err != nil || len(positions) == 0 {
 			return nil
 		}
-		from, to = max(0, from), min(to, len(positions)-1)
+		// Clamped to the text: a range past its end selects nothing
+		from, to = max(0, min(from, len(positions)-1)), min(to, len(positions)-1)
+		if from >= to {
+			return nil
+		}
 		return [][2]int{{positions[from], positions[to]}}
 	}
 	s := textScale()

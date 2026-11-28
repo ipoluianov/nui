@@ -132,7 +132,14 @@ func widenDomain(min, max, pad float64) (float64, float64) {
 	}
 	if max-min < 1e-300 || (max-min) < math.Abs(min)*1e-12 {
 		d := math.Max(math.Abs(min)*0.1, pad)
-		min, max = min-d, max+d
+		lo, hi := min-d, max+d
+		// near the float limit one side overflows: widen toward zero only
+		if math.IsInf(hi, 0) {
+			lo, hi = min-2*d, max
+		} else if math.IsInf(lo, 0) {
+			lo, hi = min, max+2*d
+		}
+		min, max = lo, hi
 	}
 	return min, max
 }
@@ -533,7 +540,7 @@ func (s *SymlogScale) Format(v float64) string {
 }
 
 func (s *SymlogScale) Ticks(length float64, measure func(string) float64) []ChartTick {
-	if !(length > 0) {
+	if !(length > 0) || math.IsInf(s.min, 0) || math.IsInf(s.max, 0) || math.IsNaN(s.min) || math.IsNaN(s.max) {
 		return nil
 	}
 	c := s.c()
@@ -546,6 +553,11 @@ func (s *SymlogScale) Ticks(length float64, measure func(string) float64) []Char
 	}
 	top := math.Max(math.Abs(s.min), math.Abs(s.max))
 	kMax := math.Ceil(math.Log10(math.Max(top/c, 1)))
+	// c·10^k past the float range is not finite: at most about 640 decades
+	// (a tiny Constant with a huge domain)
+	if !(kMax <= 640) {
+		kMax = 640
+	}
 	for k := kMax; k >= 0; k-- {
 		add(-c * math.Pow(10, k))
 	}
@@ -824,6 +836,8 @@ func (s *TimeScale) DateRibbon(length float64, measure func(string) float64) []C
 type CategoryScale struct {
 	min, max   float64
 	categories []string
+	// index is the first index of each name in categories; nil - not built
+	index map[string]int
 	// fitted: the domain follows the number of categories
 	fitted bool
 }
@@ -839,21 +853,53 @@ func NewCategoryScale(categories ...string) *CategoryScale {
 // shows all the new ones
 func (s *CategoryScale) SetCategories(categories []string) {
 	s.categories = append(s.categories[:0], categories...)
+	s.index = nil
+	s.fit()
+}
+
+// fit lets a fitted domain show all the categories
+func (s *CategoryScale) fit() {
 	if s.fitted || s.max <= s.min {
-		s.min, s.max = -0.5, math.Max(float64(len(categories))-0.5, 0.5)
+		s.min, s.max = -0.5, math.Max(float64(len(s.categories))-0.5, 0.5)
 		s.fitted = true
 	}
 }
 
-// Categories returns the names of the categories
+// addCategory adds a category of the name after the others and returns
+// its index: a bar chart built by Set grows in place, not by a copy of the
+// whole list per category
+func (s *CategoryScale) addCategory(name string) int {
+	s.buildIndex()
+	i := len(s.categories)
+	s.categories = append(s.categories, name)
+	if _, ok := s.index[name]; !ok {
+		s.index[name] = i
+	}
+	s.fit()
+	return i
+}
+
+// Categories returns the names of the categories; change them with
+// SetCategories, not in the slice
 func (s *CategoryScale) Categories() []string { return s.categories }
+
+func (s *CategoryScale) buildIndex() {
+	if s.index != nil {
+		return
+	}
+	s.index = make(map[string]int, len(s.categories))
+	for i, c := range s.categories {
+		if _, ok := s.index[c]; !ok {
+			s.index[c] = i
+		}
+	}
+}
 
 // Index returns the value of the category of the name, -1 if there is none
 func (s *CategoryScale) Index(name string) int {
-	for i, c := range s.categories {
-		if c == name {
-			return i
-		}
+	s.buildIndex()
+	if i, ok := s.index[name]; ok && i < len(s.categories) && s.categories[i] == name {
+		return i
 	}
 	return -1
 }

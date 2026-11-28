@@ -29,8 +29,7 @@ func (p *ChartPane) rowIndex(name string) int {
 	if i := cs.Index(name); i >= 0 {
 		return i
 	}
-	cs.SetCategories(append(append([]string(nil), cs.categories...), name))
-	return len(cs.categories) - 1
+	return cs.addCategory(name)
 }
 
 // ---------------------------------------------------------------------------

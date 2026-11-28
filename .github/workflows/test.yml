@@ -39,3 +39,17 @@ jobs:
             **/testdata/golden/**/*.actual.png
             **/testdata/golden/**/*.diff.png
           if-no-files-found: ignore
+
+  race:
+    # The race detector needs cgo. The examples are left out: their monkey
+    # and snapshot tests take long under it.
+    runs-on: ubuntu-latest
+    env:
+      CGO_ENABLED: 1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Test with the race detector
+        run: go test -race ./ui/... ./internal/...

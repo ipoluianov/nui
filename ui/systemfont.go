@@ -170,14 +170,19 @@ func registerSystemFontFile(family, name string) error {
 			}
 			continue
 		}
-		f, exact, err := openFontFile(path, postScriptName)
-		if style == FontRegular && err != nil {
-			return err
+		f, exact, discard, err := openFontFile(path, postScriptName)
+		if err != nil {
+			if style == FontRegular {
+				return err
+			}
+			continue
 		}
 		// A face that is an instance of a variable font (the system font
 		// SF) isn't a font of its own in the file: nui's rasterizer doesn't
-		// apply the variations, so it is synthesized from the regular face
-		if style != FontRegular && (err != nil || !exact) {
+		// apply the variations, so it is synthesized from the regular face.
+		// Its file isn't used then and is closed.
+		if style != FontRegular && !exact {
+			discard()
 			continue
 		}
 		setFont(faceName(family, style), f)

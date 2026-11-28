@@ -58,7 +58,7 @@ func (c *MenuBar) AddMenuItem(text string, menu *ContextMenu) *MenuBarItem {
 	c.items = append(c.items, item)
 	c.AddWidget(0, 0, item)
 	// AddWidget has laid the bar out again
-	if c.form != nil {
+	if c.form != nil && menu != nil {
 		menu.attachToForm(menu, c.form)
 	}
 	return item

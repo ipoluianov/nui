@@ -84,7 +84,33 @@ Notes on the medium fixes, the behavior an application can notice:
 - PRS-4: the single-instance wire format changed (`arg <quoted>` lines, then `show`); an older build's second start is ignored. Malformed messages are dropped.
 - PLT-3/PLT-4: the X11 clipboard serves large data through INCR; a paste from an INCR owner fails after 10 s or 256 MB. PLT-6: drag-out sends absolute paths; a drop ignores `file://` URIs of another host.
 - MISC-3: face sizes are rounded to 1/64 px, the face cache is reset at 256 entries; NaN, Inf and negative font sizes return an error from measuring.
-- Not in the medium list, seen while fixing: PLT-5 (Latin-1 `STRING` via INCR not converted, in `convertClipboard`); `drawWideLine` computes a negative step count for a NaN width (harmless).
+- Seen while fixing, not in any list: `drawWideLine` computes a negative step count for a NaN width (harmless, the loops do nothing).
+
+2026-11-28, last: the low findings and TEST-1, TEST-2 are fixed too (marked ✅), CNV-14 with them. The tests are in one file per area:
+
+| Findings | Tests |
+|---|---|
+| TXT-9..11, 13, 14 | ui/text_low_test.go |
+| CNV-10, 12, 13 | ui/canvas_low_test.go |
+| CNV-15 | internal/canvas/canvas_low_test.go |
+| CHART-11..17 | ui/chart_low_test.go |
+| PRS-8..17 | ui/parsing_low_test.go, ui/instance_low_test.go (PRS-16, not Windows), ui/regression/parsing_low_test.go |
+| CORE-2, 10, 12, 15 | ui/regression/core_low_test.go |
+| PLT-5, 9..12 | internal/platforms/headless_low_test.go, internal/platforms/clipboard_linux_low_test.go (X11, opt-in `NUI_TEST_X11=1`) |
+| PLT-8 | none: Windows only; `//go:uintptrescapes` on `comCall`, checked with `GOOS=windows go build -gcflags=-m` (the arguments move to the heap) |
+| MISC-7, 10..13 | ui/misc_low_test.go |
+| TEST-1, TEST-2 | the tests themselves; `examples/race_on_test.go`/`race_off_test.go`, and a `race` job in .github/workflows/test.yml (`go test -race ./ui/... ./internal/...`, CGO_ENABLED=1) |
+
+CNV-14: nonzero path fills (`rasterizeRect`) use nui's own float rasterizer (`evenOddRasterizer` with a nonzero accumulate) instead of the fixed-point one of x/image/vector; the coverage is within 1/255 of the exact one (it was up to 25/255 off, too bright at sharp tips). 8 goldens were written again (canvas-shapes-1, -1.5, -2, chart-business, chart-indicators, chart-polar, chart-pie, chart-donut): up to 51/255 along slanted edges and at wedge tips (the white spot where pie slices meet is gone). `FillTriangle` and the wide lines (`fillPolygonPixels`) use it too (`TestFillTriangleSharpTipCoverage`; no golden changed by that). The rasterizer keeps the span of cells each row was touched in, so `accumulate` walks only that. The cost, against x/image/vector: `BenchmarkClipPath` 112 → 140 µs, `BenchmarkFillCircleSmall` 3.0 → 3.5 µs, `BenchmarkFillTriangle` 1.2 → 1.5 µs, `BenchmarkDrawLineWide` 10.7 → 11.3 µs; form and chart paints within noise. The rounded rectangles (`fillRoundedPixels`, corners only) and the `DrawShadow` mask still use x/image/vector.
+
+Notes on the low fixes, the behavior an application can notice:
+- TXT-10: `TextBox.SetText` stores invalid UTF-8 as U+FFFD at once. TXT-9: edits that change nothing leave the undo/redo history alone.
+- CHART-12: `SetRange`, `SetXRange` and `SetSelection` ignore NaN/Inf. CHART-14: `Render` lowers the scale to stay within 2^26 pixels. CHART-15: pane weights are clamped to 0.01..1e9. CHART-13: the candle autoscale includes open and close. `CategoryScale` categories must be changed with `SetCategories`, not in the slice `Categories()` returns.
+- PRS-17: MarkdownView without an `OnLinkClicked` handler opens only http, https and mailto links; `OpenURL("-...")` returns an error. PRS-12: `ParseHexColor` is strict. PRS-13: `WritePDF` returns errors for invalid DPI, paper or no pages. PRS-14: a saved negative window position is restored, clamped to the screen. PRS-16: the single-instance socket may be in `$TMPDIR/nui-<uid>/` (0700, owner checked). PRS-8: the folder dialog opens the nearest existing parent of a missing default folder.
+- CORE-2: stretch weights are clamped to 65536. CORE-12: an unknown dock area becomes the left one in `AddDock`, `MoveTo` ignores it. CORE-15: a message box whose parent is not in a form opens as a normal window.
+- PLT-9: the clipboard copies the data in and out. PLT-10: headless `text/plain` variants are the text. PLT-11: the headless scale is kept within 1..16. PLT-12: an X11 icon over the request limit is scaled down.
+- MISC-7: the max of a slider is always reachable (0..10 step 4: 0, 4, 8, 10), and a value nearer the max than the last grid point snaps to the max. MISC-10: View3D distance is within 1e-6..1e15. MISC-12: a text STL vertex outside a facet is an error (`ErrModel`).
+- CNV-15: internal/canvas blends premultiplied colors correctly; translucent fills look lighter than before (they were too dark).
 
 ## Root causes shared by several findings
 
@@ -186,55 +212,55 @@ Severity: critical, high, medium, low, as the area's file gives it. The suggeste
 
 | ID | Where | What |
 |---|---|---|
-| TXT-9 | ui/textbox.go:1038, 1262-1268 | An edit that changes nothing records an undo step and clears the redo history |
-| TXT-10 | ui/textbox.go:1050, 1011-1014 | Editing a line with invalid UTF-8 rewrites its other bytes to U+FFFD |
-| TXT-11 | ui/text_complex.go:202 | `TextSelectionSpans` panics when `from` is past the end |
-| TXT-13 | ui/text_utils.go:52-79 | `MakeLinesFromStringWithWordWrapping` is quadratic |
-| TXT-14 | ui/combobox_editable.go:436-447 | EditableComboBox: the highlighted match is cut at wrong bytes when lower-casing changes byte lengths |
-| CNV-10 | ui/canvas.go:938-1018 | `CohenSutherland` overflows int: a visible line is reported as invisible (low/medium) |
-| CNV-12 | ui/canvas_svg.go:361-378 | SVG recorder: control characters in text give an invalid SVG |
-| CNV-13 | ui/canvas_cache.go:121-129 | `PaintCache.InvalidateRect` with an infinite or huge rectangle repaints nothing |
-| CNV-14 | ui/canvas_path.go:1049 | x/image/vector fixed-point rasterizer: wrong coverage at sharp vertices |
-| CNV-15 | internal/canvas/* | internal/canvas: Save/Restore is a no-op, translucent blending too dark, `Clear` panics on non-RGBA colors, sub-images wrong |
-| CHART-11 | ui/chart_scale.go:126-137, 547-555 | A domain at the float limit becomes Inf: Symlog `Ticks` loops forever |
-| CHART-12 | ui/chart_sync.go:175-193 | `SaveState` returns empty data when a selection or a range is non-finite |
-| CHART-13 | ui/chart_series_candle.go:83-90 | Candles: an inverted candle or open/close outside high..low are left out of the autoscale |
-| CHART-14 | ui/chart_export.go:28-31 | `Render`/`WritePNG` panic for a NaN or +Inf scale |
-| CHART-15 | ui/chart_pane.go:64-65 | `ChartPane.SetWeight(NaN)`: all panes get NaN heights, nothing is drawn |
-| CHART-16 | ui/chart_sparkline.go:139-141 | A constant sparkline of large values (>= 1e16) draws nothing |
-| CHART-17 | chart_series_bar.go:91-103, chart_series_pie.go:71-80, chart_series_stats.go:580, chart_data.go:144 | Quadratic builders: `BarSeries.Set`, `PieSeries.Add`, `BandSeries.Add`, out-of-order `Append` |
-| PRS-8 | ui/filedialog_builtin.go:225-230, 358 | Built-in folder dialog with a missing default directory: OK returns "" |
-| PRS-9 | ui/filedialog_builtin.go:420-436 | Built-in file dialog can't open files whose names start with `"` or have spaces at the ends |
-| PRS-10 | ui/markdownview.go:251-256 | MarkdownView keeps the old layout after a font change |
-| PRS-11 | ui/timepicker.go:107-112 | `TimePicker.SetShowSeconds(false)` changes the value without `OnTimeChanged` |
-| PRS-12 | ui/colorpicker.go:734 | `ParseHexColor` accepts malformed strings (`"# f0000"`, `"#0x1234"`) |
-| PRS-13 | ui/print.go:117-178 | PrintJob: an invalid page size panics; zero-size or zero-page jobs write an invalid PDF |
-| PRS-14 | ui/form.go:751, 700 | A saved window position with a negative X or Y (a monitor left of the primary) is not restored (by reading) |
-| PRS-15 | ui/markdownview.go:211-224, ui/layout_xml.go:116 | Quadratic parsing: markdown `[`/backticks, XML character data |
-| PRS-16 | ui/instance.go:135-145 | Single-instance socket falls back to the shared /tmp: another local user can take it (by reading) |
-| PRS-17 (= MISC-9) | ui/markdownview.go:444, ui/link.go:154-167 | `OpenURL` leaves a zombie per link; MarkdownView links have no scheme check (by reading) |
-| CORE-2 | ui/widget.go:2759, 3004 | A huge stretch weight overflows: integer divide by zero |
-| CORE-10 | ui/menu_bar.go:61-63 | `MenuBar.AddMenuItem` with a nil menu panics once the bar is in a form |
-| CORE-12 | ui/dock.go:268-277, 126-155 | DockLayout: a corrupt saved area makes a dock disappear for good |
-| CORE-15 | ui/messagebox.go:184-190 | `ShowMessageBox*` panic for a parent widget that is not in a form |
-| PLT-5 | internal/platforms/clipboard_linux.go:315-321 | X11: Latin-1 STRING received through INCR is not converted to UTF-8 |
-| PLT-8 | internal/platforms/dragout_windows.go:61-64, 184 | Windows: `comCall` passes pointers to stack variables as `uintptr` through an ordinary function (by reading). The other `go vet` warnings about unsafe.Pointer are not bugs (see platform.md) |
-| PLT-9 | internal/platforms/clipboard_linux.go:143, 175; clipboard.go:52, 68 | The clipboard keeps the caller's byte slices: reusing the buffer changes what is pasted |
-| PLT-10 | internal/platforms/clipboard.go:62-73 | Headless clipboard does not take "text/plain" as the text, unlike X11 |
-| PLT-11 | internal/platforms/headless.go:56, 471 | Headless: a NaN or +Inf scale makes `Render` panic |
-| PLT-12 | internal/platforms/native_window_linux.go:1381-1421 | An application icon of 2048x2048 or larger is silently not set on X11 |
-| MISC-7 | ui/slider.go:154-160 | Slider: a value at the maximum is off the step grid when (max-min) is not a multiple of the step |
-| MISC-10 | ui/view3d.go:623-655 | View3D: zoom keys have no limits; the distance becomes Inf or 0, the target NaN |
-| MISC-11 | ui/accessible.go:73-74 | `AccessibleRole.String()` panics for a negative role |
-| MISC-12 | ui/canvas3d_mesh.go:730 | Text STL: a repeated `endfacet` adds the triangle again; a facet without a normal keeps the previous one |
-| MISC-13 | ui/systemfont.go:178-182, ui/font_system.go:286-290 | macOS: `registerSystemFontFile` leaks an open file per skipped style (by reading) |
+| ~~TXT-9~~ ✅ | ui/textbox.go:1038, 1262-1268 | An edit that changes nothing records an undo step and clears the redo history |
+| ~~TXT-10~~ ✅ | ui/textbox.go:1050, 1011-1014 | Editing a line with invalid UTF-8 rewrites its other bytes to U+FFFD |
+| ~~TXT-11~~ ✅ | ui/text_complex.go:202 | `TextSelectionSpans` panics when `from` is past the end |
+| ~~TXT-13~~ ✅ | ui/text_utils.go:52-79 | `MakeLinesFromStringWithWordWrapping` is quadratic |
+| ~~TXT-14~~ ✅ | ui/combobox_editable.go:436-447 | EditableComboBox: the highlighted match is cut at wrong bytes when lower-casing changes byte lengths |
+| ~~CNV-10~~ ✅ | ui/canvas.go:938-1018 | `CohenSutherland` overflows int: a visible line is reported as invisible (low/medium) |
+| ~~CNV-12~~ ✅ | ui/canvas_svg.go:361-378 | SVG recorder: control characters in text give an invalid SVG |
+| ~~CNV-13~~ ✅ | ui/canvas_cache.go:121-129 | `PaintCache.InvalidateRect` with an infinite or huge rectangle repaints nothing |
+| ~~CNV-14~~ ✅ | ui/canvas_path.go:1049 | x/image/vector fixed-point rasterizer: wrong coverage at sharp vertices |
+| ~~CNV-15~~ ✅ | internal/canvas/* | internal/canvas: Save/Restore is a no-op, translucent blending too dark, `Clear` panics on non-RGBA colors, sub-images wrong |
+| ~~CHART-11~~ ✅ | ui/chart_scale.go:126-137, 547-555 | A domain at the float limit becomes Inf: Symlog `Ticks` loops forever |
+| ~~CHART-12~~ ✅ | ui/chart_sync.go:175-193 | `SaveState` returns empty data when a selection or a range is non-finite |
+| ~~CHART-13~~ ✅ | ui/chart_series_candle.go:83-90 | Candles: an inverted candle or open/close outside high..low are left out of the autoscale |
+| ~~CHART-14~~ ✅ | ui/chart_export.go:28-31 | `Render`/`WritePNG` panic for a NaN or +Inf scale |
+| ~~CHART-15~~ ✅ | ui/chart_pane.go:64-65 | `ChartPane.SetWeight(NaN)`: all panes get NaN heights, nothing is drawn |
+| ~~CHART-16~~ ✅ | ui/chart_sparkline.go:139-141 | A constant sparkline of large values (>= 1e16) draws nothing |
+| ~~CHART-17~~ ✅ | chart_series_bar.go:91-103, chart_series_pie.go:71-80, chart_series_stats.go:580, chart_data.go:144 | Quadratic builders: `BarSeries.Set`, `PieSeries.Add`, `BandSeries.Add`, out-of-order `Append` |
+| ~~PRS-8~~ ✅ | ui/filedialog_builtin.go:225-230, 358 | Built-in folder dialog with a missing default directory: OK returns "" |
+| ~~PRS-9~~ ✅ | ui/filedialog_builtin.go:420-436 | Built-in file dialog can't open files whose names start with `"` or have spaces at the ends |
+| ~~PRS-10~~ ✅ | ui/markdownview.go:251-256 | MarkdownView keeps the old layout after a font change |
+| ~~PRS-11~~ ✅ | ui/timepicker.go:107-112 | `TimePicker.SetShowSeconds(false)` changes the value without `OnTimeChanged` |
+| ~~PRS-12~~ ✅ | ui/colorpicker.go:734 | `ParseHexColor` accepts malformed strings (`"# f0000"`, `"#0x1234"`) |
+| ~~PRS-13~~ ✅ | ui/print.go:117-178 | PrintJob: an invalid page size panics; zero-size or zero-page jobs write an invalid PDF |
+| ~~PRS-14~~ ✅ | ui/form.go:751, 700 | A saved window position with a negative X or Y (a monitor left of the primary) is not restored (by reading) |
+| ~~PRS-15~~ ✅ | ui/markdownview.go:211-224, ui/layout_xml.go:116 | Quadratic parsing: markdown `[`/backticks, XML character data |
+| ~~PRS-16~~ ✅ | ui/instance.go:135-145 | Single-instance socket falls back to the shared /tmp: another local user can take it (by reading) |
+| ~~PRS-17~~ ✅ (= MISC-9) | ui/markdownview.go:444, ui/link.go:154-167 | `OpenURL` leaves a zombie per link; MarkdownView links have no scheme check (by reading) |
+| ~~CORE-2~~ ✅ | ui/widget.go:2759, 3004 | A huge stretch weight overflows: integer divide by zero |
+| ~~CORE-10~~ ✅ | ui/menu_bar.go:61-63 | `MenuBar.AddMenuItem` with a nil menu panics once the bar is in a form |
+| ~~CORE-12~~ ✅ | ui/dock.go:268-277, 126-155 | DockLayout: a corrupt saved area makes a dock disappear for good |
+| ~~CORE-15~~ ✅ | ui/messagebox.go:184-190 | `ShowMessageBox*` panic for a parent widget that is not in a form |
+| ~~PLT-5~~ ✅ | internal/platforms/clipboard_linux.go:315-321 | X11: Latin-1 STRING received through INCR is not converted to UTF-8 |
+| ~~PLT-8~~ ✅ | internal/platforms/dragout_windows.go:61-64, 184 | Windows: `comCall` passes pointers to stack variables as `uintptr` through an ordinary function (by reading). The other `go vet` warnings about unsafe.Pointer are not bugs (see platform.md) |
+| ~~PLT-9~~ ✅ | internal/platforms/clipboard_linux.go:143, 175; clipboard.go:52, 68 | The clipboard keeps the caller's byte slices: reusing the buffer changes what is pasted |
+| ~~PLT-10~~ ✅ | internal/platforms/clipboard.go:62-73 | Headless clipboard does not take "text/plain" as the text, unlike X11 |
+| ~~PLT-11~~ ✅ | internal/platforms/headless.go:56, 471 | Headless: a NaN or +Inf scale makes `Render` panic |
+| ~~PLT-12~~ ✅ | internal/platforms/native_window_linux.go:1381-1421 | An application icon of 2048x2048 or larger is silently not set on X11 |
+| ~~MISC-7~~ ✅ | ui/slider.go:154-160 | Slider: a value at the maximum is off the step grid when (max-min) is not a multiple of the step |
+| ~~MISC-10~~ ✅ | ui/view3d.go:623-655 | View3D: zoom keys have no limits; the distance becomes Inf or 0, the target NaN |
+| ~~MISC-11~~ ✅ | ui/accessible.go:73-74 | `AccessibleRole.String()` panics for a negative role |
+| ~~MISC-12~~ ✅ | ui/canvas3d_mesh.go:730 | Text STL: a repeated `endfacet` adds the triangle again; a facet without a normal keeps the previous one |
+| ~~MISC-13~~ ✅ | ui/systemfont.go:178-182, ui/font_system.go:286-290 | macOS: `registerSystemFontFile` leaks an open file per skipped style (by reading) |
 
 ## Findings about the tests themselves
 
 | ID | Sev. | Where | What |
 |---|---|---|---|
-| TEST-1 | low | ui/font_style_test.go:75-120, ui/systemfont_test.go:96-122 | `TestSynthesizedStyles` and `TestUnknownFamilyFromSystem` fail on a second run in one process (`go test -count=2 ./ui`, or `-count=3 -shuffle=on`). TestSynthesizedStyles registers a real bold face `test-synth:bold` at its end and leaves it registered, so the next run measures a registered bold, not a synthesized one ("bold width 46, regular 46"). The cleanup of TestUnknownFamilyFromSystem deletes `fonts["dejavu sans mono"]` but not the rest of the state RegisterFont made (`registerNativeFont`, the forgotten system family), so on the next run the family no longer resolves to the system font ("width 76, default 76"). Not a library bug: RegisterFont twice with the same name works. Fix: unique family names per run (e.g. with a counter), or a cleanup that undoes all of RegisterFont. |
-| TEST-2 | low | examples/repaint_test.go:49 | `go test -race ./...` fails with the default timeout of 10 minutes: `TestRepaintMonkey` in `examples` takes more than 10 minutes under the race detector (85 s without it). With `-timeout 60m` the package passes and the detector reports no race. The CI does not run `-race`. Fix: a shorter monkey run under race (the `race_on_test.go`/`race_off_test.go` pattern of `ui` exists), then `-race` in the CI on Linux. |
+| ~~TEST-1~~ ✅ | low | ui/font_style_test.go:75-120, ui/systemfont_test.go:96-122 | `TestSynthesizedStyles` and `TestUnknownFamilyFromSystem` fail on a second run in one process (`go test -count=2 ./ui`, or `-count=3 -shuffle=on`). TestSynthesizedStyles registers a real bold face `test-synth:bold` at its end and leaves it registered, so the next run measures a registered bold, not a synthesized one ("bold width 46, regular 46"). The cleanup of TestUnknownFamilyFromSystem deletes `fonts["dejavu sans mono"]` but not the rest of the state RegisterFont made (`registerNativeFont`, the forgotten system family), so on the next run the family no longer resolves to the system font ("width 76, default 76"). Not a library bug: RegisterFont twice with the same name works. Fix: unique family names per run (e.g. with a counter), or a cleanup that undoes all of RegisterFont. |
+| ~~TEST-2~~ ✅ | low | examples/repaint_test.go:49 | `go test -race ./...` fails with the default timeout of 10 minutes: `TestRepaintMonkey` in `examples` takes more than 10 minutes under the race detector (85 s without it). With `-timeout 60m` the package passes and the detector reports no race. The CI does not run `-race`. Fix: a shorter monkey run under race (the `race_on_test.go`/`race_off_test.go` pattern of `ui` exists), then `-race` in the CI on Linux. |
 
 ## What was checked and found clean
 

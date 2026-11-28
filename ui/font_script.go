@@ -90,12 +90,13 @@ func addScriptFont(r rune) {
 		if done {
 			continue
 		}
-		f, _, err := openFontFile(path, "")
+		f, _, discard, err := openFontFile(path, "")
 		if err != nil {
 			continue
 		}
 		var buf sfnt.Buffer
 		if !hasGlyph(f, &buf, r) {
+			discard()
 			continue
 		}
 		scriptFontsMu.Lock()

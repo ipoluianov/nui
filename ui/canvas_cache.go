@@ -68,7 +68,8 @@ func (p *PaintCache) Invalidate() {
 // InvalidateRect makes the next Draw paint the rectangle again, in the
 // logical coordinates of the picture (its top left corner is 0, 0)
 func (p *PaintCache) InvalidateRect(r RectF) {
-	if !p.valid || r.Width() <= 0 || r.Height() <= 0 {
+	// !(> 0): a NaN rectangle is no rectangle
+	if !p.valid || !(r.Width() > 0) || !(r.Height() > 0) {
 		return
 	}
 	// Rectangles that overlap are painted as one
@@ -120,9 +121,15 @@ func (p *PaintCache) Draw(cnv *Canvas, x, y, w, h int, paint func(cnv *Canvas)) 
 	for _, d := range p.dirty {
 		pc := NewCanvasScaled(p.img, cnv.scale)
 		pc.SetDirectTranslateAndClip(0, 0, w, h)
-		// The whole pixels the rectangle touches
-		x0, y0 := int(math.Floor(d.MinX)), int(math.Floor(d.MinY))
-		pc.intersectClip(x0, y0, int(math.Ceil(d.MaxX))-x0, int(math.Ceil(d.MaxY))-y0)
+		// The whole pixels the rectangle touches, within the picture: in
+		// float first, an infinite or huge rectangle would not fit an int
+		minX, minY := math.Max(d.MinX, 0), math.Max(d.MinY, 0)
+		maxX, maxY := math.Min(d.MaxX, float64(w)), math.Min(d.MaxY, float64(h))
+		if !(minX < maxX) || !(minY < maxY) {
+			continue
+		}
+		x0, y0 := int(math.Floor(minX)), int(math.Floor(minY))
+		pc.intersectClip(x0, y0, int(math.Ceil(maxX))-x0, int(math.Ceil(maxY))-y0)
 		if pc.clipEmpty() {
 			continue
 		}

@@ -217,7 +217,12 @@ func (c *Canvas) fillRasterized(ras *rasterizer, b, clip image.Rectangle, col co
 	mask := ras.mask(b.Dx(), b.Dy())
 	ras.z.DrawOp = draw.Src
 	ras.z.Draw(mask, mask.Rect, image.Opaque, image.Point{})
+	c.fillMask(mask, b, clip, col)
+}
 
+// fillMask blends the color over the pixels of b within clip by the mask,
+// of b's size, its origin at b.Min
+func (c *Canvas) fillMask(mask *image.Alpha, b, clip image.Rectangle, col color.Color) {
 	r, g, bl, a := straightRGBA8(col)
 	clip = clip.Intersect(b)
 	for y := clip.Min.Y; y < clip.Max.Y; y++ {
@@ -256,22 +261,27 @@ func (c *Canvas) fillPolygonPixels(pts [][2]float64, col color.Color) {
 		return
 	}
 	// Clipped to the rectangle with a margin, as in rasterizeRect: the
-	// rasterizer's fixed-point math overflows on points far out of it
+	// rasterizer walks every row between the ends of a line, and float32
+	// loses the precision of points far out of it
 	var bufA, bufB []PointF
 	edges := [4]float64{-1, -1, float64(b.Dx()) + 1, float64(b.Dy()) + 1}
 	poly = clipPolygon(poly, float64(b.Min.X), float64(b.Min.Y), edges, &bufA, &bufB)
 	if len(poly) < 3 {
 		return
 	}
+	// The rasterizer of nui, as for paths (see evenOddRasterizer): the
+	// fixed-point one of x/image/vector gives a sharp tip too much coverage
 	ras := rasterizers.Get().(*rasterizer)
 	defer rasterizers.Put(ras)
-	z := ras.reset(b.Dx(), b.Dy())
+	z := ras.eo.reset(b.Dx(), b.Dy(), true)
 	z.MoveTo(float32(poly[0].X), float32(poly[0].Y))
 	for _, p := range poly[1:] {
 		z.LineTo(float32(p.X), float32(p.Y))
 	}
 	z.ClosePath()
-	c.fillRasterized(ras, b, clip, col)
+	mask := ras.mask(b.Dx(), b.Dy())
+	z.accumulate(mask)
+	c.fillMask(mask, b, clip, col)
 }
 
 // drawMark draws a stroke of a mark (a check, a dash) of the logical width,

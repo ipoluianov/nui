@@ -3,6 +3,7 @@ package ui
 import (
 	"bufio"
 	"compress/zlib"
+	"errors"
 	"fmt"
 	"image"
 	"image/color"
@@ -116,8 +117,9 @@ func (j *PrintJob) paper() PaperSize {
 // pageSize returns the paper size in pixels at the job's DPI
 func (j *PrintJob) pageSize() (int, int) {
 	paper := j.paper()
-	w := int(math.Round(paper.Width * j.dpi() / 25.4))
-	h := int(math.Round(paper.Height * j.dpi() / 25.4))
+	// At least a pixel: a PDF image of 0 pixels is invalid
+	w := max(1, int(math.Round(paper.Width*j.dpi()/25.4)))
+	h := max(1, int(math.Round(paper.Height*j.dpi()/25.4)))
 	if j.Landscape {
 		w, h = h, w
 	}
@@ -149,21 +151,58 @@ func (j *PrintJob) renderPage(index, count, width, height int, dpi float64) *ima
 	return img
 }
 
-// SavePDF writes all the pages to a PDF file
+// SavePDF writes all the pages to a PDF file; on an error no file is left
 func (j *PrintJob) SavePDF(path string) error {
 	f, err := os.Create(path)
 	if err != nil {
 		return err
 	}
+	ok := false
+	defer func() {
+		// An error, or a panic of DrawPage: not a half-written file
+		if !ok {
+			f.Close()
+			os.Remove(path)
+		}
+	}()
 	if err := j.WritePDF(f, nil); err != nil {
-		f.Close()
 		return err
 	}
-	return f.Close()
+	ok = true
+	if err := f.Close(); err != nil {
+		os.Remove(path)
+		return err
+	}
+	return nil
 }
 
-// WritePDF writes the pages (0-based; nil for all) as a PDF document
+// maxPrintPixels is the most pixels a page may have: 2^29, 2 GB of RGBA,
+// more than A3 at 1200 DPI
+const maxPrintPixels = 1 << 29
+
+// checkPage checks the job's page size and resolution
+func (j *PrintJob) checkPage() error {
+	if math.IsInf(j.DPI, 0) || math.IsNaN(j.DPI) {
+		return fmt.Errorf("print: wrong DPI %v", j.DPI)
+	}
+	if bad := func(v float64) bool { return math.IsInf(v, 0) || math.IsNaN(v) }; bad(j.Paper.Width) || bad(j.Paper.Height) {
+		return fmt.Errorf("print: wrong paper size %vx%v mm", j.Paper.Width, j.Paper.Height)
+	}
+	paper, dpi := j.paper(), j.dpi()
+	// In float: the pixels in int could overflow
+	w, h := math.Max(1, math.Round(paper.Width*dpi/25.4)), math.Max(1, math.Round(paper.Height*dpi/25.4))
+	if w*h > maxPrintPixels {
+		return fmt.Errorf("print: the page of %vx%v mm at %v DPI is too big", paper.Width, paper.Height, dpi)
+	}
+	return nil
+}
+
+// WritePDF writes the pages (0-based; nil for all) as a PDF document. An
+// infinite or too big DPI or paper size, or no pages, is an error.
 func (j *PrintJob) WritePDF(w io.Writer, pages []int) error {
+	if err := j.checkPage(); err != nil {
+		return err
+	}
 	width, height := j.pageSize()
 	dpi := j.dpi()
 	count := j.pageCount(width, height, dpi)
@@ -171,6 +210,9 @@ func (j *PrintJob) WritePDF(w io.Writer, pages []int) error {
 		for i := 0; i < count; i++ {
 			pages = append(pages, i)
 		}
+	}
+	if len(pages) == 0 {
+		return errors.New("print: no pages")
 	}
 	pdf := newPDFWriter(w)
 	return pdf.write(j.Title, len(pages), float64(width)*72/dpi, float64(height)*72/dpi, func(n int) *image.RGBA {

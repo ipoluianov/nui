@@ -60,9 +60,13 @@ func newChartPane(view *ChartView) *ChartPane {
 func (p *ChartPane) View() *ChartView { return p.view }
 
 // SetWeight sets how tall the pane is next to the others: a pane of weight
-// 3 over one of weight 1 takes three quarters of the height
+// 3 over one of weight 1 takes three quarters of the height. The weight is
+// kept within 0.01..1e9; NaN is ignored.
 func (p *ChartPane) SetWeight(weight float64) *ChartPane {
-	p.weight = math.Max(weight, 0.01)
+	if math.IsNaN(weight) {
+		return p // math.Max passes NaN through: every pane would get a NaN height
+	}
+	p.weight = math.Min(math.Max(weight, 0.01), 1e9)
 	p.view.Update()
 	return p
 }

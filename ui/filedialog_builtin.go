@@ -46,6 +46,12 @@ type fileDialog struct {
 	model    *fileDialogModel
 	onResult func(paths []string)
 	done     bool // the result is given
+	// selected are the names of the files selected in the table, and
+	// selectedText the name field they set: while it holds that text, the
+	// names are taken as they are, not parsed from the field (a name may
+	// hold quotes or start with a space)
+	selected     []string
+	selectedText string
 
 	path       *TextBox
 	table      *Table
@@ -228,6 +234,21 @@ func (c *Form) showBuiltinFileDialog(mode fileDialogMode, title, dir, name strin
 			start, _ = os.Getwd()
 		}
 		d.openDir(start)
+		// A folder that is gone or can't be read: the nearest one that can,
+		// so that the dialog never shows (and gives) no folder
+		for parent := filepath.Dir(start); d.dir == "" && parent != start; start, parent = parent, filepath.Dir(parent) {
+			d.openDir(parent)
+		}
+		if d.dir == "" {
+			if h, err := os.UserHomeDir(); err == nil {
+				d.openDir(h)
+			}
+		}
+		if d.dir == "" {
+			if wd, err := os.Getwd(); err == nil {
+				d.openDir(wd)
+			}
+		}
 		if d.name != nil && name != "" {
 			d.name.Focus()
 			d.name.SelectAllText()
@@ -333,7 +354,10 @@ func (d *fileDialog) selectionChanged() {
 		d.name.SetText(names[0])
 	case len(names) > 1:
 		d.name.SetText(`"` + strings.Join(names, `" "`) + `"`)
+	default:
+		return
 	}
+	d.selected, d.selectedText = names, d.name.Text()
 }
 
 // activate opens the folder of the row, or picks its file
@@ -352,19 +376,28 @@ func (d *fileDialog) activate(row int) {
 		d.openDir(d.dir)
 		return
 	}
+	// The file of the row as it is named: not parsed back from the field
 	d.name.SetText(e.Name())
-	d.accept()
+	d.acceptPaths([]string{filepath.Join(d.dir, e.Name())})
 }
 
 // accept picks the files of the name field: a folder typed there is opened
 // instead
 func (d *fileDialog) accept() {
-	// A folder: the one open (Enter and a double click open the others)
+	// A folder: the one open (Enter and a double click open the others);
+	// none open, nothing to give
 	if d.mode == fileDialogDirectory {
-		d.finish([]string{d.dir})
+		if d.dir != "" {
+			d.finish([]string{d.dir})
+		}
 		return
 	}
-	names := parseFileNames(d.name.Text())
+	var names []string
+	if d.selected != nil && d.name.Text() == d.selectedText {
+		names = d.selected
+	} else {
+		names = parseFileNames(d.name.Text())
+	}
 	if len(names) == 0 {
 		return
 	}
@@ -372,6 +405,9 @@ func (d *fileDialog) accept() {
 	for _, name := range names {
 		path := expandHome(name)
 		if !filepath.IsAbs(path) {
+			if d.dir == "" {
+				return // not a path relative to the working directory
+			}
 			path = filepath.Join(d.dir, path)
 		}
 		if info, err := os.Stat(path); err == nil && info.IsDir() {
@@ -381,6 +417,12 @@ func (d *fileDialog) accept() {
 		}
 		paths = append(paths, path)
 	}
+	d.acceptPaths(paths)
+}
+
+// acceptPaths picks the files: those to open must exist, one to save over
+// is asked about
+func (d *fileDialog) acceptPaths(paths []string) {
 	switch d.mode {
 	case fileDialogOpen:
 		for _, p := range paths {

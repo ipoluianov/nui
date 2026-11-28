@@ -1,8 +1,10 @@
 package ui
 
 import (
+	"fmt"
 	"os/exec"
 	"runtime"
+	"strings"
 
 	"github.com/ipoluianov/nui/internal/platforms"
 )
@@ -150,8 +152,12 @@ func (c *Link) applyThemeMetrics() {
 
 // OpenURL opens the address (a web page, a file, "mailto:...") with the
 // system's default application. Without a screen (the tests of uitest)
-// nothing is opened.
+// nothing is opened. An address starting with "-" is an error: the opener
+// would take it for an option.
 func OpenURL(url string) error {
+	if strings.HasPrefix(url, "-") {
+		return fmt.Errorf("OpenURL: %q is not an address", url)
+	}
 	if platforms.IsHeadless() {
 		return nil
 	}
@@ -164,5 +170,16 @@ func OpenURL(url string) error {
 	default:
 		cmd = exec.Command("xdg-open", url)
 	}
-	return cmd.Start()
+	return startReaped(cmd)
+}
+
+// startReaped starts the command without waiting for it, and waits for it
+// in a goroutine: a process that ended is not left a zombie until the
+// application quits
+func startReaped(cmd *exec.Cmd) error {
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	go cmd.Wait()
+	return nil
 }

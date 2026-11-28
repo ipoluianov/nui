@@ -21,13 +21,25 @@ func ChartThemeOf(p *ThemePalette, dark bool) *ChartTheme {
 	return &th
 }
 
+// maxChartRenderSide is the largest logical side of a picture of Render,
+// and maxChartRenderPixels the most pixels in it (256 MB): a page of A4 at
+// 1200 dpi fits
+const (
+	maxChartRenderSide   = 32768
+	maxChartRenderPixels = 1 << 26
+)
+
 // Render draws the chart into an image of the logical size at the scale
 // (2 for a sharp picture), without the crosshair and the tooltip of the
 // pointer: for a file, the clipboard, a report. th is the theme of the
 // picture; nil - the chart's own.
 func (c *ChartView) Render(width, height int, scale float64, th *ChartTheme) *image.RGBA {
-	if scale <= 0 {
-		scale = 1
+	if !(scale > 0) || math.IsInf(scale, 0) {
+		scale = 1 // NaN or Inf (a DPI of zero) would make an image of no size
+	}
+	width, height = min(max(width, 0), maxChartRenderSide), min(max(height, 0), maxChartRenderSide)
+	if area := float64(width) * float64(height) * scale * scale; area > maxChartRenderPixels {
+		scale *= math.Sqrt(maxChartRenderPixels / area)
 	}
 	img := image.NewRGBA(image.Rect(0, 0, int(math.Ceil(float64(width)*scale)), int(math.Ceil(float64(height)*scale))))
 	c.renderTo(width, height, th, func() *Canvas { return NewCanvasScaled(img, scale) })
@@ -197,6 +209,9 @@ func (c *ChartView) PrintJob(title string) *PrintJob {
 			h := min(int(float64(w)*aspect), p.Height-2*margin)
 			// A logical pixel of the chart is a pixel of a 96 dpi screen
 			scale := p.DPI / 96
+			if !(scale > 0) || math.IsInf(scale, 0) {
+				scale = 1
+			}
 			img := c.Render(int(float64(w)/scale), int(float64(h)/scale), scale, ChartThemeOf(&LightPalette, false))
 			p.Canvas.DrawImage(margin, margin, img)
 		},
