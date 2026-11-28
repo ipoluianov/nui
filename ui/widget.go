@@ -2747,15 +2747,21 @@ func (c *Widget) makeColumnsInfo(fullWidth int, cells map[gridCell][]Widgeter) (
 		if countOfColumnCanChange > 0 && deltaWidth != 0 {
 			// The columns share the change by their stretch weights (all 1:
 			// equally)
+			canChange := func(colInfo *ContainerGridColumnInfo) bool {
+				return !colInfo.collapsed && (deltaWidth > 0 && colInfo.width < colInfo.maxWidth || deltaWidth < 0 && colInfo.width > colInfo.minWidth)
+			}
 			weights := 0
 			for _, colInfo := range columnsInfo {
-				if !colInfo.collapsed && (deltaWidth > 0 && colInfo.width < colInfo.maxWidth || deltaWidth < 0 && colInfo.width > colInfo.minWidth) {
+				if canChange(colInfo) {
 					weights += colInfo.stretch
 				}
 			}
+			// Only the columns counted in weights get a share: a column at
+			// its limit would be clamped back, and a share given to it would
+			// count as a move while nothing changed (an endless loop)
 			moved := false
 			for _, colInfo := range columnsInfo {
-				if !colInfo.collapsed {
+				if canChange(colInfo) {
 					pix := deltaWidth * colInfo.stretch / weights
 					if pix != 0 {
 						moved = true
@@ -2992,15 +2998,19 @@ func (c *Widget) makeRowsInfo(fullHeight int, cells map[gridCell][]Widgeter) (ma
 		if countOfRowCanChange > 0 && deltaHeight != 0 {
 			// The rows share the change by their stretch weights (all 1:
 			// equally)
+			canChange := func(rowInfo *ContainerGridRowInfo) bool {
+				return !rowInfo.collapsed && (deltaHeight > 0 && rowInfo.height < rowInfo.maxHeight || deltaHeight < 0 && rowInfo.height > rowInfo.minHeight)
+			}
 			weights := 0
 			for _, rowInfo := range rowsInfo {
-				if !rowInfo.collapsed && (deltaHeight > 0 && rowInfo.height < rowInfo.maxHeight || deltaHeight < 0 && rowInfo.height > rowInfo.minHeight) {
+				if canChange(rowInfo) {
 					weights += rowInfo.stretch
 				}
 			}
+			// Only the rows counted in weights get a share (see makeColumnsInfo)
 			moved := false
 			for _, rowInfo := range rowsInfo {
-				if !rowInfo.collapsed {
+				if canChange(rowInfo) {
 					pix := deltaHeight * rowInfo.stretch / weights
 					if pix != 0 {
 						moved = true

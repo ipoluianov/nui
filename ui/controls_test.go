@@ -1,9 +1,11 @@
 package ui
 
 import (
+	"image"
 	"reflect"
 	"testing"
 	"time"
+	_ "time/tzdata"
 )
 
 // newTestForm makes a form with the widget in it, laid out.
@@ -151,6 +153,85 @@ func TestCalendar(t *testing.T) {
 	cal.mouseDown(MouseButtonLeft, cal.gridLeft()+(offset%7)*cell+cell/2, cal.gridTop()+(offset/7)*cell+cell/2, KeyModifiers{})
 	if !cal.Date().Equal(target) {
 		t.Errorf("click: %v, want %v", cal.Date(), target)
+	}
+}
+
+// The grid of a month with a day whose midnight the clocks skip (Sep 6
+// 2026 in Chile) holds each day once, and a click on a cell selects the
+// day drawn there: the cells were counted by AddDate from local midnight,
+// which fell on 23:00 of the day before, so "5" came twice and the cell
+// labeled with a day picked the next one.
+func TestCalendarGridWithoutMidnight(t *testing.T) {
+	loc, err := time.LoadLocation("America/Santiago")
+	if err != nil {
+		t.Skip(err)
+	}
+	old := time.Local
+	time.Local = loc
+	defer func() { time.Local = old }()
+
+	cal := NewCalendar()
+	newTestForm(t, cal)
+	cal.SetFirstDayOfWeek(time.Monday)
+	cal.SetDate(time.Date(2026, time.September, 1, 12, 0, 0, 0, loc))
+	start := cal.gridStart()
+	if start.Format("2006-01-02 15:04") != "2026-08-31 00:00" {
+		t.Errorf("grid start %v", start)
+	}
+	cell := cal.cellSize()
+	for i := 0; i < 42; i++ {
+		want := time.Date(2026, time.August, 31+i, 12, 0, 0, 0, loc).Format("2006-01-02")
+		x, y := cal.gridLeft()+(i%7)*cell+cell/2, cal.gridTop()+(i/7)*cell+cell/2
+		if part, day := cal.partAt(x, y); part != calendarPartDay || day.Format("2006-01-02") != want {
+			t.Errorf("cell %d: %v, want %s", i, day, want)
+		}
+		cal.mouseDown(MouseButtonLeft, x, y, KeyModifiers{})
+		cal.ShowMonth(2026, time.September) // a click on a day of another month shows that month
+		if got := cal.Date().Format("2006-01-02"); got != want {
+			t.Errorf("click on cell %d: %s, want %s", i, got, want)
+		}
+	}
+	if got := DateOnly(time.Date(2026, time.September, 6, 12, 0, 0, 0, loc)); got.Format("2006-01-02 15:04") != "2026-09-06 01:00" {
+		t.Errorf("DateOnly(Sep 6) = %v, want the first instant of Sep 6", got)
+	}
+}
+
+// The selected day is highlighted in the grid where the clocks skip a
+// midnight before it (Nov 4 2018 in Brazil): the cells were counted from
+// the grid start by AddDate, kept the 23:00 of that day, and never equaled
+// the selected date.
+func TestCalendarSelectionDrawnAfterSkippedMidnight(t *testing.T) {
+	loc, err := time.LoadLocation("America/Sao_Paulo")
+	if err != nil {
+		t.Skip(err)
+	}
+	old := time.Local
+	time.Local = loc
+	defer func() { time.Local = old }()
+
+	cal := NewCalendar()
+	newTestForm(t, cal)
+	cal.SetFirstDayOfWeek(time.Sunday)
+	cal.SetDate(time.Date(2018, time.November, 20, 12, 0, 0, 0, loc))
+	img := image.NewRGBA(image.Rect(0, 0, cal.Width(), cal.Height()))
+	cnv := NewCanvas(img)
+	cnv.SetDirectTranslateAndClip(0, 0, cal.Width(), cal.Height())
+	cal.draw(cnv)
+
+	cell := cal.cellSize()
+	sel := CurrentPalette().Selection
+	var highlighted []int
+	for i := 0; i < 42; i++ {
+		// Inside the highlight, left of the day's number
+		x := cal.gridLeft() + (i%7)*cell + 5
+		y := cal.gridTop() + (i/7)*cell + cell/2
+		if c := img.RGBAAt(x, y); c.R == sel.R && c.G == sel.G && c.B == sel.B {
+			highlighted = append(highlighted, i)
+		}
+	}
+	// Oct 28 is the first cell, Nov 20 the 24th
+	if !reflect.DeepEqual(highlighted, []int{23}) {
+		t.Errorf("highlighted cells %v, want [23]", highlighted)
 	}
 }
 

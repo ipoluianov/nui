@@ -328,12 +328,19 @@ func arcBounds(op pathOp) (minX, minY, maxX, maxY float64) {
 		maxX, maxY = math.Max(maxX, p.X), math.Max(maxY, p.Y)
 	}
 	add(to)
-	// x and y are extreme where their derivatives are 0
+	// x and y are extreme where their derivatives are 0: at t + 2*pi*k,
+	// the same point for every k. The arc passes it if the first such
+	// angle at or after from is at most to, d past from. (Not by stepping
+	// from from by 2*pi: at a huge angle that is below its precision, and
+	// the loop would not end.) A NaN or an infinite angle passes none.
+	span := to - from
 	for _, t0 := range []float64{math.Atan2(v.X, u.X), math.Atan2(v.Y, u.Y)} {
 		for _, t := range []float64{t0, t0 + math.Pi} {
-			// The first angle of t + 2*pi*k at or after from
-			t += 2 * math.Pi * math.Ceil((from-t)/(2*math.Pi))
-			for ; t <= to; t += 2 * math.Pi {
+			d := math.Mod(t-from, 2*math.Pi)
+			if d < 0 {
+				d += 2 * math.Pi
+			}
+			if d <= span {
 				add(t)
 			}
 		}
@@ -976,7 +983,21 @@ func (c *Canvas) rasterizePolys(pb *polyBuilder, blend coverRow) {
 	from := 0
 	for _, to := range pb.ends {
 		box := [4]float64{math.Inf(1), math.Inf(1), math.Inf(-1), math.Inf(-1)}
-		for _, pt := range pb.pts[from:to] {
+		poly := pb.pts[from:to]
+		for i := range poly {
+			pt := &poly[i]
+			if !(math.Abs(pt.X) <= maxRasterCoord && math.Abs(pt.Y) <= maxRasterCoord) {
+				if math.IsNaN(pt.X) || math.IsNaN(pt.Y) {
+					// A polygon with a NaN point has no shape: dropped (an
+					// empty box), not to erase the others
+					box = [4]float64{math.Inf(1), math.Inf(1), math.Inf(-1), math.Inf(-1)}
+					break
+				}
+				// Infinite and huge ones are kept within the range, where
+				// the clipping does not overflow to NaN
+				pt.X = max(-maxRasterCoord, min(pt.X, maxRasterCoord))
+				pt.Y = max(-maxRasterCoord, min(pt.Y, maxRasterCoord))
+			}
 			box[0], box[1] = math.Min(box[0], pt.X), math.Min(box[1], pt.Y)
 			box[2], box[3] = math.Max(box[2], pt.X), math.Max(box[3], pt.Y)
 		}
@@ -1012,6 +1033,9 @@ func (c *Canvas) rasterizePolys(pb *polyBuilder, blend coverRow) {
 		ys = append(ys, [2]float64{math.Inf(1), math.Inf(-1)})
 	}
 	for i, box := range pb.boxes {
+		if !(box[0] <= box[2]) {
+			continue // dropped
+		}
 		first := int(math.Floor((box[0] - 1 - float64(b.Min.X)) / band))
 		last := int(math.Floor((box[2] + 1 - float64(b.Min.X)) / band))
 		for k := max(first, 0); k <= min(last, bands-1); k++ {
@@ -1032,6 +1056,12 @@ func (c *Canvas) rasterizePolys(pb *polyBuilder, blend coverRow) {
 		}
 	}
 }
+
+// maxRasterCoord is how far from the origin, in pixels, the points of the
+// polygons rasterized may be: farther ones are moved to it. The lines
+// between such points overflow neither in the clipping nor in the
+// rasterizer, and the error is far out of sight.
+const maxRasterCoord = 1 << 50
 
 // boxPixels returns the pixels that hold the box (minX, minY, maxX, maxY),
 // kept within a billion pixels: farther ones are clipped anyway
@@ -1279,12 +1309,12 @@ func strokeSubpath(pb *polyBuilder, pts []PointF, closed bool, st StrokeStyle) {
 		if math.IsNaN(pt.X) || math.IsNaN(pt.Y) || math.IsInf(pt.X, 0) || math.IsInf(pt.Y, 0) {
 			continue
 		}
-		if len(clean) > 0 && math.Abs(clean[len(clean)-1].X-pt.X) < 1e-9 && math.Abs(clean[len(clean)-1].Y-pt.Y) < 1e-9 {
+		if len(clean) > 0 && samePoint(clean[len(clean)-1], pt) {
 			continue
 		}
 		clean = append(clean, pt)
 	}
-	if closed && len(clean) > 2 && math.Abs(clean[0].X-clean[len(clean)-1].X) < 1e-9 && math.Abs(clean[0].Y-clean[len(clean)-1].Y) < 1e-9 {
+	if closed && len(clean) > 2 && samePoint(clean[0], clean[len(clean)-1]) {
 		clean = clean[:len(clean)-1]
 	}
 	pb.dash = clean
@@ -1293,14 +1323,7 @@ func strokeSubpath(pb *polyBuilder, pts []PointF, closed bool, st StrokeStyle) {
 		return
 	}
 	if len(clean) == 1 {
-		// A point: drawn only by its caps, as in SVG
-		pt := clean[0]
-		switch st.Cap {
-		case LineCapRound:
-			pb.addCircle(pt.X, pt.Y, hw)
-		case LineCapSquare:
-			pb.add(PointF{pt.X - hw, pt.Y - hw}, PointF{pt.X + hw, pt.Y - hw}, PointF{pt.X + hw, pt.Y + hw}, PointF{pt.X - hw, pt.Y + hw})
-		}
+		strokePoint(pb, clean[0], st, hw)
 		return
 	}
 	if len(st.Dash) > 0 {
@@ -1310,11 +1333,32 @@ func strokeSubpath(pb *polyBuilder, pts []PointF, closed bool, st StrokeStyle) {
 			pts = append(pts, pts[0])
 		}
 		dashPolyline(pts, st.Dash, st.DashOffset, func(dash []PointF) {
-			strokePolyline(pb, dash, false, st, hw)
+			if len(dash) == 1 {
+				strokePoint(pb, dash[0], st, hw)
+			} else {
+				strokePolyline(pb, dash, false, st, hw)
+			}
 		})
 		return
 	}
 	strokePolyline(pb, clean, closed && len(clean) > 2, st, hw)
+}
+
+// strokePoint adds the stroke of a line of no length at pt: only its caps,
+// as in SVG
+func strokePoint(pb *polyBuilder, pt PointF, st StrokeStyle, hw float64) {
+	switch st.Cap {
+	case LineCapRound:
+		pb.addCircle(pt.X, pt.Y, hw)
+	case LineCapSquare:
+		pb.add(PointF{pt.X - hw, pt.Y - hw}, PointF{pt.X + hw, pt.Y - hw}, PointF{pt.X + hw, pt.Y + hw}, PointF{pt.X - hw, pt.Y + hw})
+	}
+}
+
+// samePoint tells whether the points are too close for the segment between
+// them to have a direction
+func samePoint(a, b PointF) bool {
+	return math.Abs(a.X-b.X) < 1e-9 && math.Abs(a.Y-b.Y) < 1e-9
 }
 
 // strokePolyline adds the stroke of the polyline without repeated points
@@ -1423,7 +1467,9 @@ func addJoin(pb *polyBuilder, v PointF, d0x, d0y, d1x, d1y float64, st StrokeSty
 }
 
 // dashPolyline splits the polyline into the dashes of the pattern, from
-// offset into it, and calls f with each (the slice is reused)
+// offset into it, and calls f with each (the slice is reused). A dash has
+// no repeated points: a dash of no length, or one that ends at a vertex,
+// would repeat it. A dash of no length is a single point.
 func dashPolyline(pts []PointF, pattern []float64, offset float64, f func(dash []PointF)) {
 	total := 0.0
 	for _, d := range pattern {
@@ -1438,15 +1484,22 @@ func dashPolyline(pts []PointF, pattern []float64, offset float64, f func(dash [
 		offset += total
 	}
 	// Where in the pattern the line starts: offset is below the total, so
-	// a turn of the pattern ends the loop
+	// a turn of the pattern ends the loop. A dash of no length at the start
+	// is a dot there.
 	idx := 0
-	for offset >= pattern[idx] {
+	for offset > pattern[idx] || offset == pattern[idx] && offset > 0 {
 		offset -= pattern[idx]
 		idx = (idx + 1) % len(pattern)
 	}
 	left := pattern[idx] - offset // of the current dash or gap
 	on := idx%2 == 0
 	var cur []PointF
+	// add adds the point to the dash, unless it is the last one again
+	add := func(pt PointF) {
+		if len(cur) == 0 || !samePoint(cur[len(cur)-1], pt) {
+			cur = append(cur, pt)
+		}
+	}
 	if on {
 		cur = append(cur, pts[0])
 	}
@@ -1463,7 +1516,7 @@ func dashPolyline(pts []PointF, pattern []float64, offset float64, f func(dash [
 			t := pos / segLen
 			pt := PointF{a.X + (b.X-a.X)*t, a.Y + (b.Y-a.Y)*t}
 			if on {
-				cur = append(cur, pt)
+				add(pt)
 				f(cur)
 				cur = cur[:0]
 			} else {
@@ -1475,7 +1528,7 @@ func dashPolyline(pts []PointF, pattern []float64, offset float64, f func(dash [
 		}
 		left -= segLen - pos
 		if on {
-			cur = append(cur, b)
+			add(b)
 		}
 	}
 	if on && len(cur) > 1 {

@@ -406,6 +406,21 @@ func (s *DigitalSeries) Draw(cnv *Canvas, v *ChartViewport) {
 	cy := v.PY(float64(row))
 	hi, lo := cy-band*0.3, cy+band*0.3
 	end := v.X + v.W
+	// The changes at a time of Inf or NaN are skipped; each state lasts
+	// until the next change
+	var idx []int
+	for i, sm := range s.samples {
+		if chartFinite(sm.X) {
+			idx = append(idx, i)
+		}
+	}
+	span := func(k int) (float64, float64) {
+		x, next := chartPx(v.PX(s.samples[idx[k]].X)), end
+		if k+1 < len(idx) {
+			next = chartPx(v.PX(s.samples[idx[k+1]].X))
+		}
+		return x, next
+	}
 	p := pathPool.Get().(*Path)
 	defer pathPool.Put(p)
 	if !s.bus {
@@ -413,12 +428,9 @@ func (s *DigitalSeries) Draw(cnv *Canvas, v *ChartViewport) {
 		fill.A = 40
 		p.Reset()
 		var trace []PointF
-		for i, sm := range s.samples {
-			x := v.PX(sm.X)
-			next := end
-			if i+1 < len(s.samples) {
-				next = v.PX(s.samples[i+1].X)
-			}
+		for k, i := range idx {
+			sm := s.samples[i]
+			x, next := span(k)
 			y := lo
 			if sm.HasValue() && sm.Last != 0 {
 				y = hi
@@ -436,12 +448,9 @@ func (s *DigitalSeries) Draw(cnv *Canvas, v *ChartViewport) {
 	cnv.Save()
 	defer cnv.Restore()
 	cnv.SetFontSize(v.FontSize * 0.8)
-	for i, sm := range s.samples {
-		x1 := v.PX(sm.X)
-		x2 := end
-		if i+1 < len(s.samples) {
-			x2 = v.PX(s.samples[i+1].X)
-		}
+	for k, i := range idx {
+		sm := s.samples[i]
+		x1, x2 := span(k)
 		if x2 < v.X || x1 > end {
 			continue
 		}

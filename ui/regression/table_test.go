@@ -1,6 +1,7 @@
 package regression
 
 import (
+	"image"
 	"testing"
 
 	"github.com/ipoluianov/nui/ui"
@@ -41,4 +42,45 @@ func TestTableCopySelection(t *testing.T) {
 	if text, _ := ui.ClipboardGetText(); text != "a\tb\tc\ng\th\ti" {
 		t.Errorf("rows 1 and 3: %q", text)
 	}
+}
+
+// iconModel gives every cell an icon
+type iconModel struct {
+	ui.ModelSignal
+	icon image.Image
+}
+
+func (m *iconModel) RowCount() int            { return 3 }
+func (m *iconModel) ColumnCount() int         { return 2 }
+func (m *iconModel) Text(row, col int) string { return "x" }
+func (m *iconModel) Style(row, col int) ui.ItemStyle {
+	return ui.ItemStyle{Icon: m.icon}
+}
+
+// A row too low for its padding, or a negative image width, leaves no room
+// for the cell and header images: they are skipped, the paint doesn't panic
+func TestTableImageWithoutRoom(t *testing.T) {
+	icon := image.NewRGBA(image.Rect(0, 0, 16, 16))
+
+	form := newForm(400, 300)
+	table := ui.NewTable()
+	table.SetModel(&iconModel{icon: icon})
+	table.SetRowHeight(4)
+	form.Panel().AddWidget(0, 0, table)
+	uitest.Show(t, form).Screenshot()
+
+	form = newForm(400, 300)
+	table = ui.NewTable()
+	table.SetColumnCount(1)
+	table.SetRowCount(1)
+	table.SetCellImage(0, 0, icon, -1)
+	table.SetColumnImage(0, icon, -1)
+	form.Panel().AddWidget(0, 0, table)
+	w := uitest.Show(t, form)
+	w.Screenshot()
+
+	table.SetCellPadding(20)
+	table.SetCellImage(0, 0, icon, 16)
+	table.SetColumnImage(0, icon, 16)
+	w.Screenshot()
 }

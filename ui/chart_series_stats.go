@@ -655,11 +655,22 @@ func (s *BandSeries) Draw(cnv *Canvas, v *ChartViewport) {
 	col := s.Color(v.Theme)
 	p := pathPool.Get().(*Path)
 	defer pathPool.Put(p)
+	// The points to draw, in pixels: a point with an Inf or NaN is skipped
+	type pt struct{ x, y, high, low float64 }
+	pts := make([]pt, 0, len(s.samples))
+	for _, b := range s.samples {
+		if chartFinite(b.X) && chartFinite(b.Y) && chartFinite(b.Low) && chartFinite(b.High) {
+			pts = append(pts, pt{chartPx(v.PX(b.X)), chartPx(v.PY(b.Y)), chartPx(v.PY(b.High)), chartPx(v.PY(b.Low))})
+		}
+	}
+	if len(pts) == 0 {
+		return
+	}
 	if s.errorBars {
 		p.Reset()
-		for _, b := range s.samples {
-			x := chartCrisp(v.PX(b.X))
-			yh, yl := v.PY(b.High), v.PY(b.Low)
+		for _, b := range pts {
+			x := chartCrisp(b.x)
+			yh, yl := b.high, b.low
 			p.MoveTo(x, yh)
 			p.LineTo(x, yl)
 			p.MoveTo(x-4, chartCrisp(yh))
@@ -668,33 +679,33 @@ func (s *BandSeries) Draw(cnv *Canvas, v *ChartViewport) {
 			p.LineTo(x+4, chartCrisp(yl))
 		}
 		cnv.StrokePath(p, StrokeStyle{Width: 1.2}, col)
-		for _, b := range s.samples {
-			cnv.DrawMarker(MarkerCircle, v.PX(b.X), v.PY(b.Y), 6, col, v.Theme.PlotBackground)
+		for _, b := range pts {
+			cnv.DrawMarker(MarkerCircle, b.x, b.y, 6, col, v.Theme.PlotBackground)
 		}
 		return
 	}
 	fill := col
 	fill.A = uint8(float64(col.A) * s.opacity)
 	p.Reset()
-	for i, b := range s.samples {
+	for i, b := range pts {
 		if i == 0 {
-			p.MoveTo(v.PX(b.X), v.PY(b.High))
+			p.MoveTo(b.x, b.high)
 		} else {
-			p.LineTo(v.PX(b.X), v.PY(b.High))
+			p.LineTo(b.x, b.high)
 		}
 	}
-	for i := len(s.samples) - 1; i >= 0; i-- {
-		p.LineTo(v.PX(s.samples[i].X), v.PY(s.samples[i].Low))
+	for i := len(pts) - 1; i >= 0; i-- {
+		p.LineTo(pts[i].x, pts[i].low)
 	}
 	p.Close()
 	cnv.FillPath(p, fill)
 	if s.showLine {
 		p.Reset()
-		for i, b := range s.samples {
+		for i, b := range pts {
 			if i == 0 {
-				p.MoveTo(v.PX(b.X), v.PY(b.Y))
+				p.MoveTo(b.x, b.y)
 			} else {
-				p.LineTo(v.PX(b.X), v.PY(b.Y))
+				p.LineTo(b.x, b.y)
 			}
 		}
 		cnv.StrokePath(p, StrokeStyle{Width: 1.5, Join: LineJoinRound}, col)

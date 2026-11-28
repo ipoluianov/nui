@@ -17,7 +17,7 @@ import (
 //	cal.SetOnDateChanged(func(d time.Time) { status.SetText(d.Format("2006-01-02")) })
 type Calendar struct {
 	Widget
-	date     time.Time // selected, at midnight
+	date     time.Time // selected, at the start of the day (startOfDay)
 	month    time.Time // the first day of the month shown
 	minDate  time.Time // zero: no limit
 	maxDate  time.Time
@@ -50,10 +50,36 @@ const (
 
 const calendarPadding = 6
 
-// DateOnly returns the date of t at midnight in the local time zone.
+// DateOnly returns the date of t at the start of the day in the local time
+// zone: at midnight, or, on a day whose midnight is skipped by a change of
+// the clocks (daylight saving time starting at 00:00, as in Chile), at the
+// first instant of the day (01:00).
 func DateOnly(t time.Time) time.Time {
 	y, m, d := t.Date()
-	return time.Date(y, m, d, 0, 0, 0, 0, time.Local)
+	return startOfDay(y, m, d)
+}
+
+// startOfDay returns the first instant of the local day; the month and day
+// may be out of range (they're normalized, as by time.Date). The day is
+// found at noon, which every day has: time.Date of a midnight that doesn't
+// exist gives 23:00 of the day before.
+func startOfDay(year int, month time.Month, day int) time.Time {
+	noon := time.Date(year, month, day, 12, 0, 0, 0, time.Local)
+	year, month, day = noon.Date()
+	if midnight := time.Date(year, month, day, 0, 0, 0, 0, time.Local); midnight.Day() == day {
+		return midnight
+	}
+	// The clocks jumped over midnight: the day starts with the new zone
+	start, _ := noon.ZoneBounds()
+	return start
+}
+
+// addDays returns the start of the day days calendar days after the day of
+// t. AddDate on the start of a day is not that: it keeps the clock time,
+// which on a day without midnight lands on the day before.
+func addDays(t time.Time, days int) time.Time {
+	y, m, d := t.Date()
+	return startOfDay(y, m, d+days)
 }
 
 func NewCalendar() *Calendar {
@@ -80,10 +106,11 @@ func NewCalendar() *Calendar {
 }
 
 func firstOfMonth(t time.Time) time.Time {
-	return time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, time.Local)
+	return startOfDay(t.Year(), t.Month(), 1)
 }
 
-// Date returns the selected date, at midnight local time.
+// Date returns the selected date, at midnight local time (at the first
+// instant of the day where the clocks skip its midnight, see DateOnly).
 func (c *Calendar) Date() time.Time {
 	return c.date
 }
@@ -123,7 +150,7 @@ func zeroOrDate(t time.Time) time.Time {
 // ShowMonth shows the month without changing the selection; the month may
 // be out of 1..12 (it's normalized, as by time.Date).
 func (c *Calendar) ShowMonth(year int, month time.Month) {
-	c.month = time.Date(year, month, 1, 0, 0, 0, 0, time.Local)
+	c.month = startOfDay(year, month, 1)
 	c.Update()
 }
 
@@ -230,7 +257,7 @@ func (c *Calendar) updateSize() {
 // before the month's first day.
 func (c *Calendar) gridStart() time.Time {
 	offset := (int(c.month.Weekday()) - int(c.firstDayOfWeek()) + 7) % 7
-	return c.month.AddDate(0, 0, -offset)
+	return addDays(c.month, -offset)
 }
 
 func (c *Calendar) arrowRects() (prevX, nextX, y, size int) {
@@ -252,7 +279,7 @@ func (c *Calendar) partAt(x, y int) (calendarPart, time.Time) {
 	cell := c.cellSize()
 	if x >= c.gridLeft() && x < c.gridLeft()+7*cell && y >= c.gridTop() && y < c.gridTop()+6*cell {
 		col, row := (x-c.gridLeft())/cell, (y-c.gridTop())/cell
-		return calendarPartDay, c.gridStart().AddDate(0, 0, row*7+col)
+		return calendarPartDay, addDays(c.gridStart(), row*7+col)
 	}
 	if tx, tw := c.todayRect(); y >= c.footerTop() && y < c.footerTop()+ThemeRowHeight() && x >= tx && x < tx+tw {
 		return calendarPartToday, time.Time{}
@@ -332,13 +359,13 @@ func (c *Calendar) ProcessKeyDown(key Key, mods KeyModifiers) bool {
 	d := c.date
 	switch key {
 	case KeyArrowLeft:
-		d = d.AddDate(0, 0, -1)
+		d = addDays(d, -1)
 	case KeyArrowRight:
-		d = d.AddDate(0, 0, 1)
+		d = addDays(d, 1)
 	case KeyArrowUp:
-		d = d.AddDate(0, 0, -7)
+		d = addDays(d, -7)
 	case KeyArrowDown:
-		d = d.AddDate(0, 0, 7)
+		d = addDays(d, 7)
 	case KeyPageUp, KeyPageDown:
 		months := -1
 		if key == KeyPageDown {
@@ -351,7 +378,7 @@ func (c *Calendar) ProcessKeyDown(key Key, mods KeyModifiers) bool {
 	case KeyHome:
 		d = firstOfMonth(d)
 	case KeyEnd:
-		d = firstOfMonth(d).AddDate(0, 1, -1)
+		d = startOfDay(d.Year(), d.Month()+1, 0)
 	case KeyEnter:
 		c.activate()
 		return true
@@ -365,9 +392,9 @@ func (c *Calendar) ProcessKeyDown(key Key, mods KeyModifiers) bool {
 // addMonthsClamped moves by months keeping the day within the new month
 // (Jan 31 + 1 month = Feb 28/29, not Mar 3).
 func addMonthsClamped(d time.Time, months int) time.Time {
-	first := time.Date(d.Year(), d.Month()+time.Month(months), 1, 0, 0, 0, 0, time.Local)
-	last := first.AddDate(0, 1, -1).Day()
-	return time.Date(first.Year(), first.Month(), min(d.Day(), last), 0, 0, 0, 0, time.Local)
+	first := startOfDay(d.Year(), d.Month()+time.Month(months), 1)
+	last := startOfDay(first.Year(), first.Month()+1, 0).Day()
+	return startOfDay(first.Year(), first.Month(), min(d.Day(), last))
 }
 
 // ---------------------------------------------------------------- Painting
@@ -417,9 +444,10 @@ func (c *Calendar) draw(cnv *Canvas) {
 
 	// Days
 	today := DateOnly(time.Now())
-	day := c.gridStart()
+	start := c.gridStart()
 	for row := 0; row < 6; row++ {
 		for col := 0; col < 7; col++ {
+			day := addDays(start, row*7+col) // as partAt finds the cell's day
 			x, y := left+col*cell, c.gridTop()+row*cell
 			const inset = 2
 			inMonth := day.Month() == c.month.Month()
@@ -448,7 +476,6 @@ func (c *Calendar) draw(cnv *Canvas) {
 			}
 			cnv.SetColor(textColor)
 			cnv.DrawText(x, y, cell, cell, fmt.Sprint(day.Day()))
-			day = day.AddDate(0, 0, 1)
 		}
 	}
 

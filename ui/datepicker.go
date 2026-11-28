@@ -48,7 +48,8 @@ func NewDatePicker() *DatePicker {
 	return &c
 }
 
-// Date returns the chosen date, at midnight local time.
+// Date returns the chosen date, at midnight local time (at the first
+// instant of the day where the clocks skip its midnight, see DateOnly).
 func (c *DatePicker) Date() time.Time {
 	return c.date
 }
@@ -161,10 +162,10 @@ func (c *DatePicker) ProcessKeyDown(key Key, mods KeyModifiers) bool {
 		if mods.Alt {
 			c.OpenPopup()
 		} else {
-			c.changeDate(c.date.AddDate(0, 0, -1))
+			c.changeDate(addDays(c.date, -1))
 		}
 	case KeyArrowUp:
-		c.changeDate(c.date.AddDate(0, 0, 1))
+		c.changeDate(addDays(c.date, 1))
 	case KeyPageUp:
 		c.changeDate(addMonthsClamped(c.date, 1))
 	case KeyPageDown:

@@ -1599,6 +1599,9 @@ type TreeNode struct {
 
 	expanded    bool
 	hasChildren bool
+	// expanding is set while the expand handlers run, so that a handler
+	// selecting or scrolling to a child it loaded doesn't expand the node again.
+	expanding bool
 }
 
 func newTreeNode(tree *TreeView, parent *TreeNode, text string) *TreeNode {
@@ -1781,15 +1784,20 @@ func (n *TreeNode) SetExpanded(expanded bool) {
 
 // Expand shows the children, calling the tree's SetOnExpand function first.
 func (n *TreeNode) Expand() {
-	if n.expanded {
+	if n.expanded || n.expanding {
 		return
 	}
-	if n.tree != nil {
-		n.tree.OnExpanding.Emit(n)
-	}
-	if n.tree != nil && n.tree.onExpand != nil {
-		n.tree.onExpand(n)
-	}
+	func() {
+		// Cleared also when a handler panics: the node can be expanded later
+		n.expanding = true
+		defer func() { n.expanding = false }()
+		if n.tree != nil {
+			n.tree.OnExpanding.Emit(n)
+		}
+		if n.tree != nil && n.tree.onExpand != nil {
+			n.tree.onExpand(n)
+		}
+	}()
 	n.expanded = true
 	n.changed(true)
 }
@@ -1839,9 +1847,13 @@ func (n *TreeNode) expandLoaded() {
 	}
 }
 
+// expandParents expands the ancestors of the node. An ancestor whose expand
+// handlers are running (a lazy load that selects the child) is left to them.
 func (n *TreeNode) expandParents() {
 	for p := n.parent; p != nil; p = p.parent {
-		p.Expand()
+		if !p.expanding {
+			p.Expand()
+		}
 	}
 }
 

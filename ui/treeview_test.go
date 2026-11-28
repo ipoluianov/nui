@@ -273,6 +273,40 @@ func TestTreeViewLazyLoadAndTypeAhead(t *testing.T) {
 	}
 }
 
+// A lazy load that selects the child it loaded runs once: selecting the
+// child expands its parent, which must not call the expand handlers again
+func TestTreeViewLazyLoadSelectsChild(t *testing.T) {
+	tree, _ := newTestTree(t)
+	folder := tree.AddNode(nil, "Folder")
+	folder.SetHasChildren(true)
+	calls, loads := 0, 0
+	tree.OnExpanding.Connect(func(node *TreeNode) {
+		calls++
+		if calls > 10 {
+			return // before the fix the handler recursed until the stack overflowed
+		}
+		tree.SetCurrentNode(node.AddChild("File"))
+	})
+	tree.SetOnExpand(func(node *TreeNode) {
+		loads++
+		if loads > 10 {
+			return
+		}
+		tree.ScrollToNode(node.Children()[0])
+		node.Children()[0].expandParents()
+	})
+	folder.Expand()
+	if calls != 1 || loads != 1 || folder.ChildCount() != 1 {
+		t.Fatalf("OnExpanding %d times, SetOnExpand %d times, %d children", calls, loads, folder.ChildCount())
+	}
+	if !folder.IsExpanded() || tree.CurrentNode() != folder.Children()[0] {
+		t.Errorf("expanded %v, current %v", folder.IsExpanded(), tree.CurrentNode())
+	}
+	if texts := shownTexts(tree); texts[len(texts)-1] != "File" {
+		t.Errorf("shown rows %v", texts)
+	}
+}
+
 func TestTreeViewMouse(t *testing.T) {
 	tree, n := newTestTree(t)
 	rowY := func(row int) int { return tree.headerHeight() + row*tree.RowHeight() + 2 }

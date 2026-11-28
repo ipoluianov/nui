@@ -577,11 +577,18 @@ func (c *TextBox) cutSelected() {
 	if selectedText == "" {
 		return
 	}
-	ClipboardSetText(selectedText)
+	// A password is not put on the clipboard: the selection is only deleted
+	if !c.GetPropBool("ispassword", false) {
+		ClipboardSetText(selectedText)
+	}
 	c.modifyText(textboxModifyCommandDelete, KeyModifiers{}, nil)
 }
 
 func (c *TextBox) copySelected() {
+	// A password is not put on the clipboard
+	if c.GetPropBool("ispassword", false) {
+		return
+	}
 	if len(c.selectedLines()) == 0 {
 		return
 	}
@@ -1406,12 +1413,15 @@ func (c *TextBox) InsertText(text string) {
 	c.lastEditActive = false // the next typing is an undo step of its own
 }
 
-// Cut moves the selected text to the clipboard (Ctrl+X)
+// Cut moves the selected text to the clipboard (Ctrl+X). In a password
+// box it only deletes the selection: the password is not put on the
+// clipboard.
 func (c *TextBox) Cut() {
 	c.cutSelected()
 }
 
-// Copy copies the selected text to the clipboard (Ctrl+C)
+// Copy copies the selected text to the clipboard (Ctrl+C); in a password
+// box it does nothing
 func (c *TextBox) Copy() {
 	c.copySelected()
 }

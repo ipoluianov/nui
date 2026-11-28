@@ -157,7 +157,7 @@ func clipboardSet(items []ClipboardItem) error {
 			continue
 		}
 		if item.MIME == MIMEPNG {
-			if img, err := png.Decode(bytes.NewReader(item.Data)); err == nil {
+			if img, err := DecodeClipboardPNG(item.Data); err == nil {
 				entries = append(entries, entry{c_CF_DIB, dibFromImage(img)})
 			}
 		}

@@ -130,3 +130,36 @@ func TestAboutDialog(t *testing.T) {
 		t.Error("Esc doesn't close the about box")
 	}
 }
+
+// ShowModal of a dialog that is already open (a command run twice) keeps its
+// window: a second one used to leave the parent blocked after Close
+func TestShowModalTwice(t *testing.T) {
+	form := newForm(400, 300)
+	w := uitest.Show(t, form)
+	dlg := newForm(200, 100)
+	dlg.ShowModal(form)
+	handle := dlg.SystemHandle()
+	dlg.ShowModal(form)
+	if dlg.SystemHandle() != handle {
+		t.Error("a second ShowModal opened a second window")
+	}
+	dlg.Close()
+	if w.Blocked() {
+		t.Error("the parent is still blocked after the dialog closed")
+	}
+}
+
+// ShowMaximized of a form that is already shown maximizes its window instead
+// of opening a second one that stays open after Close
+func TestShowMaximizedTwice(t *testing.T) {
+	form := newForm(400, 300)
+	uitest.Show(t, form)
+	handle := form.SystemHandle()
+	form.ShowMaximized()
+	if form.SystemHandle() != handle {
+		t.Error("ShowMaximized opened a second window")
+	}
+	if !form.IsMaximized() {
+		t.Error("the window is not maximized")
+	}
+}

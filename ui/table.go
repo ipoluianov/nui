@@ -154,7 +154,7 @@ func (c *tableHeaderCell) SpanRow() int {
 
 func (c *tableHeaderCell) setImage(img image.Image, imgWidth int) {
 	c.image = img
-	c.imageWidth = imgWidth
+	c.imageWidth = max(0, imgWidth)
 }
 
 type tableCell struct {
@@ -746,7 +746,7 @@ func (c *Table) SetCellDisplayText(row int, col int, text string) {
 func (c *Table) SetCellImage(row int, col int, img image.Image, imgWidth int) {
 	cellObj := c.getCellObj(row, col)
 	cellObj.image = img
-	cellObj.imageWidth = imgWidth
+	cellObj.imageWidth = max(0, imgWidth)
 	c.Update()
 }
 
@@ -1735,22 +1735,25 @@ func (c *Table) draw(cnv *Canvas) {
 					imgWidth := 0
 					imgHeight := c.rowHeight1 - c.cellPadding*2
 					if cellObj != nil && cellObj.image != nil {
-						imgWidth = cellObj.imageWidth
+						imgWidth = max(0, cellObj.imageWidth)
 						b := cellObj.image.Bounds()
-						aspRatioImg := float64(b.Max.X) / float64(b.Max.Y)
-						aspRationWidget := float64(imgWidth) / float64(imgHeight)
-						if aspRatioImg > aspRationWidget {
-							image := resize.Resize(uint(imgWidth), 0, cellObj.image, resize.Bicubic)
-							b := image.Bounds()
-							offsetX := (imgWidth-b.Max.X)/2 + x
-							offsetY := (imgHeight-b.Max.Y)/2 + y
-							cnv.DrawImage(offsetX+c.cellPadding, offsetY+c.cellPadding, image)
-						} else {
-							image := resize.Resize(0, uint(imgHeight), cellObj.image, resize.Bicubic)
-							b := image.Bounds()
-							offsetX := (imgWidth-b.Max.X)/2 + x
-							offsetY := (imgHeight-b.Max.Y)/2 + y
-							cnv.DrawImage(offsetX+c.cellPadding, offsetY+c.cellPadding, image)
+						// No room for the image (a small row height, a large padding): skip it.
+						if imgWidth > 0 && imgHeight > 0 && b.Dx() > 0 && b.Dy() > 0 {
+							aspRatioImg := float64(b.Max.X) / float64(b.Max.Y)
+							aspRationWidget := float64(imgWidth) / float64(imgHeight)
+							if aspRatioImg > aspRationWidget {
+								image := resize.Resize(uint(imgWidth), 0, cellObj.image, resize.Bicubic)
+								b := image.Bounds()
+								offsetX := (imgWidth-b.Max.X)/2 + x
+								offsetY := (imgHeight-b.Max.Y)/2 + y
+								cnv.DrawImage(offsetX+c.cellPadding, offsetY+c.cellPadding, image)
+							} else {
+								image := resize.Resize(0, uint(imgHeight), cellObj.image, resize.Bicubic)
+								b := image.Bounds()
+								offsetX := (imgWidth-b.Max.X)/2 + x
+								offsetY := (imgHeight-b.Max.Y)/2 + y
+								cnv.DrawImage(offsetX+c.cellPadding, offsetY+c.cellPadding, image)
+							}
 						}
 
 						imgWidth += c.cellPadding
@@ -1887,22 +1890,25 @@ func (c *Table) drawPost(cnv *Canvas) {
 			imgWidth := 0
 			imgHeight := c.rowHeight1 - c.cellPadding*2
 			if headerCell != nil && headerCell.image != nil {
-				imgWidth = headerCell.imageWidth
+				imgWidth = max(0, headerCell.imageWidth)
 				b := headerCell.image.Bounds()
-				aspRatioImg := float64(b.Max.X) / float64(b.Max.Y)
-				aspRationWidget := float64(imgWidth) / float64(imgHeight)
-				if aspRatioImg > aspRationWidget {
-					image := resize.Resize(uint(imgWidth), 0, headerCell.image, resize.Bicubic)
-					b := image.Bounds()
-					offsetX := (imgWidth-b.Max.X)/2 + x
-					offsetY := (imgHeight-b.Max.Y)/2 + y
-					cnv.DrawImage(offsetX+c.cellPadding, offsetY+c.cellPadding, image)
-				} else {
-					image := resize.Resize(0, uint(imgHeight), headerCell.image, resize.Bicubic)
-					b := image.Bounds()
-					offsetX := (imgWidth-b.Max.X)/2 + x
-					offsetY := (imgHeight-b.Max.Y)/2 + y
-					cnv.DrawImage(offsetX+c.cellPadding, offsetY+c.cellPadding, image)
+				// No room for the image (a small row height, a large padding): skip it.
+				if imgWidth > 0 && imgHeight > 0 && b.Dx() > 0 && b.Dy() > 0 {
+					aspRatioImg := float64(b.Max.X) / float64(b.Max.Y)
+					aspRationWidget := float64(imgWidth) / float64(imgHeight)
+					if aspRatioImg > aspRationWidget {
+						image := resize.Resize(uint(imgWidth), 0, headerCell.image, resize.Bicubic)
+						b := image.Bounds()
+						offsetX := (imgWidth-b.Max.X)/2 + x
+						offsetY := (imgHeight-b.Max.Y)/2 + y
+						cnv.DrawImage(offsetX+c.cellPadding, offsetY+c.cellPadding, image)
+					} else {
+						image := resize.Resize(0, uint(imgHeight), headerCell.image, resize.Bicubic)
+						b := image.Bounds()
+						offsetX := (imgWidth-b.Max.X)/2 + x
+						offsetY := (imgHeight-b.Max.Y)/2 + y
+						cnv.DrawImage(offsetX+c.cellPadding, offsetY+c.cellPadding, image)
+					}
 				}
 
 				imgWidth += c.cellPadding
@@ -2494,7 +2500,7 @@ func (c *Table) modelCell(row, col int, own *tableCell) *tableCell {
 		}
 		if style.Icon != nil {
 			cell.image = style.Icon
-			cell.imageWidth = c.rowHeight1 - c.cellPadding*2
+			cell.imageWidth = max(0, c.rowHeight1-c.cellPadding*2)
 		}
 	}
 	return cell

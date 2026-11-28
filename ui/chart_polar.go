@@ -25,18 +25,30 @@ func (p *ChartPane) polarFrameOf(v *ChartViewport, cnv *Canvas) polarFrame {
 	top := 0.0
 	for _, s := range p.series {
 		if ps, ok := s.(polarSeries); ok && s.Visible() {
-			top = math.Max(top, ps.polarMax())
+			// A sum of values that overflows to Inf has no scale
+			if m := ps.polarMax(); chartFinite(m) {
+				top = math.Max(top, m)
+			}
 		}
 	}
 	if top <= 0 {
 		top = 1
 	}
+	// About 4 rings, counted (not stepped up to the rim, which a step far
+	// below 1 or near the largest float never reaches)
 	step := niceStepAtLeast(top / 4)
-	rimMax := math.Ceil(top/step-1e-9) * step
-	var rings []float64
-	for r := step; r <= rimMax+1e-9; r += step {
-		rings = append(rings, r)
+	n := math.Max(1, math.Min(10, math.Ceil(top/step-1e-9)))
+	rimMax := n * step
+	if !chartFinite(rimMax) || rimMax < top {
+		rimMax = top
 	}
+	rings := make([]float64, 0, int(n))
+	ring := 0.0
+	for k := 1; k < int(n); k++ {
+		ring += step
+		rings = append(rings, math.Min(ring, rimMax))
+	}
+	rings = append(rings, rimMax)
 	lh := v.FontSize * 1.2
 	labelW := chartTextWidth(cnv, "330°")
 	for _, name := range p.radarCats {
@@ -45,6 +57,16 @@ func (p *ChartPane) polarFrameOf(v *ChartViewport, cnv *Canvas) polarFrame {
 	labelW = math.Min(math.Max(labelW, 24), v.W/4)
 	r := math.Min(v.W/2-labelW-6, v.H/2-lh-4)
 	return polarFrame{cx: v.X + v.W/2, cy: v.Y + v.H/2, r: math.Max(r, 10), max: rimMax, rings: rings}
+}
+
+// radius returns the distance of the value from the middle, in pixels
+func (f polarFrame) radius(val float64) float64 {
+	rr := f.r * val / f.max
+	if !chartFinite(rr) {
+		// The radius times a value near the largest float overflows
+		rr = f.r * (val / f.max)
+	}
+	return chartPx(rr)
 }
 
 // isFirstPolar reports whether the series is the first visible polar series
@@ -72,7 +94,7 @@ func (p *ChartPane) drawPolarFrame(cnv *Canvas, v *ChartViewport, f polarFrame, 
 	angle := func(i int) float64 { return -math.Pi/2 + 2*math.Pi*float64(i)/float64(spokes) }
 	path.Reset()
 	for _, ring := range f.rings {
-		rr := f.r * ring / f.max
+		rr := f.radius(ring)
 		if polygon && n >= 3 {
 			for i := 0; i < spokes; i++ {
 				x, y := f.cx+rr*math.Cos(angle(i)), f.cy+rr*math.Sin(angle(i))
@@ -96,7 +118,7 @@ func (p *ChartPane) drawPolarFrame(cnv *Canvas, v *ChartViewport, f polarFrame, 
 	defer cnv.Restore()
 	cnv.SetFontSize(v.FontSize * 0.8)
 	for _, ring := range f.rings {
-		chartDrawLabel(cnv, trimChartZeros(strconv.FormatFloat(ring, 'f', 3, 64)), f.cx+3, f.cy-f.r*ring/f.max, HAlignLeft, VAlignBottom, th.Text)
+		chartDrawLabel(cnv, trimChartZeros(strconv.FormatFloat(ring, 'f', 3, 64)), f.cx+3, f.cy-f.radius(ring), HAlignLeft, VAlignBottom, th.Text)
 	}
 	cnv.SetFontSize(v.FontSize * 0.85)
 	for i := 0; i < spokes; i++ {
@@ -177,7 +199,9 @@ func (s *RadarSeries) chartNoAxes() {}
 func (s *RadarSeries) polarMax() float64 {
 	m := 0.0
 	for _, v := range s.values {
-		m = math.Max(m, v)
+		if chartFinite(v) {
+			m = math.Max(m, v)
+		}
 	}
 	return m
 }
@@ -206,9 +230,14 @@ func (s *RadarSeries) Draw(cnv *Canvas, v *ChartViewport) {
 	defer pathPool.Put(p)
 	p.Reset()
 	for i, c := range s.pane.radarCats {
-		val := math.Max(0, s.values[c])
+		// An Inf or NaN has no value: drawn at the middle
+		val := s.values[c]
+		if !chartFinite(val) {
+			val = 0
+		}
+		val = math.Max(0, val)
 		a := -math.Pi/2 + 2*math.Pi*float64(i)/float64(n)
-		rr := f.r * val / f.max
+		rr := f.radius(val)
 		pt := PointF{f.cx + rr*math.Cos(a), f.cy + rr*math.Sin(a)}
 		s.points = append(s.points, pt)
 		if i == 0 {
@@ -321,7 +350,7 @@ func (s *PolarSeries) stackBase(angle float64) float64 {
 		}
 		if ps, ok := o.(*PolarSeries); ok && ps.stack == s.stack && ps.Visible() {
 			for _, p := range ps.points {
-				if p.X == angle {
+				if p.X == angle && chartFinite(p.Y) {
 					base += p.Y
 				}
 			}
@@ -333,7 +362,9 @@ func (s *PolarSeries) stackBase(angle float64) float64 {
 func (s *PolarSeries) polarMax() float64 {
 	m := 0.0
 	for _, p := range s.points {
-		m = math.Max(m, p.Y+s.stackBase(p.X))
+		if chartFinite(p.Y) {
+			m = math.Max(m, p.Y+s.stackBase(p.X))
+		}
 	}
 	return m
 }
@@ -355,7 +386,7 @@ func (s *PolarSeries) Draw(cnv *Canvas, v *ChartViewport) {
 	col := s.Color(v.Theme)
 	at := func(angle, val float64) PointF {
 		a := angle*math.Pi/180 - math.Pi/2
-		rr := f.r * math.Max(0, val) / f.max
+		rr := f.radius(math.Max(0, val))
 		return PointF{f.cx + rr*math.Cos(a), f.cy + rr*math.Sin(a)}
 	}
 	s.drawn = s.drawn[:0]
@@ -374,20 +405,30 @@ func (s *PolarSeries) Draw(cnv *Canvas, v *ChartViewport) {
 		}
 		w := step * 0.8 * math.Pi / 180
 		for _, pt := range s.points {
+			// A point of Inf or NaN has no value: not drawn, never nearest
+			if !chartFinite(pt.X) || !chartFinite(pt.Y) {
+				s.drawn = append(s.drawn, PointF{math.NaN(), math.NaN()})
+				continue
+			}
 			base := s.stackBase(pt.X)
 			a := pt.X*math.Pi/180 - math.Pi/2
 			p.Reset()
-			p.Sector(f.cx, f.cy, f.r*base/f.max, f.r*(base+pt.Y)/f.max, a-w/2, a+w/2)
+			p.Sector(f.cx, f.cy, f.radius(base), f.radius(base+pt.Y), a-w/2, a+w/2)
 			cnv.FillPath(p, col)
 			s.drawn = append(s.drawn, at(pt.X, base+pt.Y))
 		}
 		return
 	}
 	p.Reset()
-	for i, pt := range s.points {
+	for _, pt := range s.points {
+		// A point of Inf or NaN has no value: skipped, never nearest
+		if !chartFinite(pt.X) || !chartFinite(pt.Y) {
+			s.drawn = append(s.drawn, PointF{math.NaN(), math.NaN()})
+			continue
+		}
 		q := at(pt.X, pt.Y)
 		s.drawn = append(s.drawn, q)
-		if i == 0 {
+		if p.Empty() {
 			p.MoveTo(q.X, q.Y)
 		} else {
 			p.LineTo(q.X, q.Y)

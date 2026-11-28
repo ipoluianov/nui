@@ -229,3 +229,69 @@ func TestGlobalKeysUnderPopup(t *testing.T) {
 		t.Errorf("after the list closed: %d", global)
 	}
 }
+
+// The key handler of the focused widget that removes the widget and does not
+// take the key: the form used to read the cleared focus again (a panic)
+func TestKeyDownHandlerRemovesFocusedWidget(t *testing.T) {
+	form := newForm(300, 200)
+	p := ui.NewPanel()
+	p.SetCanBeFocused(true)
+	p.SetMinSize(50, 50)
+	form.Panel().AddWidget(0, 0, p)
+	w := uitest.Show(t, form)
+	p.Focus()
+	p.SetOnKeyDown(func(key ui.Key, mods ui.KeyModifiers) bool {
+		form.Panel().RemoveWidget(p)
+		return false
+	})
+	w.Key(ui.KeyA, ui.KeyModifiers{})
+	if w.Focused() != nil {
+		t.Errorf("the removed widget is still focused: %v", w.Focused())
+	}
+}
+
+// A drag handler (the moves with the left button held) that opens a message
+// box: the dialog cancels the press, and the form used to read the cleared
+// pressed widget again (a panic)
+func TestMouseMoveHandlerOpensModal(t *testing.T) {
+	form := newForm(400, 300)
+	p := ui.NewPanel()
+	p.SetMinSize(200, 200)
+	form.Panel().AddWidget(0, 0, p)
+	w := uitest.Show(t, form)
+	// The press moves the mouse there first: the handler comes after it
+	w.Press(ui.MouseButtonLeft, uitest.At(p, 20, 20))
+	shown := false
+	p.SetOnMouseMove(func(x, y int, mods ui.KeyModifiers) bool {
+		if !shown {
+			shown = true
+			ui.ShowMessageBox(p, "Drag", "Can't drop here")
+		}
+		return true
+	})
+	w.Move(uitest.At(p, 30, 30))
+	d := w.Dialog()
+	if !shown || !w.Blocked() {
+		t.Errorf("shown %v, parent blocked %v", shown, w.Blocked())
+	}
+	d.Form.Close()
+}
+
+// A drag handler that removes the widget being dragged: the form used to
+// read the cleared pressed widget again (a panic)
+func TestMouseMoveHandlerRemovesPressedWidget(t *testing.T) {
+	form := newForm(300, 200)
+	p := ui.NewPanel()
+	p.SetMinSize(100, 100)
+	form.Panel().AddWidget(0, 0, p)
+	w := uitest.Show(t, form)
+	w.Press(ui.MouseButtonLeft, uitest.At(p, 10, 10))
+	p.SetOnMouseMove(func(x, y int, mods ui.KeyModifiers) bool {
+		form.Panel().RemoveWidget(p)
+		return false
+	})
+	w.Move(uitest.At(p, 20, 20))
+	if p.Form() != nil {
+		t.Error("the widget is still in the form")
+	}
+}

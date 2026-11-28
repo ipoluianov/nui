@@ -44,7 +44,9 @@ func (r *evenOddRasterizer) ClosePath() {
 func (r *evenOddRasterizer) LineTo(bx, by float32) {
 	ax, ay := r.penX, r.penY
 	r.penX, r.penY = bx, by
-	if ay == by {
+	// A line of the same height covers nothing; one with a NaN or an
+	// infinite end has no place in the rows (int(NaN) indexes out of them)
+	if ay == by || ax-ax != 0 || ay-ay != 0 || bx-bx != 0 || by-by != 0 {
 		return
 	}
 	dir := float32(1)

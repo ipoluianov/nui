@@ -87,11 +87,14 @@ func ClipboardSetImage(img image.Image) error {
 	return ClipboardSetData(MIMEPNG, buf.Bytes())
 }
 
-// ClipboardGetImage returns the image on the clipboard, nil if there is none
+// ClipboardGetImage returns the image on the clipboard, nil if there is
+// none. An image larger than 32768 pixels on a side or 64 megapixels in all
+// gives an error and is not decoded: any application may put the image on
+// the clipboard, and a small PNG can claim any size.
 func ClipboardGetImage() (image.Image, error) {
 	data, ok, err := ClipboardGetData(MIMEPNG)
 	if err != nil || !ok {
 		return nil, err
 	}
-	return png.Decode(bytes.NewReader(data))
+	return platforms.DecodeClipboardPNG(data)
 }

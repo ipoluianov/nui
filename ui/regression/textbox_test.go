@@ -106,6 +106,37 @@ func TestTextBoxSelectionAndClipboard(t *testing.T) {
 	}
 }
 
+// A password box does not put the password on the clipboard: Copy does
+// nothing, Cut only deletes the selection; Paste still works
+func TestTextBoxPasswordNotCopied(t *testing.T) {
+	w, tb := textBoxForm(t, false)
+	tb.SetIsPassword(true)
+	ui.ClipboardSetText("before")
+	w.Type("s3cret")
+	w.Shortcut("Ctrl+A")
+	w.Shortcut("Ctrl+C")
+	if clip, _ := ui.ClipboardGetText(); clip != "before" {
+		t.Errorf("Ctrl+C put %q on the clipboard", clip)
+	}
+	tb.Copy()
+	if clip, _ := ui.ClipboardGetText(); clip != "before" {
+		t.Errorf("Copy put %q on the clipboard", clip)
+	}
+	w.Shortcut("Ctrl+X")
+	if clip, _ := ui.ClipboardGetText(); clip != "before" || tb.Text() != "" {
+		t.Errorf("Ctrl+X: clipboard %q, text %q", clip, tb.Text())
+	}
+	w.Shortcut("Ctrl+V")
+	if tb.Text() != "before" {
+		t.Errorf("paste into a password box: %q", tb.Text())
+	}
+	tb.SelectAllText()
+	tb.Cut()
+	if clip, _ := ui.ClipboardGetText(); clip != "before" || tb.Text() != "" {
+		t.Errorf("Cut: clipboard %q, text %q", clip, tb.Text())
+	}
+}
+
 func TestTextBoxUndoRedoGrouping(t *testing.T) {
 	w, tb := textBoxForm(t, true)
 	tb.SetText("start")

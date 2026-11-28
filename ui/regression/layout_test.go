@@ -2,6 +2,7 @@ package regression
 
 import (
 	"testing"
+	"time"
 
 	"github.com/ipoluianov/nui/ui"
 	"github.com/ipoluianov/nui/ui/uitest"
@@ -237,5 +238,60 @@ func TestSpaceSize(t *testing.T) {
 	uitest.Show(t, form)
 	if fixed.Height() != 30 || min.Height() != 15 || min.Width() != 25 {
 		t.Errorf("fixed %d×%d, min %d×%d", fixed.Width(), fixed.Height(), min.Width(), min.Height())
+	}
+}
+
+// A column with a larger stretch than the others that reaches its max width
+// takes no share of the spare room: it used to take one, be clamped back and
+// count as a change, so the layout loop never ended (the UI thread hung).
+// The same for a row and its max height.
+func TestStretchedColumnAtMaxSizeEndsLayout(t *testing.T) {
+	expandable := func() *ui.Panel {
+		p := ui.NewPanel()
+		p.SetXExpandable(true)
+		p.SetYExpandable(true)
+		return p
+	}
+	done := make(chan struct{})
+	tooBig := 0
+	go func() {
+		defer close(done)
+		for _, vertical := range []bool{false, true} {
+			for _, stretch := range []int{2, 3, 5, 10} {
+				form := newForm(400, 300)
+				p := form.Panel()
+				limited := expandable()
+				limited.SetMaxSize(40, 40)
+				p.AddWidget(0, 0, limited)
+				for i := 1; i <= 2; i++ {
+					if vertical {
+						p.AddWidget(i, 0, expandable())
+					} else {
+						p.AddWidget(0, i, expandable())
+					}
+				}
+				if vertical {
+					p.SetRowStretch(0, stretch)
+				} else {
+					p.SetColumnStretch(0, stretch)
+				}
+				w := uitest.Show(t, form)
+				for size := 100; size < 700; size += 7 {
+					w.Resize(size, size)
+					if limited.Width() > 40 || limited.Height() > 40 {
+						tooBig++
+					}
+				}
+				form.Close()
+			}
+		}
+	}()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the layout did not end within 10s")
+	}
+	if tooBig != 0 {
+		t.Errorf("the limited cell grew past its max size %d times", tooBig)
 	}
 }

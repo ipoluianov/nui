@@ -322,7 +322,8 @@ func (p *ChartPane) computeStacks() {
 		if p.stackPercent(s.stack) {
 			s.factors = make([]float64, len(s.samples))
 			for i, sm := range s.samples {
-				if total := p.groupTotal(s.stack, sm.X); total != 0 {
+				// A total too near zero gives no factor: 100 of it overflows
+				if total := p.groupTotal(s.stack, sm.X); total != 0 && chartFinite(100/total) {
 					s.factors[i] = 100 / total
 				}
 			}
@@ -363,14 +364,15 @@ func (p *ChartPane) groupTotal(group string, x float64) float64 {
 }
 
 // interpolateRaw returns the value of the samples at x, interpolated
-// between them; 0 outside them or in a gap
+// between them; 0 outside them or in a gap, an Inf or NaN being a gap too
 func interpolateRaw(sm []ChartSample, x float64) float64 {
 	j := nearestSampleIndex(sm, x)
 	if j < 0 {
 		return 0
 	}
+	has := func(k int) bool { return sm[k].HasValue() && chartFinite(sm[k].Last) }
 	if sm[j].X == x {
-		if sm[j].HasValue() {
+		if has(j) {
 			return sm[j].Last
 		}
 		return 0
@@ -381,7 +383,7 @@ func interpolateRaw(sm []ChartSample, x float64) float64 {
 	} else {
 		a = j - 1
 	}
-	if a < 0 || b >= len(sm) || !sm[a].HasValue() || !sm[b].HasValue() || sm[b].X == sm[a].X {
+	if a < 0 || b >= len(sm) || !has(a) || !has(b) || sm[b].X == sm[a].X {
 		return 0
 	}
 	t := (x - sm[a].X) / (sm[b].X - sm[a].X)
@@ -397,7 +399,7 @@ func interpolateStacked(ls *LineSeries, x float64) float64 {
 		return 0
 	}
 	top := func(k int) (float64, bool) {
-		if !sm[k].HasValue() {
+		if !ls.drawable(k) {
 			return 0, false
 		}
 		return ls.stacked(k, sm[k].Last), true

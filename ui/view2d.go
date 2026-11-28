@@ -688,6 +688,13 @@ func (v *View2D) paintGrid(cnv *Canvas, f view2DFrame, r RectF, bg color.RGBA) {
 	if (i1-i0)*(j1-j0) > 1e6 && v.grid.Dots || i1-i0 > 1e4 || j1-j0 > 1e4 {
 		return
 	}
+	// Far from the origin (or at an infinite edge) the line indices can't be
+	// told apart in a float64 and i++ would not move the loop counter: there
+	// is no grid to resolve there.
+	const maxIndex = 1 << 52
+	if !(math.Abs(i0) <= maxIndex && math.Abs(i1) <= maxIndex && math.Abs(j0) <= maxIndex && math.Abs(j1) <= maxIndex) {
+		return
+	}
 	isMajor := func(i float64) bool { return math.Mod(math.Abs(i), float64(major)) == 0 }
 	if v.grid.Dots {
 		for i := i0; i <= i1; i++ {

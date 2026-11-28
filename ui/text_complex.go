@@ -66,6 +66,14 @@ func needsShaping(text string) bool {
 var (
 	shapedLinesMu sync.Mutex
 	shapedLines   = map[shapedLineKey]*TextLayout{}
+	// shapedLinesBytes is the memory of the layouts, kept under a budget:
+	// a long line edited is a new layout at every key
+	shapedLinesBytes int
+)
+
+const (
+	shapedLinesBudget = 32 << 20
+	shapedLinesMax    = 2048
 )
 
 type shapedLineKey struct {
@@ -83,12 +91,16 @@ func shapedLine(text, family string, size float64) *TextLayout {
 		return l
 	}
 	l = NewTextLayout(text, TextStyle{Font: family, Size: size})
+	l.oneLine = true
 	l.layout()
+	mem := l.memSize()
 	shapedLinesMu.Lock()
-	if len(shapedLines) >= 2048 {
+	if len(shapedLines) >= shapedLinesMax || shapedLinesBytes+mem > shapedLinesBudget {
 		clear(shapedLines)
+		shapedLinesBytes = 0
 	}
 	shapedLines[key] = l
+	shapedLinesBytes += mem
 	shapedLinesMu.Unlock()
 	return l
 }
@@ -97,6 +109,7 @@ func shapedLine(text, family string, size float64) *TextLayout {
 func clearShapedLines() {
 	shapedLinesMu.Lock()
 	clear(shapedLines)
+	shapedLinesBytes = 0
 	shapedLinesMu.Unlock()
 }
 

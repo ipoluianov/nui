@@ -265,9 +265,12 @@ func (s *FunnelSeries) Draw(cnv *Canvas, v *ChartViewport) {
 	if n == 0 {
 		return
 	}
+	// A stage of Inf or NaN has no value: it is not drawn
 	top := 0.0
 	for _, st := range s.stages {
-		top = math.Max(top, st.value)
+		if chartFinite(st.value) {
+			top = math.Max(top, st.value)
+		}
 	}
 	if top <= 0 {
 		return
@@ -283,10 +286,24 @@ func (s *FunnelSeries) Draw(cnv *Canvas, v *ChartViewport) {
 	}
 	cx := v.X + v.W/2
 	maxW := v.W * 0.9
+	width := func(value float64) float64 {
+		if !chartFinite(value) {
+			return 2
+		}
+		w := maxW * value / top
+		if !chartFinite(w) {
+			// maxW times a value near the largest float overflows
+			w = maxW * (value / top)
+		}
+		return math.Max(2, w)
+	}
 	p := pathPool.Get().(*Path)
 	defer pathPool.Put(p)
 	for i, st := range s.stages {
-		w := math.Max(2, maxW*st.value/top)
+		if !chartFinite(st.value) {
+			continue
+		}
+		w := width(st.value)
 		y := v.Y + float64(i)*(bh+gap)
 		col := v.Theme.SeriesColor(i)
 		if b := s.base(); b.col != nil {
@@ -295,7 +312,7 @@ func (s *FunnelSeries) Draw(cnv *Canvas, v *ChartViewport) {
 		}
 		p.Reset()
 		if s.pyramid && i+1 < n {
-			nw := math.Max(2, maxW*s.stages[i+1].value/top)
+			nw := width(s.stages[i+1].value)
 			p.Polygon(PointF{cx - w/2, y}, PointF{cx + w/2, y}, PointF{cx + nw/2, y + bh + gap}, PointF{cx - nw/2, y + bh + gap})
 		} else {
 			p.RoundedRect(cx-w/2, y, w, bh, 3)
@@ -312,7 +329,7 @@ func (s *FunnelSeries) Draw(cnv *Canvas, v *ChartViewport) {
 		}
 		if i > 0 && !s.pyramid && gap >= lineH {
 			prev := s.stages[i-1].value
-			if prev > 0 {
+			if prev > 0 && chartFinite(prev) {
 				pct := strconv.FormatFloat(st.value/prev*100, 'f', 1, 64) + "%"
 				chartDrawLabel(cnv, "↓ "+pct, cx, y-gap/2, HAlignCenter, VAlignCenter, v.Theme.Text)
 			}

@@ -4,6 +4,8 @@ import (
 	"image"
 	"image/color"
 	"math"
+	"runtime"
+	"strings"
 	"testing"
 	"unicode/utf8"
 )
@@ -555,4 +557,30 @@ func TestTextBoxAlignedDrawn(t *testing.T) {
 	if ink < 30 {
 		t.Fatalf("the right-aligned line is not drawn: %d pixels of ink", ink)
 	}
+}
+
+// The layouts of the shaped lines are cached under a budget of memory, not
+// of a count only: typing at the end of a long line with an emoji makes a
+// layout of the whole line at every key
+func TestShapedLinesCacheMemoryBudget(t *testing.T) {
+	clearShapedLines()
+	defer clearShapedLines()
+	runtime.GC()
+	var m0, m1 runtime.MemStats
+	runtime.ReadMemStats(&m0)
+	box := NewTextBox()
+	form := newTestForm(t, box)
+	box.SetText("😀" + strings.Repeat("x", 10000))
+	box.Focus()
+	box.MoveCursorToEnd()
+	for range 100 {
+		form.processChar('y')
+	}
+	runtime.GC()
+	runtime.ReadMemStats(&m1)
+	// About 1.3 MB a layout of the line: 130 MB for 100 keys unbounded
+	if grown := int64(m1.HeapAlloc) - int64(m0.HeapAlloc); grown > 80<<20 {
+		t.Errorf("100 keys typed in a line of 10000 characters: the heap grew by %d MB", grown>>20)
+	}
+	runtime.KeepAlive(box)
 }

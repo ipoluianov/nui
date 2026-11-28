@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"sort"
 	"unicode/utf8"
+	"unsafe"
 
 	gtbidi "github.com/go-text/typesetting/bidi"
 	"github.com/go-text/typesetting/di"
@@ -62,6 +63,9 @@ func (s TextStyle) fontStyle() FontStyle {
 //	l.SetWidth(200)
 //	cnv.DrawTextLayout(l, 10.5, 20.25)
 //
+// The lines break at "\n", "\r\n", a lone "\r" and the other separators of
+// paragraphs (U+001C..U+001E, U+0085, U+2029).
+//
 // The indexes of the characters are byte offsets in Text(). A TextLayout
 // is laid out once, when it is first measured or drawn after a change, and
 // may be drawn many times; it is not safe for concurrent use.
@@ -73,6 +77,9 @@ type TextLayout struct {
 	lineSpacing float64
 	maxLines    int
 	rtl         int // 0 by the text, 1 left to right, 2 right to left
+	// oneLine keeps the separators of paragraphs but "\n" ("\r", U+2029...)
+	// in their line, drawn as nothing: the layout of a line of DrawText
+	oneLine bool
 
 	laidOut bool
 	runes   []rune
@@ -221,6 +228,18 @@ func (l *TextLayout) Lines() []TextLine {
 	return out
 }
 
+// memSize returns about how many bytes the layout laid out takes
+func (l *TextLayout) memSize() int {
+	n := len(l.text) + len(l.runes)*4 + len(l.offsets)*8 + len(l.spans)*int(unsafe.Sizeof(textSpan{}))
+	for _, ln := range l.lines {
+		n += int(unsafe.Sizeof(ln)) + len(ln.clusters)*int(unsafe.Sizeof(caretCluster{}))
+		for _, r := range ln.runs {
+			n += int(unsafe.Sizeof(r)) + len(r.out.Glyphs)*int(unsafe.Sizeof(shaping.Glyph{}))
+		}
+	}
+	return n
+}
+
 // spanAt returns the style of the rune i
 func (l *TextLayout) styleAt(i int) TextStyle {
 	for _, s := range l.spans {
@@ -241,6 +260,13 @@ func (l *TextLayout) layout() {
 	}
 	l.laidOut = true
 	l.runes = []rune(l.text)
+	if l.oneLine {
+		for i, r := range l.runes {
+			if r != '\n' && isParagraphSeparator(r) {
+				l.runes[i] = '\u200B' // a zero width space, of no direction
+			}
+		}
+	}
 	l.offsets = l.offsets[:0]
 	for i := range l.text {
 		l.offsets = append(l.offsets, i)
@@ -252,10 +278,13 @@ func (l *TextLayout) layout() {
 	ensureFallbackFonts(l.text)
 	shapeMu.Lock()
 	defer shapeMu.Unlock()
+	// The paragraphs end at "\n" and the other separators of paragraphs of
+	// the bidi algorithm: "\r" ("\r\n" is one break), U+001C..U+001E,
+	// U+0085, U+2029. The shaper does not take one within a paragraph.
 	start := 0
 	for {
 		end := start
-		for end < len(l.runes) && l.runes[end] != '\n' {
+		for end < len(l.runes) && !isParagraphSeparator(l.runes[end]) {
 			end++
 		}
 		if l.maxLines > 0 && len(l.lines) >= l.maxLines {
@@ -266,6 +295,9 @@ func (l *TextLayout) layout() {
 			break
 		}
 		start = end + 1
+		if l.runes[end] == '\r' && start < len(l.runes) && l.runes[start] == '\n' {
+			start++
+		}
 	}
 	// The lines one under another, aligned
 	y := 0.0
@@ -289,6 +321,16 @@ func (l *TextLayout) layout() {
 			ln.x = box - ln.width
 		}
 	}
+}
+
+// isParagraphSeparator tells whether the rune ends a paragraph: of the
+// bidi class B
+func isParagraphSeparator(r rune) bool {
+	switch r {
+	case '\n', '\r', 0x1C, 0x1D, 0x1E, 0x85, 0x2029:
+		return true
+	}
+	return false
 }
 
 // toFixed is a length in logical pixels as the shaper's 26.6
@@ -343,6 +385,14 @@ func (l *TextLayout) layoutParagraph(start, end int, broken bool) {
 	bruns := bp.Segment(para, def)
 	levels := runeLevels(&bruns, len(para), rtl)
 	levelAt := func(r int) (int, int) {
+		if r >= len(levels) {
+			// The ellipsis of SetMaxLines, after the text: at the level
+			// of the paragraph
+			if rtl {
+				return 1, r + 1
+			}
+			return 0, r + 1
+		}
 		end := r + 1
 		for end < len(levels) && levels[end] == levels[r] {
 			end++
@@ -684,7 +734,7 @@ func (l *TextLayout) SelectionRects(from, to int) []RectF {
 			}
 		}
 		// A line break selected: a bit of the line past its text
-		if b > ln.end && ln.end < len(l.runes) && l.runes[ln.end] == '\n' {
+		if b > ln.end && ln.end < len(l.runes) && isParagraphSeparator(l.runes[ln.end]) {
 			x := ln.caretX(ln.end)
 			spans = append(spans, [2]float64{x, x + ln.height/4})
 		}

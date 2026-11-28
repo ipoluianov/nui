@@ -815,6 +815,12 @@ func (c *Form) ShowModal(parent *Form) {
 		panic("parent form cannot be nil for ShowModal")
 	}
 	platforms.RunOnUIThread(func() {
+		// An open dialog keeps its window: a second one would never undo the
+		// blocking of the parent
+		if c.wnd != nil && !c.closed {
+			c.Show()
+			return
+		}
 		c.parentForm = parent
 		parent.giveMouseToModal()
 		// Centered with the size it opens with
@@ -857,6 +863,12 @@ func (c *Form) MoveToCenterOfParent() {
 
 func (c *Form) ShowMaximized() {
 	platforms.RunOnUIThread(func() {
+		// A shown form keeps its window, maximized (as Show, no second window)
+		if c.wnd != nil && !c.closed {
+			c.Show()
+			c.wnd.MaximizeWindow()
+			return
+		}
 		c.createWindow(true)
 		c.wnd.Show()
 		c.wnd.MaximizeWindow()
@@ -1275,13 +1287,15 @@ func (c *Form) processMouseMove(x int, y int) {
 		signalTarget.widgetBase().Update()
 		return
 	}
-	if c.mouseLeftButtonPressedWidget != nil {
-		wX, wY := c.mouseLeftButtonPressedWidget.RectClientAreaOnWindow()
-		c.mouseLeftButtonPressedWidget.ProcessMouseMove(x-wX, y-wY, c.lastKeyboardModifiers)
+	// A local: the handler may clear the field (a modal dialog it opens
+	// cancels the press, a removed widget is forgotten)
+	if pw := c.mouseLeftButtonPressedWidget; pw != nil {
+		wX, wY := pw.RectClientAreaOnWindow()
+		pw.ProcessMouseMove(x-wX, y-wY, c.lastKeyboardModifiers)
 		if c.mouseDownPopup != nil {
 			c.followMouseInPopups(x, y)
 		}
-		c.mouseLeftButtonPressedWidget.widgetBase().Update()
+		pw.widgetBase().Update()
 		return
 	}
 
@@ -1480,13 +1494,14 @@ func (c *Form) processKeyDown(keyCode Key, mods KeyModifiers) bool {
 		}
 	}
 
-	if c.focusedWidget != nil {
-		if c.focusedWidget.ProcessKeyDown(keyCode, mods) {
+	// A local: the widget's handler may remove it, which clears the focus
+	if w := c.focusedWidget; w != nil {
+		if w.ProcessKeyDown(keyCode, mods) {
 			c.Update()
 			return true
 		}
 
-		parentWidgetId := c.focusedWidget.ParentWidgetId()
+		parentWidgetId := w.ParentWidgetId()
 		for parentWidgetId != "" {
 			parentWidget := c.WidgetById(parentWidgetId)
 			if parentWidget != nil {

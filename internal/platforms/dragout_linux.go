@@ -74,6 +74,13 @@ func (c *nativeWindow) startFileDragSync(files []string) (effect DragEffect, dro
 	d.move(rootX, rootY)
 
 	for {
+		if d.c.platform.closed {
+			// The window was closed during the drag (Close, the window
+			// manager): its grabs went with it, so the button release and
+			// Esc go to other windows and never end the drag. A cancel.
+			d.leave()
+			return DragEffectNone, false, true
+		}
 		var event xEvent
 		if !d.nextEvent(&event, time.Time{}) {
 			continue
@@ -102,11 +109,12 @@ func (c *nativeWindow) startFileDragSync(files []string) (effect DragEffect, dro
 
 // nextEvent waits for an event of the drag, answering the requests for the
 // data and handing the other events to their windows; false if the
-// deadline (if any) passes first
+// deadline (if any) passes first or the window of the drag is closed (the
+// windows close in idle, this one too)
 func (d *dragOut) nextEvent(event *xEvent, deadline time.Time) bool {
 	display := d.c.platform.display
 	for xPending(display) == 0 {
-		if !deadline.IsZero() && time.Now().After(deadline) {
+		if (!deadline.IsZero() && time.Now().After(deadline)) || d.c.platform.closed {
 			return false
 		}
 		// The other windows are painted meanwhile
@@ -193,7 +201,7 @@ func (d *dragOut) leave() {
 func (d *dragOut) drop() (DragEffect, bool) {
 	// The answer to the last position decides
 	deadline := time.Now().Add(dragFinishTimeout)
-	for d.target != 0 && d.waiting {
+	for d.target != 0 && d.waiting && !d.c.platform.closed {
 		var event xEvent
 		if !d.nextEvent(&event, deadline) {
 			break
@@ -202,7 +210,7 @@ func (d *dragOut) drop() (DragEffect, bool) {
 			d.status((*xClientMessageEvent)(unsafe.Pointer(&event)))
 		}
 	}
-	if d.target == 0 || !d.accepted {
+	if d.target == 0 || !d.accepted || d.c.platform.closed {
 		d.leave()
 		return DragEffectNone, false
 	}
@@ -210,7 +218,9 @@ func (d *dragOut) drop() (DragEffect, bool) {
 	for {
 		var event xEvent
 		if !d.nextEvent(&event, deadline) {
-			if time.Now().After(deadline) {
+			// A closed window no longer owns the selection the target
+			// asks for the files
+			if time.Now().After(deadline) || d.c.platform.closed {
 				return DragEffectNone, false
 			}
 			continue

@@ -351,10 +351,10 @@ func (s *LineSeries) Draw(cnv *Canvas, v *ChartViewport) {
 	}
 	if s.showMarkers(v) {
 		for i, p := range s.samples {
-			if !p.HasValue() {
+			if !s.drawable(i) {
 				continue
 			}
-			x, y := v.PX(p.X), v.PY(s.stacked(i, p.Last))
+			x, y := chartPx(v.PX(p.X)), chartPx(v.PY(s.stacked(i, p.Last)))
 			if x < v.X-s.markerSize || x > v.X+v.W+s.markerSize {
 				continue
 			}
@@ -394,8 +394,8 @@ func (s *LineSeries) drawColumns(cnv *Canvas, v *ChartViewport, runs []lineRun, 
 				has = false
 				continue
 			}
-			x := v.PX(s.samples[i].X)
-			yf, yl, yh, ylo := v.PY(first), v.PY(last), v.PY(high), v.PY(low)
+			x := chartPx(v.PX(s.samples[i].X))
+			yf, yl, yh, ylo := chartPx(v.PY(first)), chartPx(v.PY(last)), chartPx(v.PY(high)), chartPx(v.PY(low))
 			top := math.Min(math.Min(yf, yl), math.Min(yh, ylo))
 			bottom := math.Max(math.Max(yf, yl), math.Max(yh, ylo))
 			if has {
@@ -407,7 +407,18 @@ func (s *LineSeries) drawColumns(cnv *Canvas, v *ChartViewport, runs []lineRun, 
 					// before ended; the sample's own goes on from the last
 					steps := int(math.Ceil(x - prevX))
 					yAt := func(k int) float64 { return prevY + (yf-prevY)*float64(k)/float64(steps) }
-					for k := 1; k < steps; k++ {
+					// Only the columns over the plot: the sample before
+					// may lie far outside it, past a gap in the data or a
+					// deep zoom
+					kFrom, kTo := 1, steps-1
+					perPx := float64(steps) / (x - prevX)
+					if k := math.Ceil((v.X - w - prevX) * perPx); k > float64(kFrom) {
+						kFrom = int(math.Min(k, float64(steps)))
+					}
+					if k := math.Floor((v.X + v.W + w - prevX) * perPx); k < float64(kTo) {
+						kTo = int(math.Max(k, 0))
+					}
+					for k := kFrom; k <= kTo; k++ {
 						cx := prevX + (x-prevX)*float64(k)/float64(steps)
 						cy0, cy1 := yAt(k-1), yAt(k)
 						cnv.fillRectF(cx-half, math.Min(cy0, cy1)-half, w, math.Abs(cy1-cy0)+w, col)
@@ -431,8 +442,8 @@ type lineRun struct{ from, to int }
 func (s *LineSeries) runs() []lineRun {
 	var runs []lineRun
 	start := -1
-	for i, p := range s.samples {
-		if p.HasValue() || s.gaps == ChartGapZero {
+	for i := range s.samples {
+		if s.drawable(i) || s.gaps == ChartGapZero {
 			if start < 0 {
 				start = i
 			}
@@ -452,11 +463,45 @@ func (s *LineSeries) runs() []lineRun {
 	return runs
 }
 
+// drawable reports whether the sample has a value to draw: an Inf or NaN
+// (from a sensor, a division, an overflowing stack) is no value
+func (s *LineSeries) drawable(i int) bool {
+	p := s.samples[i]
+	if !p.HasValue() || !chartFinite(p.X) {
+		return false
+	}
+	for _, y := range [4]float64{p.First, p.Last, p.High, p.Low} {
+		if !chartFinite(s.stacked(i, y)) {
+			return false
+		}
+	}
+	return true
+}
+
+// chartPixelLimit bounds the pixel coordinates the series put into paths:
+// far past any plot, so the drawing does not change, yet small enough for
+// the fixed point of the rasterizer
+const chartPixelLimit = 1e7
+
+// chartPx clamps a pixel coordinate to ±chartPixelLimit: a value far out of
+// the axis' range is drawn at the limit; NaN gives 0
+func chartPx(p float64) float64 {
+	switch {
+	case p != p:
+		return 0
+	case p < -chartPixelLimit:
+		return -chartPixelLimit
+	case p > chartPixelLimit:
+		return chartPixelLimit
+	}
+	return p
+}
+
 // sampleValues returns the values of the sample as drawn: zero for a gap
 // going down to zero
 func (s *LineSeries) sampleValues(i int) (first, last, high, low float64, ok bool) {
 	p := s.samples[i]
-	if !p.HasValue() {
+	if !s.drawable(i) {
 		if s.gaps == ChartGapZero {
 			z := s.stacked(i, 0)
 			return z, z, z, z, true
@@ -483,7 +528,7 @@ func (s *LineSeries) addRun(p *Path, v *ChartViewport, r lineRun) {
 		if !ok {
 			continue
 		}
-		pts = append(pts, pt{v.PX(s.samples[i].X), snap(v.PY(first)), snap(v.PY(last))})
+		pts = append(pts, pt{chartPx(v.PX(s.samples[i].X)), snap(chartPx(v.PY(first))), snap(chartPx(v.PY(last)))})
 	}
 	if len(pts) == 0 {
 		return
@@ -539,9 +584,9 @@ func (s *LineSeries) addRun(p *Path, v *ChartViewport, r lineRun) {
 		if high <= top && low >= bottom {
 			continue
 		}
-		x := v.PX(s.samples[i].X)
-		p.MoveTo(x, v.PY(high))
-		p.LineTo(x, v.PY(low))
+		x := chartPx(v.PX(s.samples[i].X))
+		p.MoveTo(x, chartPx(v.PY(high)))
+		p.LineTo(x, chartPx(v.PY(low)))
 	}
 }
 
@@ -551,9 +596,9 @@ func (s *LineSeries) drawFill(cnv *Canvas, v *ChartViewport, runs []lineRun, col
 	fillCol.A = uint8(float64(col.A) * s.fillOpacity)
 	baseY := func(i int) float64 {
 		if s.bases != nil {
-			return v.PY(s.bases[i])
+			return chartPx(v.PY(s.bases[i]))
 		}
-		y := v.PY(s.fillBase)
+		y := chartPx(v.PY(s.fillBase))
 		return math.Max(v.Y, math.Min(v.Y+v.H, y))
 	}
 	p := pathPool.Get().(*Path)
@@ -572,22 +617,22 @@ func (s *LineSeries) drawFill(cnv *Canvas, v *ChartViewport, runs []lineRun, col
 		// Along the line, then back along the base
 		for k, i := range idx {
 			_, last, _, _, _ := s.sampleValues(i)
-			x, y := v.PX(s.samples[i].X), v.PY(last)
+			x, y := chartPx(v.PX(s.samples[i].X)), chartPx(v.PY(last))
 			if k == 0 {
 				p.MoveTo(x, y)
 			} else {
 				if s.shape == ChartLineStepAfter {
 					_, prevLast, _, _, _ := s.sampleValues(idx[k-1])
-					p.LineTo(x, v.PY(prevLast))
+					p.LineTo(x, chartPx(v.PY(prevLast)))
 				}
 				p.LineTo(x, y)
 			}
 		}
 		for k := len(idx) - 1; k >= 0; k-- {
 			i := idx[k]
-			x := v.PX(s.samples[i].X)
+			x := chartPx(v.PX(s.samples[i].X))
 			if s.bases != nil && s.shape == ChartLineStepAfter && k < len(idx)-1 {
-				p.LineTo(v.PX(s.samples[idx[k+1]].X), baseY(i))
+				p.LineTo(chartPx(v.PX(s.samples[idx[k+1]].X)), baseY(i))
 			}
 			p.LineTo(x, baseY(i))
 		}

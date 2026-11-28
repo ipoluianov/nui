@@ -410,16 +410,19 @@ func (s *Histogram2DSeries) SetHex(radius float64) *Histogram2DSeries {
 	return s
 }
 
-// bin counts the points into the grid over their range
+// bin counts the points into the grid over their range; a point of Inf or
+// NaN is not counted
 func (s *Histogram2DSeries) bin() {
-	if len(s.points) == 0 {
-		s.SetGrid(nil, 0, 0, 0, 0)
-		return
-	}
 	x0, x1, y0, y1 := math.Inf(1), math.Inf(-1), math.Inf(1), math.Inf(-1)
 	for _, p := range s.points {
-		x0, x1 = math.Min(x0, p.X), math.Max(x1, p.X)
-		y0, y1 = math.Min(y0, p.Y), math.Max(y1, p.Y)
+		if chartFinite(p.X) && chartFinite(p.Y) {
+			x0, x1 = math.Min(x0, p.X), math.Max(x1, p.X)
+			y0, y1 = math.Min(y0, p.Y), math.Max(y1, p.Y)
+		}
+	}
+	if x0 > x1 {
+		s.SetGrid(nil, 0, 0, 0, 0)
+		return
 	}
 	if x1 == x0 {
 		x1 = x0 + 1
@@ -435,14 +438,31 @@ func (s *Histogram2DSeries) bin() {
 		}
 	}
 	for _, p := range s.points {
-		c := min(int((p.X-x0)/(x1-x0)*float64(s.cols)), s.cols-1)
-		r := min(int((p.Y-y0)/(y1-y0)*float64(s.rows)), s.rows-1)
+		if !chartFinite(p.X) || !chartFinite(p.Y) {
+			continue
+		}
+		c, r := histogram2DCell(p.X, x0, x1, s.cols), histogram2DCell(p.Y, y0, y1, s.rows)
 		if math.IsNaN(grid[r][c]) {
 			grid[r][c] = 0
 		}
 		grid[r][c]++
 	}
 	s.SetGrid(grid, x0, x1, y0, y1)
+}
+
+// histogram2DCell returns the cell of the n cells over lo to hi the value
+// is in
+func histogram2DCell(v, lo, hi float64, n int) int {
+	f := (v - lo) / (hi - lo) * float64(n)
+	if math.IsInf(hi-lo, 0) {
+		// The range of nearly the largest floats overflows: in halves
+		f = (v/2 - lo/2) / (hi/2 - lo/2) * float64(n)
+	}
+	// Clamped as a float: int of a float out of its range is undefined
+	if !(f > 0) {
+		return 0
+	}
+	return int(math.Min(float64(n-1), f))
 }
 
 // drawHex counts the points into hexagons of the plot and draws them
@@ -455,7 +475,7 @@ func (s *HeatmapSeries) drawHex(cnv *Canvas, v *ChartViewport) {
 	s.hexCells = map[[2]int]float64{}
 	for _, p := range s.hexPts() {
 		x, y := v.PX(p.X)-v.X, v.PY(p.Y)-v.Y
-		if x < -w || y < -r || x > v.W+w || y > v.H+r {
+		if !chartFinite(x) || !chartFinite(y) || x < -w || y < -r || x > v.W+w || y > v.H+r {
 			continue
 		}
 		s.hexCells[hexCell(x, y, r)]++

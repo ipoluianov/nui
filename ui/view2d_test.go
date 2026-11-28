@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"math"
 	"testing"
+	"time"
 
 	"github.com/ipoluianov/nui/ui"
 	"github.com/ipoluianov/nui/ui/uitest"
@@ -242,6 +243,36 @@ func TestView2DScrollHiDPI(t *testing.T) {
 			if d := maxDiff(scrolled, whole, scrolled.Rect); d > 4 {
 				t.Fatalf("scale %v drag %d: the scrolled picture differs from a whole paint by %d", scale, i, d)
 			}
+		}
+	}
+}
+
+// Far from the origin the grid lines can't be told apart in a float64: the
+// grid is skipped there and the paint ends (it used to loop forever)
+func TestView2DGridFarFromOrigin(t *testing.T) {
+	cases := []struct {
+		grid   ui.View2DGrid
+		center ui.PointF
+		scale  float64
+	}{
+		{ui.View2DGrid{Visible: true}, ui.PointF{X: 1e10}, 1e9},
+		{ui.View2DGrid{Visible: true, Dots: true}, ui.PointF{X: 1e10}, 1e9},
+		{ui.View2DGrid{Visible: true, Step: 1}, ui.PointF{Y: 3e16}, 10},
+		{ui.View2DGrid{Visible: true, Step: 1, Dots: true}, ui.PointF{Y: 3e16}, 10},
+	}
+	for i, c := range cases {
+		view, w, _ := newView2DForm(t)
+		view.SetGrid(c.grid)
+		view.SetView(c.center, c.scale)
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			w.Screenshot()
+		}()
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+			t.Fatalf("case %d: the paint at %v, scale %v hangs", i, c.center, c.scale)
 		}
 	}
 }

@@ -119,6 +119,14 @@ func clipboardGet(mime string) ([]byte, bool, error) {
 	if !ok {
 		return nil, false, nil
 	}
+	// The size first: tiff.Decode allocates the image the header claims
+	cfg, err := tiff.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		return nil, false, nil
+	}
+	if err := checkClipboardImageSize(cfg); err != nil {
+		return nil, false, err
+	}
 	img, err := tiff.Decode(bytes.NewReader(data))
 	if err != nil {
 		return nil, false, nil

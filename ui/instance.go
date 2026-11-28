@@ -81,9 +81,12 @@ func (c *SingleInstance) OnActivate(f func(args []string)) {
 	if c == nil || c.listener == nil {
 		return
 	}
+	// The goroutine keeps its own copy: Close sets the field to nil from
+	// the UI thread while the goroutine may still be handling a connection
+	ln := c.listener
 	go func() {
 		for {
-			conn, err := c.listener.Accept()
+			conn, err := ln.Accept()
 			if err != nil {
 				return // closed
 			}
